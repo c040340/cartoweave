@@ -65,6 +65,21 @@ def _label_text(lab: Dict[str, Any], index: int) -> str:
     return f"{index}"
 
 
+def _format_pct(pct: float) -> str:
+    """Return a percentage string with aligned decimal places.
+
+    The info panel lists force contributions as percentages.  To facilitate
+    comparison across rows we format the values so that the decimal points line
+    up vertically.  ``pct`` is expected to be given in ``[0, 100]`` units.
+    """
+
+    s = f"{pct:+07.1f}"  # sign + four integer digits + decimal
+    sign = s[0]
+    integer = s[1:5].lstrip("0") or "0"
+    integer = integer.rjust(4, " ")
+    return sign + integer + s[5:] + "%"
+
+
 # ---------------------------------------------------------------------------
 # Drawing primitives
 # ---------------------------------------------------------------------------
@@ -359,9 +374,10 @@ def draw_info_panel(
         comp_mag = float(np.hypot(vx, vy))
         comp_ang = float(np.degrees(np.arctan2(vy, vx)))
         pct = comp_mag / tot_mag * 100.0
+        pct_txt = _format_pct(pct)
         name_fmt = name[:6].ljust(6)
         row_txt = (
-            f"{name_fmt} |F|={comp_mag:+9.3e} angle={comp_ang:+6.1f}° {pct:+6.1f}%"
+            f"{name_fmt} |F|={comp_mag:+9.3e} angle={comp_ang:+6.1f}° {pct_txt}"
         )
         rows.append((row_txt, _force_color(name), cfg["row_component_fontsize"]))
 
