@@ -83,6 +83,11 @@ def draw_layout(
     ax.set_ylim(frame_h, 0)  # origin in the top-left corner
     ax.set_facecolor("white")
 
+    # add simple tick marks to help gauge scale
+    ax.set_xticks(np.linspace(0, frame_w, 5))
+    ax.set_yticks(np.linspace(0, frame_h, 5))
+    ax.grid(True, color="#DDDDDD", lw=0.5)
+
     # --- background geometry -------------------------------------------------
     pts = _as_vec2(points)
     if pts is not None:
@@ -156,6 +161,8 @@ def draw_force_panel(
     """
 
     ax.clear()
+    ax.set_xticks([])
+    ax.set_yticks([])
     ax.axhline(0, color="#dddddd", lw=1.0)
     ax.axvline(0, color="#dddddd", lw=1.0)
 
@@ -255,6 +262,8 @@ def draw_field_panel(
     """
 
     ax.clear()
+    ax.set_xticks([])
+    ax.set_yticks([])
     arr = None if field is None else np.asarray(field, dtype=float)
     if arr is None or arr.ndim != 2:
         ax.text(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)

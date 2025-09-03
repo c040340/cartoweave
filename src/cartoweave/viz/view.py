@@ -111,19 +111,41 @@ def interactive_view(
     rect_wh = np.asarray(rect_wh, dtype=float)
     T = len(traj)
 
-    fig = plt.figure(figsize=(12, 8))
-    gs = fig.add_gridspec(2, 2, height_ratios=[3, 1])
-    ax_layout = fig.add_subplot(gs[0, 0])
-    ax_force = fig.add_subplot(gs[0, 1])
-    ax_info = fig.add_subplot(gs[1, 0])
+    # ------------------------------------------------------------------
+    # Layout of the figure
+    # ------------------------------------------------------------------
+    # The overall view is split into a tall main area and a slim bar at the
+    # bottom that hosts the iteration slider and timeline actions.
+    fig = plt.figure(figsize=(22, 10))
+    outer = fig.add_gridspec(
+        2, 1, height_ratios=[28, 1],
+        left=0.05, right=0.97, top=0.95, bottom=0.05
+    )
+
+    # --- main area -----------------------------------------------------
+    main = outer[0].subgridspec(1, 3, width_ratios=[5.5, 5, 7.5])
+    ax_layout = fig.add_subplot(main[0, 0])
+
+    centre = main[0, 1].subgridspec(2, 1, height_ratios=[2.5, 2])
+    ax_force = fig.add_subplot(centre[0, 0])
+    ax_info = fig.add_subplot(centre[1, 0])
+
+
     if field_kind == "3d":
         from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
-        ax_field = fig.add_subplot(gs[1, 1], projection="3d")
+        ax_field = fig.add_subplot(main[0, 2], projection="3d")
     else:
-        ax_field = fig.add_subplot(gs[1, 1])
+        ax_field = fig.add_subplot(main[0, 2])
 
-    slider_ax = fig.add_axes([0.25, 0.02, 0.5, 0.04])
+    # --- bottom bar ----------------------------------------------------
+    bottom = outer[1].subgridspec(2, 1)
+    slider_ax = fig.add_subplot(bottom[0, 0])
+    slider_ax.set_xticks([])
+    slider_ax.set_yticks([])
     slider = Slider(slider_ax, "iter", 0, T - 1, valinit=0, valstep=1)
+
+    timeline_ax = fig.add_subplot(bottom[1, 0])
+    timeline_ax.set_axis_off()
 
     selected = 0
     patches = []
