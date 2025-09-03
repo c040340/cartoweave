@@ -1,14 +1,17 @@
-"""Generate a random scene, run a two-step optimisation and visualise.
+"""Generate or reuse a random scene, then run a two-step optimisation.
 
 This example demonstrates the full pipeline using the random data utilities.
-The numbers of points, lines and areas are exposed as variables so users can
-tweak them freely.  A random appear/change/hide timeline is also produced for
-reference.
+The counts of points/lines/areas as well as whether to regenerate the scene or
+reuse the last cached one are exposed as variables so users can tweak them.
+A random appear/change/hide timeline is produced via :func:`make_timeline` and
+cached together with the scene to guarantee reproducibility when ``use_random``
+is ``False``.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import time
 
 import matplotlib
 matplotlib.use("TkAgg")
@@ -16,7 +19,7 @@ matplotlib.use("TkAgg")
 from cartoweave.api import solve_frame
 from cartoweave.config.presets import default_cfg
 from cartoweave.config.utils import merge, viz
-from cartoweave.data.random import generate_scene, make_timeline
+from cartoweave.data.random import get_scene, make_timeline
 from cartoweave.engine.core_eval import energy_and_grad_fullP
 from cartoweave.viz import interactive_view
 
@@ -25,26 +28,47 @@ from cartoweave.viz import interactive_view
 # Random scene configuration
 # ---------------------------------------------------------------------------
 
-# Users can edit these numbers to control the amount of random geometry.
+# Users can tweak these parameters.
 N_POINTS = 5
 N_LINES = 2
 N_AREAS = 1
-SEED = 0
+SEED = int(time.time_ns() // (2**32))
 
-scene = generate_scene(
-    canvas_size=(800.0, 600.0),
+# Whether to generate a new random scene or reuse the last cached one.
+# When ``use_random`` is ``False``, point/line/area geometry as well as labels
+# and timeline will be loaded from the cache generated in the previous run.
+USE_RANDOM = False
+
+
+def build_timeline(data: dict) -> list[dict]:
+    """Wrapper around :func:`make_timeline` for :func:`get_scene`.
+
+    ``get_scene`` passes the full scene dict.  We only need element IDs here.
+    """
+
+    Np = data["points"].shape[0]
+    Nl = data["lines"].shape[0]
+    Na = len(data["areas"])
+    pt_ids = [{"id": f"p{i}"} for i in range(Np)]
+    li_ids = [{"id": f"l{i}"} for i in range(Nl)]
+    ar_ids = [{"id": f"a{i}"} for i in range(Na)]
+    return make_timeline(pt_ids, li_ids, ar_ids, base_modes={}, seed=SEED)
+
+
+scene = get_scene(
+    use_random=USE_RANDOM,
+    with_timeline=True,
+    auto_make_timeline_if_missing=True,
+    make_timeline_fn=build_timeline,
+    seed=SEED,
+    canvas_size=(1080.0, 1920.0),
     n_points=N_POINTS,
     n_lines=N_LINES,
     n_areas=N_AREAS,
-    seed=SEED,
 )
 
-# Also create a random action timeline (appear/change/hide) for reference.
-point_ids = [{"id": f"p{i}"} for i in range(N_POINTS)]
-line_ids = [{"id": f"l{i}"} for i in range(N_LINES)]
-area_ids = [{"id": f"a{i}"} for i in range(N_AREAS)]
-actions = make_timeline(point_ids, line_ids, area_ids, base_modes={}, seed=SEED)
-print("Generated timeline actions:")
+actions = scene.get("timeline", [])
+print("Timeline actions:")
 for act in actions:
     print("  ", act)
 
@@ -117,5 +141,4 @@ if cfg_base.get("viz.show", False):
         field_kind=cfg_base.get("viz.field.kind", "heatmap"),
         field_cmap=cfg_base.get("viz.field.cmap", "viridis"),
     )
-
 
