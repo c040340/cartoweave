@@ -1,8 +1,9 @@
 """Minimal end-to-end example with optional visualization.
 
-This script solves a tiny scene with one label and launches the interactive
-viewer if ``viz.show`` is enabled in the config.  The viewer uses forces
-computed on demand to keep the example lightweight.
+This script solves a tiny scene with three labels – each anchored to a point,
+line and area respectively – and launches the interactive viewer if
+``viz.show`` is enabled in the config.  The viewer computes forces on demand
+to keep the example lightweight.
 """
 
 from __future__ import annotations
@@ -20,18 +21,30 @@ from cartoweave.viz import interactive_view
 
 
 # ---------------------------------------------------------------------------
-# Scene setup: one label anchored to a point
+# Scene setup: labels anchored to a point, a line and a triangular area
 # ---------------------------------------------------------------------------
 
 scene = dict(
     frame=0,
     frame_size=(1080, 1920),
+    # single point
     points=np.array([[100.0, 100.0]], float),
-    lines=np.zeros((0, 4), float),
-    areas=[],
-    labels_init=np.array([[120.0, 100.0]], float),
-    WH=np.array([[60.0, 24.0]], float),
-    labels=[{"anchor_kind": "point", "anchor_index": 0}],
+    # single line segment represented as (x0, y0, x1, y1)
+    lines=np.array([[200.0, 80.0, 300.0, 80.0]], float),
+    # single triangular area
+    areas=[{"polygon": np.array([[400.0, 60.0], [450.0, 140.0], [350.0, 140.0]], float)}],
+    # initial label positions
+    labels_init=np.array([
+        [120.0, 100.0],  # near the point
+        [260.0, 60.0],   # above the line
+        [400.0, 100.0],  # inside the triangle
+    ], float),
+    WH=np.array([[60.0, 24.0], [60.0, 24.0], [60.0, 24.0]], float),
+    labels=[
+        {"anchor_kind": "point", "anchor_index": 0},
+        {"anchor_kind": "line", "anchor_index": 0},
+        {"anchor_kind": "area", "anchor_index": 0},
+    ],
 )
 
 
@@ -56,6 +69,8 @@ print("P_opt:", P_opt)
 
 if cfg.get("viz.show", False):
     traj = np.asarray(info.get("history", {}).get("positions", [P_opt]))
+    lines_draw = [seg.reshape(2, 2) for seg in scene["lines"]]
+    areas_draw = [a["polygon"] for a in scene["areas"]]
 
     def compute_force(step: int):
         holder: dict[str, dict[str, np.ndarray]] = {}
@@ -72,8 +87,8 @@ if cfg.get("viz.show", False):
         scene["labels"],
         scene["WH"],
         scene["points"],
-        scene["lines"],
-        scene["areas"],
+        lines_draw,
+        areas_draw,
         W=scene["frame_size"][0],
         H=scene["frame_size"][1],
         force_getter=compute_force,
