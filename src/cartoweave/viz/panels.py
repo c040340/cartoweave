@@ -452,6 +452,8 @@ def draw_field_panel(
             if getattr(ax, "name", "") == "3d":
                 ax.set_zlim(0, 1)
                 ax.set_zlabel("value")
+                xy_scale = max(float(width), float(height), 1.0)
+                ax.set_box_aspect((float(width), float(height), xy_scale))
                 ax.text2D(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
             else:
                 ax.set_xticks([])
@@ -470,6 +472,10 @@ def draw_field_panel(
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("value")
+        z_span = float(arr.max() - arr.min()) or 1.0
+        xy_scale = max(float(width), float(height), 1.0)
+        z_aspect = min(z_span, xy_scale)
+        ax.set_box_aspect((float(width), float(height), z_aspect))
     else:
         extent = [0.0, float(width), float(height), 0.0]
         ax.imshow(arr, origin="upper", cmap=cmap, extent=extent, aspect="auto")
