@@ -140,9 +140,14 @@ def interactive_view(
 
     SHOW_ORDER = [k for k in viz_config["forces"]["colors"] if k != "total"]
 
+    cfg_info = viz_config["info"]
+    GLOBAL_FS = cfg_info["row_main_fontsize"] + 1
+    LABEL_FS = cfg_info["row_main_fontsize"]
+    COMP_FS = cfg_info["row_component_fontsize"]
+
     THEME = {
-        "info_text": "#222222FF",
-        "info_head": "#333333FF",
+        "global_text": "#111111FF",
+        "label_text": "#555555FF",
         "force_colors": viz_config["forces"]["colors"],
     }
 
@@ -152,27 +157,39 @@ def interactive_view(
         except Exception:
             return "nan"
 
-    def _fmt_deg(x: Any) -> str:
+    def _fmt_force(x: Any) -> str:
         try:
-            return f"{float(x):+.1f}°"
+            return f"{float(x):+9.3e}"
         except Exception:
-            return "nan"
+            return "   nan   "
 
-    def _fmt_pct(x: Any) -> str:
+    def _fmt_deg_aligned(x: Any) -> str:
         try:
-            return f"{float(x):.1f}%"
+            return f"{float(x):+6.1f}°"
         except Exception:
-            return "nan%"
+            return "   nan°"
+
+    def _fmt_pct_aligned(x: Any) -> str:
+        try:
+            pct = float(x)
+        except Exception:
+            return "   nan%"
+        s = f"{pct:12.1f}"
+        sign = s[0]
+        integer = s[1:5].lstrip("0") or "0"
+        integer = integer.rjust(4, " ")
+        return sign + integer + s[5:] + "%"
 
     def _compose_info_rows(
         step: int,
         comp_dict: Dict[str, np.ndarray],
         idx: int,
-        Ftot: float,
-        angT: float,
+        label_tot: tuple[float, float],
+        global_tot: tuple[float, float],
         d_pair: Optional[tuple[float, float]],
-    ) -> list[tuple[str, str]]:
-        rows: list[tuple[str, str]] = []
+        label_name: str,
+    ) -> list[tuple[str, str, int]]:
+        rows: list[tuple[str, str, int]] = []
         if metrics_getter is not None:
             try:
                 m = metrics_getter(step) or {}
@@ -181,25 +198,30 @@ def interactive_view(
                 thresh = factr * epsmch if factr > 0 else float("nan")
                 rows.append(
                     (
-                        f"iter={m.get('iter','?')}   f={_fmt_sci3(m.get('f',np.nan))}   Δf={_fmt_sci3(m.get('df',np.nan))}   Δf/f={float(m.get('rel_df',float('nan'))):.2e}",
-                        THEME["info_text"],
+                        f"iter={m.get('iter','?')}  f={_fmt_sci3(m.get('f',np.nan))}  Δf={_fmt_sci3(m.get('df',np.nan))}  Δf/f={float(m.get('rel_df',float('nan'))):.2e}",
+                        THEME["global_text"],
+                        GLOBAL_FS,
                     )
                 )
                 rows.append(
                     (
                         f"||g||_inf={float(m.get('gnorm_inf', float('nan'))):.2e}   thresh={_fmt_sci3(thresh)}   α={_fmt_sci3(m.get('alpha', np.nan))}   ls={int(m.get('ls', 0))}",
-                        THEME["info_text"],
+                        THEME["global_text"],
+                        GLOBAL_FS,
                     )
                 )
                 ts = str(m.get('task', '')).strip()
                 if ts:
-                    rows.append((f"task={ts}", THEME["info_text"]))
+                    rows.append((f"task={ts}", THEME["global_text"], GLOBAL_FS))
             except Exception:
                 pass
+
+        g_mag, g_ang = global_tot
         rows.append(
             (
-                f"TOTAL |F|={_fmt_sci3(Ftot)}   ∠F={_fmt_deg(angT)}",
-                THEME["force_colors"].get("total", "#777777"),
+                f"{'ALL'.ljust(6)} |F|={_fmt_force(g_mag)} angle={_fmt_deg_aligned(g_ang)}       ",
+                THEME["global_text"],
+                GLOBAL_FS,
             )
         )
         if d_pair is not None:
@@ -207,14 +229,27 @@ def interactive_view(
             rows.append(
                 (
                     f"ΔF={_fmt_sci3(d_abs)}   ΔF/F={float(d_rel):.2e}",
-                    THEME["info_text"],
+                    THEME["global_text"],
+                    GLOBAL_FS,
                 )
             )
-        keys = [k for k in SHOW_ORDER if _as_vec2(comp_dict.get(k)) is not None] or [
-            k for k, v in comp_dict.items() if _as_vec2(v) is not None
-        ]
+
+        l_mag, l_ang = label_tot
+        name_fmt = label_name[:6].ljust(6)
+        rows.append(
+            (
+                f"{name_fmt} |F|={_fmt_force(l_mag)} angle={_fmt_deg_aligned(l_ang)}       ",
+                THEME["label_text"],
+                LABEL_FS,
+            )
+        )
+
+        tot_mag = l_mag if l_mag > 0 else 1.0
+        keys = [k for k in SHOW_ORDER if _as_vec2(comp_dict.get(k)) is not None]
+        extras = [k for k, v in comp_dict.items() if _as_vec2(v) is not None and k not in keys]
+        keys.extend(extras)
         if keys:
-            rows.append(("components:", THEME["info_head"]))
+            rows.append(("components:", THEME["label_text"], LABEL_FS))
             for k in keys:
                 v = _as_vec2(comp_dict.get(k))
                 if v is None or idx >= len(v):
@@ -222,29 +257,31 @@ def interactive_view(
                 vx, vy = float(v[idx, 0]), float(v[idx, 1])
                 mag = float(np.hypot(vx, vy))
                 ang = float(np.degrees(np.arctan2(vy, vx)))
-                pct = 0.0 if Ftot <= 0 else (mag / Ftot * 100.0)
+                pct = mag / tot_mag * 100.0
+                name_fmt = k[:12].ljust(12)
                 rows.append(
                     (
-                        f"  {k:<12s} |F|={_fmt_sci3(mag)}   ∠={_fmt_deg(ang)}   {_fmt_pct(pct)}",
+                        f"  {name_fmt} |F|={_fmt_force(mag)} angle={_fmt_deg_aligned(ang)} {_fmt_pct_aligned(pct)}",
                         THEME["force_colors"].get(k, "#555555"),
+                        COMP_FS,
                     )
                 )
         return rows
 
-    def _draw_info(ax: plt.Axes, rows: list[tuple[str, str]]) -> None:
+    def _draw_info(ax: plt.Axes, rows: list[tuple[str, str, int]]) -> None:
         ax.clear()
         ax.set_xticks([])
         ax.set_yticks([])
-        for i, (text, color) in enumerate(rows):
+        for i, (text, color, size) in enumerate(rows):
             ax.text(
                 0.01,
-                0.99 - i * 0.075,
+                0.99 - i * 0.065,
                 text,
                 ha="left",
                 va="top",
                 color=color,
                 family="monospace",
-                fontsize=9,
+                fontsize=size,
                 transform=ax.transAxes,
             )
 
@@ -275,11 +312,11 @@ def interactive_view(
         ax_field = fig.add_subplot(main[0, 2])
 
     # --- bottom bar ----------------------------------------------------
-    bottom = outer[1].subgridspec(1, 2, width_ratios=[2, 3], wspace=0.15)
+    bottom = outer[1].subgridspec(1, 2, width_ratios=[2, 3], wspace=0.20)
     slider_ax = fig.add_subplot(bottom[0, 0])
     slider_ax.set_xticks([])
     slider_ax.set_yticks([])
-    slider = Slider(slider_ax, "iter", 0, T - 1, valinit=0, valstep=1)
+    slider = Slider(slider_ax, "Iter", 0, T - 1, valinit=0, valstep=1)
     slider.valtext.set_text(f"1/{T}")
 
     action_ax = fig.add_subplot(bottom[0, 1])
@@ -301,7 +338,7 @@ def interactive_view(
         if n_actions == 0:
             n_actions = max(len(boundaries) - 1, 0)
     if n_actions > 0:
-        action_slider = Slider(action_ax, "action", 0, n_actions - 1, valinit=0, valstep=1)
+        action_slider = Slider(action_ax, "Act", 0, n_actions - 1, valinit=0, valstep=1)
         action_slider.valtext.set_text("0")
     else:
         action_ax.set_visible(False)
@@ -327,11 +364,16 @@ def interactive_view(
         return None
 
     def _sum_all_forces(forces: Dict[str, np.ndarray]) -> np.ndarray:
-        """Sum all force components over all labels and return the net vector."""
+        """Sum all force components over all labels and return the net vector.
+
+        Force arrays may contain ``NaN`` values for inactive labels.  Treat
+        those entries as zero so that the global sum remains well defined.
+        """
         total = None
         for arr in forces.values():
             a = _as_vec2(arr)
             if a is not None:
+                a = np.nan_to_num(a, nan=0.0)
                 total = a if total is None else total + a
         if total is None:
             return np.zeros(2, dtype=float)
@@ -375,7 +417,7 @@ def interactive_view(
             d_rel = d_abs / prev_mag if prev_mag > 0 else 0.0
             d_pair = (d_abs, d_rel)
 
-        rows = _compose_info_rows(step, forces, selected, label_total[0], label_total[1], d_pair)
+        rows = _compose_info_rows(step, forces, selected, label_total, (g_mag, g_ang), d_pair, label_id)
         _draw_info(ax_info, rows)
 
         field = _get_field(step)

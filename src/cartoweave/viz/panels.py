@@ -242,17 +242,24 @@ def draw_force_panel(
         ax.set_title(title, fontsize=viz_config["info"]["title_fontsize"])
 
     vecs: List[Tuple[str, float, float]] = []
+    mags: List[float] = []
     for name, arr in forces.items():
+        if name == "total":
+            # Some force providers may already include a pre‑summed total.
+            # Ignore it here so that magnitude filtering is based solely on
+            # the largest individual component rather than the net result.
+            continue
         a = _as_vec2(arr)
         if a is not None and idx < len(a):
             vx, vy = float(a[idx, 0]), float(a[idx, 1])
             vecs.append((name, vx, vy))
+            mags.append(float(np.hypot(vx, vy)))
 
     if not vecs:
         ax.text(0.5, 0.5, "no forces", transform=ax.transAxes, ha="center", va="center")
         return 0.0, 0.0
 
-    vmax = max(np.hypot(vx, vy) for _, vx, vy in vecs)
+    vmax = max(mags)
     limit = vmax * 1.2 if vmax > 0 else 1.0
     ax.set_xlim(-limit, limit)
     ax.set_ylim(-limit, limit)
@@ -260,9 +267,12 @@ def draw_force_panel(
 
     cfg = viz_config["forces"]
 
-    total_x = 0.0
-    total_y = 0.0
-    for name, vx, vy in vecs:
+    total_x = sum(vx for _, vx, vy in vecs)
+    total_y = sum(vy for _, vx, vy in vecs)
+    thresh = vmax * 0.01
+    for (name, vx, vy), mag in zip(vecs, mags):
+        if mag < thresh:
+            continue
         color = _force_color(name)
         arr = FancyArrowPatch(
             (0, 0),
@@ -275,8 +285,6 @@ def draw_force_panel(
         )
         ax.add_patch(arr)
         ax.text(vx, vy, name, color=color, fontsize=cfg["component_fontsize"])
-        total_x += vx
-        total_y += vy
 
     total_arrow = FancyArrowPatch(
         (0, 0),

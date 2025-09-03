@@ -29,7 +29,7 @@ else:
     matplotlib.use("Agg")
 
 from cartoweave.api import solve_frame
-from cartoweave.config.presets import default_cfg
+from cartoweave.config.presets import default_cfg, area_pack_cfg
 from cartoweave.config.utils import merge, viz
 from cartoweave.data.random import get_scene, make_timeline
 from cartoweave.engine.core_eval import energy_and_grad_fullP
@@ -89,7 +89,7 @@ for act in actions:
 # Configuration and a timeline with at least two optimisation steps
 # ---------------------------------------------------------------------------
 
-cfg_base = merge(default_cfg(), viz(show=True, field_kind="heatmap"))
+cfg_base = merge(default_cfg(), area_pack_cfg(), viz(show=True, field_kind="heatmap"))
 schedule = [
     {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}},
     {"name": "main_solve"},
@@ -107,6 +107,7 @@ traj = []
 sub_scenes: list[dict] = []
 active_idx_per_step: list[list[int]] = []
 sources_per_step: list[dict] = []
+energies_per_step: list[float] = []
 boundaries = [0]
 active_ids: set[str] = set()
 
@@ -153,6 +154,7 @@ for act in actions:
 
         P_opt, info = solve_frame(sub_scene, cfg_step, mode="hybrid")
         hist = info.get("history", {}).get("positions", [])
+        hist_E = info.get("history", {}).get("energies", [])
         for i, P_hist in enumerate(hist):
             if traj and i == 0:
                 continue  # skip duplicate starting point
@@ -170,6 +172,8 @@ for act in actions:
             traj.append(P_all.copy())
             sub_scenes.append(dict(sub_scene))
             active_idx_per_step.append(active_idx)
+            E_hist = hist_E[i] if i < len(hist_E) else float("nan")
+            energies_per_step.append(float(E_hist))
 
         P_all[active_idx] = P_opt
         sub_scene["labels_init"] = P_opt
@@ -188,6 +192,8 @@ print("Final positions:\n", traj[-1])
 # ---------------------------------------------------------------------------
 
 if cfg_base.get("viz.show", False):
+    metrics_cache: dict[int, dict[str, float]] = {}
+
     def force_getter(step: int):
         sc = sub_scenes[step]
         act_idx = active_idx_per_step[step]
@@ -197,7 +203,11 @@ if cfg_base.get("viz.show", False):
         def rec(P, E, comps, sources):
             holder["comps"] = comps
 
-        energy_and_grad_fullP(sc, P_step, cfg_base, record=rec)
+        E, G, _ = energy_and_grad_fullP(sc, P_step, cfg_base, record=rec)
+        metrics_cache[step] = {
+            "f": float(E),
+            "gnorm_inf": float(np.abs(G).max()) if G.size else float("nan"),
+        }
         comps = holder.get("comps", {})
         expanded: dict[str, np.ndarray] = {}
         for name, arr in comps.items():
@@ -208,6 +218,20 @@ if cfg_base.get("viz.show", False):
 
     def source_getter(step: int):
         return sources_per_step[step]
+
+    def metrics_getter(step: int):
+        E = energies_per_step[step]
+        prev = energies_per_step[step - 1] if step > 0 else E
+        dE = E - prev
+        rel = dE / prev if step > 0 and prev != 0 else float("nan")
+        m = metrics_cache.get(step, {})
+        return {
+            "iter": step,
+            "f": E,
+            "df": dE,
+            "rel_df": rel,
+            "gnorm_inf": m.get("gnorm_inf", float("nan")),
+        }
 
     interactive_view(
         traj,
@@ -220,6 +244,7 @@ if cfg_base.get("viz.show", False):
         H=scene["frame_size"][1],
         force_getter=force_getter,
         source_getter=source_getter,
+        metrics_getter=metrics_getter,
         field_kind=cfg_base.get("viz.field.kind", "heatmap"),
         field_cmap=cfg_base.get("viz.field.cmap", "viridis"),
         actions=actions,
