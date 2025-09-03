@@ -25,7 +25,7 @@ from cartoweave.viz import interactive_view
 
 scene = dict(
     frame=0,
-    frame_size=(800, 600),
+    frame_size=(1080, 1920),
     points=np.array([[100.0, 100.0]], float),
     lines=np.zeros((0, 4), float),
     areas=[],
