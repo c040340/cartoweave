@@ -77,6 +77,20 @@ def _compute_anchors(
     return np.asarray(anchors)
 
 
+def _label_name(lab: Dict[str, Any], index: int) -> str:
+    """Return a compact identifier for *lab*.
+
+    Falls back to the numeric index when no explicit identifier is stored in
+    the label dictionary.
+    """
+
+    for key in ("uid", "id", "name"):
+        val = lab.get(key)
+        if isinstance(val, str) and val:
+            return val
+    return str(index)
+
+
 def interactive_view(
     traj: np.ndarray,
     labels: Sequence[Dict[str, Any]],
@@ -93,18 +107,25 @@ def interactive_view(
     field_getter: Optional[Callable[[int], Any]] = None,
     field_kind: str = "heatmap",
     field_cmap: str = "viridis",
+    boundaries: Optional[Sequence[int]] = None,
+    actions: Optional[Sequence[Any]] = None,
 ) -> None:
     """Display an interactive layout viewer.
 
-    Parameters are intentionally kept simple.  ``traj`` is expected to be an
+    Parameters are intentionally kept simple. ``traj`` is expected to be an
     array with shape ``(T, N, 2)`` containing the centre positions of ``N``
-    labels over ``T`` iterations.  ``rect_wh`` stores the widths and heights of
-    the labels.  ``force_getter``/``source_getter``/``metrics_getter`` and
-    ``field_getter`` are callables returning data for a given iteration.  They
+    labels over ``T`` iterations. ``rect_wh`` stores the widths and heights of
+    the labels. ``force_getter``/``source_getter``/``metrics_getter`` and
+    ``field_getter`` are callables returning data for a given iteration. They
     may be omitted, in which case the corresponding panels simply show
     placeholder information. ``field_kind`` selects between a 2‑D heatmap and a
     3‑D surface for scalar fields while ``field_cmap`` controls the colour map
     used for either representation.
+
+    ``boundaries`` and ``actions`` describe high level actions in the timeline.
+    When both are provided an additional slider is shown that lets the user
+    switch between actions while constraining the iteration slider to the
+    corresponding range.
     """
 
     traj = np.asarray(traj, dtype=float)
@@ -138,14 +159,26 @@ def interactive_view(
         ax_field = fig.add_subplot(main[0, 2])
 
     # --- bottom bar ----------------------------------------------------
-    bottom = outer[1].subgridspec(2, 1)
+    bottom = outer[1].subgridspec(1, 2, width_ratios=[2, 3], wspace=0.05)
     slider_ax = fig.add_subplot(bottom[0, 0])
     slider_ax.set_xticks([])
     slider_ax.set_yticks([])
     slider = Slider(slider_ax, "iter", 0, T - 1, valinit=0, valstep=1)
+    slider.valtext.set_text(f"1/{T}")
 
-    timeline_ax = fig.add_subplot(bottom[1, 0])
-    timeline_ax.set_axis_off()
+    action_ax = fig.add_subplot(bottom[0, 1])
+    action_ax.set_xticks([])
+    action_ax.set_yticks([])
+    action_slider: Optional[Slider] = None
+    if (
+        boundaries is not None
+        and actions is not None
+        and len(actions) == len(boundaries) - 1
+    ):
+        action_slider = Slider(action_ax, "action", 0, len(actions) - 1, valinit=0, valstep=1)
+        action_slider.valtext.set_text("0")
+    else:
+        action_ax.set_visible(False)
 
     selected = 0
     patches = []
@@ -173,6 +206,17 @@ def interactive_view(
             return field_getter(step)
         return None
 
+    def _sum_all_forces(forces: Dict[str, np.ndarray]) -> np.ndarray:
+        """Sum all force components over all labels and return the net vector."""
+        total = None
+        for arr in forces.values():
+            a = _as_vec2(arr)
+            if a is not None:
+                total = a if total is None else total + a
+        if total is None:
+            return np.zeros(2, dtype=float)
+        return np.sum(total, axis=0)
+
     def _update(step: int) -> None:
         nonlocal patches
         src = _get_sources(step)
@@ -195,10 +239,33 @@ def interactive_view(
         )
 
         forces = _get_forces(step)
-        total = draw_force_panel(ax_force, forces, selected)
+        label_id = _label_name(labels[selected], selected)
+        label_total = draw_force_panel(ax_force, forces, selected, title=label_id)
+
+        # --- global forces --------------------------------------------------
+        vec_all = _sum_all_forces(forces)
+        g_mag = float(np.hypot(vec_all[0], vec_all[1]))
+        g_ang = float(np.degrees(np.arctan2(vec_all[1], vec_all[0])))
+
+        d_pair = None
+        if step > 0:
+            prev_forces = _get_forces(step - 1)
+            prev_vec = _sum_all_forces(prev_forces)
+            prev_mag = float(np.hypot(prev_vec[0], prev_vec[1]))
+            d_abs = prev_mag - g_mag
+            d_rel = d_abs / prev_mag if prev_mag > 0 else 0.0
+            d_pair = (d_abs, d_rel)
 
         metrics = _get_metrics(step)
-        draw_info_panel(ax_info, forces, selected, total, metrics=metrics)
+        draw_info_panel(
+            ax_info,
+            forces,
+            selected,
+            label_total,
+            (g_mag, g_ang),
+            d_force=d_pair,
+            metrics=metrics,
+        )
 
         field = _get_field(step)
         draw_field_panel(ax_field, field, field_kind, field_cmap)
@@ -214,10 +281,30 @@ def interactive_view(
                 break
 
     def _on_slider(val):
-        _update(int(val))
+        step = int(val)
+        _update(step)
+        slider.valtext.set_text(f"{step + 1}/{T}")
+
+    def _on_action(val):
+        if (
+            boundaries is None
+            or action_slider is None
+            or len(boundaries) < 2
+        ):
+            return
+        idx = int(val)
+        lo = boundaries[idx]
+        hi = boundaries[idx + 1] - 1
+        slider.valmin = lo
+        slider.valmax = hi
+        slider.ax.set_xlim(lo, hi)
+        slider.set_val(lo)
 
     fig.canvas.mpl_connect("pick_event", _on_pick)
     slider.on_changed(_on_slider)
+    if action_slider is not None:
+        action_slider.on_changed(_on_action)
+        _on_action(0)
 
     _update(0)
     plt.show()
