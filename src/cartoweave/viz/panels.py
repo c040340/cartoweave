@@ -73,7 +73,7 @@ def _format_pct(pct: float) -> str:
     up vertically.  ``pct`` is expected to be given in ``[0, 100]`` units.
     """
 
-    s = f"{pct:+07.1f}"  # sign + four integer digits + decimal
+    s = f"{pct:14.1f}"  # sign + four integer digits + decimal
     sign = s[0]
     integer = s[1:5].lstrip("0") or "0"
     integer = integer.rjust(4, " ")
