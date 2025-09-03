@@ -206,25 +206,64 @@ def draw_info_panel(
     ax: plt.Axes,
     forces: Dict[str, np.ndarray],
     idx: int,
-    total: Tuple[float, float],
+    label_total: Tuple[float, float],
+    global_total: Tuple[float, float],
+    d_force: Optional[Tuple[float, float]] = None,
     metrics: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Render a small textual summary of forces and optional metrics."""
+    """Render a textual summary of forces and optional metrics.
 
-    lines: List[str] = []
+    Parameters
+    ----------
+    ax:
+        Matplotlib axis used for drawing.
+    forces:
+        Mapping of force component names to ``(N, 2)`` arrays.
+    idx:
+        Index of the currently selected label.
+    label_total:
+        ``(|F|, angle)`` of the net force acting on the selected label.
+    global_total:
+        ``(|F|, angle)`` of the net force summed over **all** labels.
+    d_force:
+        Optional ``(ΔF, ΔF/F)`` pair describing the change of the global force
+        compared to the previous iteration.  Values are ignored when ``None``.
+    metrics:
+        Optional optimiser statistics provided by ``metrics_getter``.
+    """
+
+    rows: List[Tuple[str, str]] = []
     if metrics:
-        lines.append(
-            "iter={iter}  f={f:.3e}  |g|={gnorm:.2e}".format(
-                iter=metrics.get("iter", "?"),
-                f=float(metrics.get("f", np.nan)),
-                gnorm=float(metrics.get("gnorm_inf", np.nan)),
+        rows.append(
+            (
+                "iter={iter}  f={f:.3e}  |g|={gnorm:.2e}".format(
+                    iter=metrics.get("iter", "?"),
+                    f=float(metrics.get("f", np.nan)),
+                    gnorm=float(metrics.get("gnorm_inf", np.nan)),
+                ),
+                "#222222",
             )
         )
 
-    mag, ang = total
-    lines.append(f"TOTAL |F|={mag:.3e}  angle={ang:+.1f}°")
+    g_mag, g_ang = global_total
+    rows.append(
+        (f"ALL  |F|={g_mag:.3e}  angle={g_ang:+.1f}°", FORCE_COLORS["total"])
+    )
+    if d_force is not None:
+        d_abs, d_rel = d_force
+        rows.append(
+            (
+                f"ΔF={d_abs:.3e}  ΔF/F={d_rel:.3e}",
+                "#333333",
+            )
+        )
 
-    tot_mag = mag if mag > 0 else 1.0
+    l_mag, l_ang = label_total
+    rows.append(
+        (f"LABEL|F|={l_mag:.3e}  angle={l_ang:+.1f}°", FORCE_COLORS["total"])
+    )
+
+    tot_mag = l_mag if l_mag > 0 else 1.0
     for name, arr in forces.items():
         a = _as_vec2(arr)
         if a is None or idx >= len(a):
@@ -233,12 +272,27 @@ def draw_info_panel(
         comp_mag = float(np.hypot(vx, vy))
         comp_ang = float(np.degrees(np.arctan2(vy, vx)))
         pct = comp_mag / tot_mag * 100.0
-        lines.append(f"{name:<12s} |F|={comp_mag:.3e}  angle={comp_ang:+.1f}°  {pct:5.1f}%")
+        rows.append(
+            (
+                f"{name:<12s} |F|={comp_mag:.3e}  angle={comp_ang:+.1f}°  {pct:5.1f}%",
+                FORCE_COLORS.get(name, "#555555"),
+            )
+        )
 
     ax.clear()
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.text(0.01, 0.99, "\n".join(lines), ha="left", va="top", family="monospace")
+    for i, (text, color) in enumerate(rows):
+        ax.text(
+            0.01,
+            0.99 - i * 0.075,
+            text,
+            ha="left",
+            va="top",
+            color=color,
+            family="monospace",
+            transform=ax.transAxes,
+        )
 
 
 def draw_field_panel(

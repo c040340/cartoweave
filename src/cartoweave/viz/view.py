@@ -173,6 +173,17 @@ def interactive_view(
             return field_getter(step)
         return None
 
+    def _sum_all_forces(forces: Dict[str, np.ndarray]) -> np.ndarray:
+        """Sum all force components over all labels and return the net vector."""
+        total = None
+        for arr in forces.values():
+            a = _as_vec2(arr)
+            if a is not None:
+                total = a if total is None else total + a
+        if total is None:
+            return np.zeros(2, dtype=float)
+        return np.sum(total, axis=0)
+
     def _update(step: int) -> None:
         nonlocal patches
         src = _get_sources(step)
@@ -195,10 +206,32 @@ def interactive_view(
         )
 
         forces = _get_forces(step)
-        total = draw_force_panel(ax_force, forces, selected)
+        label_total = draw_force_panel(ax_force, forces, selected)
+
+        # --- global forces --------------------------------------------------
+        vec_all = _sum_all_forces(forces)
+        g_mag = float(np.hypot(vec_all[0], vec_all[1]))
+        g_ang = float(np.degrees(np.arctan2(vec_all[1], vec_all[0])))
+
+        d_pair = None
+        if step > 0:
+            prev_forces = _get_forces(step - 1)
+            prev_vec = _sum_all_forces(prev_forces)
+            prev_mag = float(np.hypot(prev_vec[0], prev_vec[1]))
+            d_abs = prev_mag - g_mag
+            d_rel = d_abs / prev_mag if prev_mag > 0 else 0.0
+            d_pair = (d_abs, d_rel)
 
         metrics = _get_metrics(step)
-        draw_info_panel(ax_info, forces, selected, total, metrics=metrics)
+        draw_info_panel(
+            ax_info,
+            forces,
+            selected,
+            label_total,
+            (g_mag, g_ang),
+            d_force=d_pair,
+            metrics=metrics,
+        )
 
         field = _get_field(step)
         draw_field_panel(ax_field, field, field_kind, field_cmap)
