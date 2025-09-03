@@ -140,5 +140,6 @@ if cfg_base.get("viz.show", False):
         source_getter=lambda step: compute_force(step)[1],
         field_kind=cfg_base.get("viz.field.kind", "heatmap"),
         field_cmap=cfg_base.get("viz.field.cmap", "viridis"),
+        actions=actions,
     )
 
