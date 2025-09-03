@@ -17,7 +17,8 @@ def test_scalar_potential_field_basic():
     )
     cfg = default_cfg()
     field = scalar_potential_field(scene, scene["labels_init"], cfg, resolution=3)
-    assert field.shape == (3, 3)
+    expected_ny = max(1, int(round(3 * scene["frame_size"][1] / scene["frame_size"][0])))
+    assert field.shape == (expected_ny, 3)
     assert np.isfinite(field).all()
 
 
@@ -34,5 +35,6 @@ def test_scalar_potential_field_cfg_resolution():
     )
     cfg = merge(default_cfg(), viz(field_resolution=7))
     field = scalar_potential_field(scene, scene["labels_init"], cfg)
-    assert field.shape == (7, 7)
+    expected_ny = max(1, int(round(7 * scene["frame_size"][1] / scene["frame_size"][0])))
+    assert field.shape == (expected_ny, 7)
     assert np.isfinite(field).all()

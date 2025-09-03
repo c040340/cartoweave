@@ -130,9 +130,9 @@ def interactive_view(
     allows callers to supply ``(forces, field)``, ``(forces, sources, field)``
     or any other ordering without redundant recomputation.  Missing pieces are
     obtained via ``source_getter``/``field_getter`` when available.
-    ``field_kind`` selects between a 2‑D heatmap and a 3‑D surface for scalar
-    fields while ``field_cmap`` controls the colour map used for either
-    representation.
+    ``field_kind`` selects between a 2‑D heatmap, a 3‑D surface or disables the
+    panel entirely when set to ``"none"``. ``field_cmap`` controls the colour
+    map used for either representation.
 
     ``boundaries`` and ``actions`` describe high level actions in the timeline.
     When action information is available (either explicit ``actions`` or
@@ -305,19 +305,25 @@ def interactive_view(
     )
 
     # --- main area -----------------------------------------------------
-    main = outer[0].subgridspec(1, 3, width_ratios=[5.5, 5, 7.5])
-    ax_layout = fig.add_subplot(main[0, 0])
-
-    centre = main[0, 1].subgridspec(2, 1, height_ratios=[2.5, 2])
-    ax_force = fig.add_subplot(centre[0, 0])
-    ax_info = fig.add_subplot(centre[1, 0])
-
-
-    if field_kind == "3d":
-        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
-        ax_field = fig.add_subplot(main[0, 2], projection="3d")
+    if field_kind == "none":
+        main = outer[0].subgridspec(1, 2, width_ratios=[5.5, 5])
+        ax_layout = fig.add_subplot(main[0, 0])
+        centre = main[0, 1].subgridspec(2, 1, height_ratios=[2.5, 2])
+        ax_force = fig.add_subplot(centre[0, 0])
+        ax_info = fig.add_subplot(centre[1, 0])
+        ax_field = None
     else:
-        ax_field = fig.add_subplot(main[0, 2])
+        main = outer[0].subgridspec(1, 3, width_ratios=[5.5, 5, 7.5])
+        ax_layout = fig.add_subplot(main[0, 0])
+        centre = main[0, 1].subgridspec(2, 1, height_ratios=[2.5, 2])
+        ax_force = fig.add_subplot(centre[0, 0])
+        ax_info = fig.add_subplot(centre[1, 0])
+
+        if field_kind == "3d":
+            from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+            ax_field = fig.add_subplot(main[0, 2], projection="3d")
+        else:
+            ax_field = fig.add_subplot(main[0, 2])
 
     # --- bottom bar ----------------------------------------------------
     bottom = outer[1].subgridspec(1, 2, width_ratios=[2, 3], wspace=0.20)
@@ -462,8 +468,9 @@ def interactive_view(
         rows = _compose_info_rows(step, forces, selected, label_total, (g_mag, g_ang), d_pair, label_id)
         _draw_info(ax_info, rows)
 
-        field = _get_field(step)
-        draw_field_panel(ax_field, field, field_kind, field_cmap)
+        if ax_field is not None:
+            field = _get_field(step)
+            draw_field_panel(ax_field, field, W, H, field_kind, field_cmap)
 
         fig.canvas.draw_idle()
 

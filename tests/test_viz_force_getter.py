@@ -31,7 +31,7 @@ def test_force_getter_allows_any_tuple_order(monkeypatch, order):
 
     captured = {}
 
-    def fake_draw_field(ax, fld, kind, cmap):
+    def fake_draw_field(ax, fld, W, H, kind, cmap):
         captured["field"] = fld
 
     def fake_draw_force(ax, frc, idx, title=None):

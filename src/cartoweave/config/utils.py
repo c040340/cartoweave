@@ -272,7 +272,7 @@ def viz(
     show: bool = False,
     field_kind: str = "3d",
     field_cmap: str = "viridis",
-    field_resolution: int = 100,
+    field_resolution: int = 30,
 ) -> Dict[str, Any]:
     """Visualization options exposed via config.
 
@@ -281,11 +281,14 @@ def viz(
     show:
         Whether to launch the interactive viewer after solving.
     field_kind:
-        ``"3d"`` for surface plot or ``"heatmap"`` for 2D visualization.
+        ``"3d"`` for a surface plot, ``"heatmap"`` for a 2‑D colour map or
+        ``"none"`` to hide the field panel entirely.
     field_cmap:
         Matplotlib colormap name used when rendering scalar fields.
     field_resolution:
-        Grid resolution for scalar potential field visualizations.
+        Horizontal grid resolution for scalar potential field visualisations.
+        The vertical resolution is derived from the frame aspect ratio so that
+        pixels remain square.
     """
     return {
         "viz.show": bool(show),

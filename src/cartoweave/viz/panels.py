@@ -414,6 +414,8 @@ def draw_info_panel(
 def draw_field_panel(
     ax: plt.Axes,
     field: Any,
+    width: float,
+    height: float,
     kind: str = "3d",
     cmap: str = "viridis",
 ) -> None:
@@ -425,8 +427,11 @@ def draw_field_panel(
         Matplotlib axis used for drawing.
     field:
         Two dimensional array containing the scalar values.
+    width, height:
+        Dimensions of the frame the field corresponds to.
     kind:
-        ``"heatmap"`` for a 2‑D colour map or ``"3d"`` for a surface plot.
+        ``"heatmap"`` for a 2‑D colour map, ``"3d"`` for a surface plot or
+        ``"none"`` for an empty panel.
     cmap:
         Name of the Matplotlib colormap to use.  Defaults to ``"viridis"``.
     """
@@ -438,35 +443,38 @@ def draw_field_panel(
     # frame remains visible even for missing data.
     ax.cla()
     arr = None if field is None else np.asarray(field, dtype=float)
-    if arr is None or arr.ndim != 2:
-        if getattr(ax, "name", "") == "3d":
-            ax.set_xlim(0, 1)
-            ax.set_ylim(0, 1)
-            ax.set_zlim(0, 1)
-            ax.set_xlabel("x")
-            ax.set_ylabel("y")
-            ax.set_zlabel("value")
-            ax.text2D(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
-        else:
-            ax.set_xlim(0, 1)
-            ax.set_ylim(0, 1)
-            ax.set_xlabel("x")
-            ax.set_ylabel("y")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.text(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
+    if kind == "none" or arr is None or arr.ndim != 2:
+        ax.set_xlim(0, float(width))
+        ax.set_ylim(float(height), 0)
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        if kind != "none":
+            if getattr(ax, "name", "") == "3d":
+                ax.set_zlim(0, 1)
+                ax.set_zlabel("value")
+                ax.text2D(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
+            else:
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.text(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
         return
 
     if kind == "3d":
-        yy = np.arange(arr.shape[0])
-        xx = np.arange(arr.shape[1])
-        X, Y = np.meshgrid(xx, yy)
+        ny, nx = arr.shape
+        xs = np.linspace(0.0, float(width), nx)
+        ys = np.linspace(0.0, float(height), ny)
+        X, Y = np.meshgrid(xs, ys)
         ax.plot_surface(X, Y, arr, cmap=cmap)
+        ax.set_xlim(0, float(width))
+        ax.set_ylim(float(height), 0)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("value")
     else:
-        ax.imshow(arr, origin="upper", cmap=cmap, aspect="auto")
+        extent = [0.0, float(width), float(height), 0.0]
+        ax.imshow(arr, origin="upper", cmap=cmap, extent=extent, aspect="auto")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
         ax.set_xticks([])
         ax.set_yticks([])
 
