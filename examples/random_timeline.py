@@ -12,9 +12,21 @@ from __future__ import annotations
 
 import numpy as np
 import time
+import os
 
 import matplotlib
-matplotlib.use("TkAgg")
+
+# Use an interactive backend when a display is available.  This keeps the
+# example functional in headless environments (e.g. automated tests) where
+# ``TkAgg`` cannot be loaded.
+cwd = os.path.abspath(os.getcwd())
+if os.environ.get("DISPLAY") or "yuanzheng" in cwd:
+    try:  # pragma: no cover - depends on environment
+        matplotlib.use("TkAgg")
+    except Exception:  # pragma: no cover - backend unavailable
+        pass
+else:
+    matplotlib.use("Agg")
 
 from cartoweave.api import solve_frame
 from cartoweave.config.presets import default_cfg

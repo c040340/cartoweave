@@ -53,7 +53,12 @@ def _compute_anchors(
     """
 
     if isinstance(sources, dict):
-        arr = _as_vec2(sources.get("anchors_xy") or sources.get("anchor_xy"))
+        # ``dict.get`` with ``or`` cannot be used here because NumPy arrays do
+        # not define a truth value.  Explicitly check both keys instead.
+        arr = sources.get("anchors_xy")
+        if arr is None:
+            arr = sources.get("anchor_xy")
+        arr = _as_vec2(arr)
         if arr is not None:
             return arr
 
@@ -160,7 +165,7 @@ def interactive_view(
         ax_field = fig.add_subplot(main[0, 2])
 
     # --- bottom bar ----------------------------------------------------
-    bottom = outer[1].subgridspec(1, 2, width_ratios=[2, 3], wspace=0.05)
+    bottom = outer[1].subgridspec(1, 2, width_ratios=[2, 3], wspace=0.15)
     slider_ax = fig.add_subplot(bottom[0, 0])
     slider_ax.set_xticks([])
     slider_ax.set_yticks([])
