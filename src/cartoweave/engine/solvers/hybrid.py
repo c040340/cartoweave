@@ -42,34 +42,55 @@ def solve_layout_hybrid(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[st
     polish = bool(_cfg(cfg, "hybrid_polish_lbfgs", True))
 
     stages = []
+    history_pos: list[np.ndarray] = []
+    history_E: list[float] = []
+
+    def _extend_history(info: Dict[str, Any], skip_first: bool = False) -> None:
+        hist = info.get("history") if isinstance(info, dict) else None
+        if not isinstance(hist, dict):
+            return
+        pos = list(hist.get("positions", []))
+        eng = list(hist.get("energies", []))
+        if skip_first and pos:
+            pos = pos[1:]
+            eng = eng[1:]
+        history_pos.extend(pos)
+        history_E.extend(eng)
 
     if first == "lbfgs":
         P1, info1 = solve_layout_lbfgs(scene, cfg)
         stages.append(("lbfgs", info1))
+        _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
-            return P1, {"stages": stages, "success": True}
+            return P1, {"stages": stages, "success": True, "history": {"positions": history_pos, "energies": history_E}}
         sc = dict(scene)
         sc["labels_init"] = P1
         P2, info2 = solve_layout_semi_newton(sc, cfg)
         stages.append(("semi", info2))
-        P_cur, info_cur = P2, info2
+        _extend_history(info2, skip_first=True)
+        P_cur = P2
         if _grad_inf(sc, P_cur, cfg) <= gtol:
             if polish:
                 sc2 = dict(sc)
                 sc2["labels_init"] = P_cur
                 P3, info3 = solve_layout_lbfgs(sc2, cfg)
                 stages.append(("lbfgs_polish", info3))
+                _extend_history(info3, skip_first=True)
                 P_cur = P3
+            success = _grad_inf(sc, P_cur, cfg) <= gtol
+            return P_cur, {"stages": stages, "success": success, "history": {"positions": history_pos, "energies": history_E}}
         success = _grad_inf(sc, P_cur, cfg) <= gtol
-        return P_cur, {"stages": stages, "success": success}
+        return P_cur, {"stages": stages, "success": success, "history": {"positions": history_pos, "energies": history_E}}
     else:
         P1, info1 = solve_layout_semi_newton(scene, cfg)
         stages.append(("semi", info1))
+        _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
-            return P1, {"stages": stages, "success": True}
+            return P1, {"stages": stages, "success": True, "history": {"positions": history_pos, "energies": history_E}}
         sc = dict(scene)
         sc["labels_init"] = P1
         P2, info2 = solve_layout_lbfgs(sc, cfg)
         stages.append(("lbfgs", info2))
+        _extend_history(info2, skip_first=True)
         success = _grad_inf(sc, P2, cfg) <= gtol
-        return P2, {"stages": stages, "success": success}
+        return P2, {"stages": stages, "success": success, "history": {"positions": history_pos, "energies": history_E}}

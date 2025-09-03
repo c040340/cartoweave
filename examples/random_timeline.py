@@ -151,24 +151,27 @@ for act in actions:
         for k, v in step.get("override", {}).items():
             cfg_step[k] = v
 
-        P_opt, _ = solve_frame(sub_scene, cfg_step, mode="hybrid")
+        P_opt, info = solve_frame(sub_scene, cfg_step, mode="hybrid")
+        hist = info.get("history", {}).get("positions", [])
+        for i, P_hist in enumerate(hist):
+            if traj and i == 0:
+                continue  # skip duplicate starting point
+            P_all[active_idx] = P_hist
+            anchors_full = np.full_like(P_all, np.nan)
+            anchors_full[active_idx] = sub_scene["anchors"]
+            sources_per_step.append(
+                {
+                    "points": sub_scene["points"],
+                    "lines": [seg.reshape(2, 2) for seg in sub_scene["lines"]],
+                    "areas": [a["polygon"] for a in sub_scene["areas"]],
+                    "anchors_xy": anchors_full,
+                }
+            )
+            traj.append(P_all.copy())
+            sub_scenes.append(dict(sub_scene))
+            active_idx_per_step.append(active_idx)
+
         P_all[active_idx] = P_opt
-
-        anchors_full = np.full_like(P_all, np.nan)
-        anchors_full[active_idx] = sub_scene["anchors"]
-        sources_per_step.append(
-            {
-                "points": sub_scene["points"],
-                "lines": [seg.reshape(2, 2) for seg in sub_scene["lines"]],
-                "areas": [a["polygon"] for a in sub_scene["areas"]],
-                "anchors_xy": anchors_full,
-            }
-        )
-
-        traj.append(P_all.copy())
-        sub_scenes.append(dict(sub_scene))
-        active_idx_per_step.append(active_idx)
-
         sub_scene["labels_init"] = P_opt
 
     boundaries.append(len(traj))

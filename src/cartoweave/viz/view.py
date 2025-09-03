@@ -19,9 +19,9 @@ from matplotlib.widgets import Slider
 from .panels import (
     draw_field_panel,
     draw_force_panel,
-    draw_info_panel,
     draw_layout,
 )
+from ..config.viz import viz_config
 
 
 def _as_vec2(a: Any) -> Optional[np.ndarray]:
@@ -138,6 +138,116 @@ def interactive_view(
     rect_wh = np.asarray(rect_wh, dtype=float)
     T = len(traj)
 
+    SHOW_ORDER = [k for k in viz_config["forces"]["colors"] if k != "total"]
+
+    THEME = {
+        "info_text": "#222222FF",
+        "info_head": "#333333FF",
+        "force_colors": viz_config["forces"]["colors"],
+    }
+
+    def _fmt_sci3(x: Any) -> str:
+        try:
+            return f"{float(x):.3e}"
+        except Exception:
+            return "nan"
+
+    def _fmt_deg(x: Any) -> str:
+        try:
+            return f"{float(x):+.1f}°"
+        except Exception:
+            return "nan"
+
+    def _fmt_pct(x: Any) -> str:
+        try:
+            return f"{float(x):.1f}%"
+        except Exception:
+            return "nan%"
+
+    def _compose_info_rows(
+        step: int,
+        comp_dict: Dict[str, np.ndarray],
+        idx: int,
+        Ftot: float,
+        angT: float,
+        d_pair: Optional[tuple[float, float]],
+    ) -> list[tuple[str, str]]:
+        rows: list[tuple[str, str]] = []
+        if metrics_getter is not None:
+            try:
+                m = metrics_getter(step) or {}
+                factr = float(m.get("factr", 0.0))
+                epsmch = float(m.get("epsmch", 2.220446049250313e-16))
+                thresh = factr * epsmch if factr > 0 else float("nan")
+                rows.append(
+                    (
+                        f"iter={m.get('iter','?')}   f={_fmt_sci3(m.get('f',np.nan))}   Δf={_fmt_sci3(m.get('df',np.nan))}   Δf/f={float(m.get('rel_df',float('nan'))):.2e}",
+                        THEME["info_text"],
+                    )
+                )
+                rows.append(
+                    (
+                        f"||g||_inf={float(m.get('gnorm_inf', float('nan'))):.2e}   thresh={_fmt_sci3(thresh)}   α={_fmt_sci3(m.get('alpha', np.nan))}   ls={int(m.get('ls', 0))}",
+                        THEME["info_text"],
+                    )
+                )
+                ts = str(m.get('task', '')).strip()
+                if ts:
+                    rows.append((f"task={ts}", THEME["info_text"]))
+            except Exception:
+                pass
+        rows.append(
+            (
+                f"TOTAL |F|={_fmt_sci3(Ftot)}   ∠F={_fmt_deg(angT)}",
+                THEME["force_colors"].get("total", "#777777"),
+            )
+        )
+        if d_pair is not None:
+            d_abs, d_rel = d_pair
+            rows.append(
+                (
+                    f"ΔF={_fmt_sci3(d_abs)}   ΔF/F={float(d_rel):.2e}",
+                    THEME["info_text"],
+                )
+            )
+        keys = [k for k in SHOW_ORDER if _as_vec2(comp_dict.get(k)) is not None] or [
+            k for k, v in comp_dict.items() if _as_vec2(v) is not None
+        ]
+        if keys:
+            rows.append(("components:", THEME["info_head"]))
+            for k in keys:
+                v = _as_vec2(comp_dict.get(k))
+                if v is None or idx >= len(v):
+                    continue
+                vx, vy = float(v[idx, 0]), float(v[idx, 1])
+                mag = float(np.hypot(vx, vy))
+                ang = float(np.degrees(np.arctan2(vy, vx)))
+                pct = 0.0 if Ftot <= 0 else (mag / Ftot * 100.0)
+                rows.append(
+                    (
+                        f"  {k:<12s} |F|={_fmt_sci3(mag)}   ∠={_fmt_deg(ang)}   {_fmt_pct(pct)}",
+                        THEME["force_colors"].get(k, "#555555"),
+                    )
+                )
+        return rows
+
+    def _draw_info(ax: plt.Axes, rows: list[tuple[str, str]]) -> None:
+        ax.clear()
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for i, (text, color) in enumerate(rows):
+            ax.text(
+                0.01,
+                0.99 - i * 0.075,
+                text,
+                ha="left",
+                va="top",
+                color=color,
+                family="monospace",
+                fontsize=9,
+                transform=ax.transAxes,
+            )
+
     # ------------------------------------------------------------------
     # Layout of the figure
     # ------------------------------------------------------------------
@@ -211,12 +321,6 @@ def interactive_view(
             return out if isinstance(out, dict) else {}
         return {}
 
-    def _get_metrics(step: int) -> Optional[Dict[str, Any]]:
-        if callable(metrics_getter):
-            out = metrics_getter(step)
-            return out if isinstance(out, dict) else None
-        return None
-
     def _get_field(step: int) -> Any:
         if callable(field_getter):
             return field_getter(step)
@@ -258,7 +362,6 @@ def interactive_view(
         label_id = _label_name(labels[selected], selected)
         label_total = draw_force_panel(ax_force, forces, selected, title=label_id)
 
-        # --- global forces --------------------------------------------------
         vec_all = _sum_all_forces(forces)
         g_mag = float(np.hypot(vec_all[0], vec_all[1]))
         g_ang = float(np.degrees(np.arctan2(vec_all[1], vec_all[0])))
@@ -268,20 +371,12 @@ def interactive_view(
             prev_forces = _get_forces(step - 1)
             prev_vec = _sum_all_forces(prev_forces)
             prev_mag = float(np.hypot(prev_vec[0], prev_vec[1]))
-            d_abs = prev_mag - g_mag
+            d_abs = g_mag - prev_mag
             d_rel = d_abs / prev_mag if prev_mag > 0 else 0.0
             d_pair = (d_abs, d_rel)
 
-        metrics = _get_metrics(step)
-        draw_info_panel(
-            ax_info,
-            forces,
-            selected,
-            label_total,
-            (g_mag, g_ang),
-            d_force=d_pair,
-            metrics=metrics,
-        )
+        rows = _compose_info_rows(step, forces, selected, label_total[0], label_total[1], d_pair)
+        _draw_info(ax_info, rows)
 
         field = _get_field(step)
         draw_field_panel(ax_field, field, field_kind, field_cmap)

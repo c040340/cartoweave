@@ -5,20 +5,40 @@ from scipy.optimize import minimize
 
 from ..core_eval import energy_and_grad_fullP
 
+
 def solve_layout_lbfgs(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str, Any]]:
     labels_init = scene.get("labels_init")
     N = 0 if labels_init is None else labels_init.shape[0]
     if N == 0:
-        return np.zeros((0,2), dtype=float), {"nit": 0, "nfev": 0, "msg": "no labels"}
+        return np.zeros((0, 2), dtype=float), {
+            "nit": 0,
+            "nfev": 0,
+            "msg": "no labels",
+            "history": {"positions": [], "energies": []},
+        }
 
     x0 = labels_init.reshape(-1).astype(float)
 
+    history = {"positions": [], "energies": []}
+
+    E0, _, _ = energy_and_grad_fullP(scene, labels_init, cfg)
+    history["positions"].append(np.asarray(labels_init, float).copy())
+    history["energies"].append(float(E0))
+    last_E = E0
+
     def fun(x: np.ndarray):
+        nonlocal last_E
         P = x.reshape(N, 2)
-        E, G, S = energy_and_grad_fullP(scene, P, cfg)
+        E, G, _ = energy_and_grad_fullP(scene, P, cfg)
+        last_E = E
         return E, G.reshape(-1)
 
-    res = minimize(fun, x0, jac=True, method="L-BFGS-B")
+    def callback(xk: np.ndarray):
+        P = xk.reshape(N, 2)
+        history["positions"].append(P.copy())
+        history["energies"].append(float(last_E))
+
+    res = minimize(fun, x0, jac=True, method="L-BFGS-B", callback=callback)
     P_opt = res.x.reshape(N, 2)
-    info = {"nit": res.nit, "nfev": res.nfev, "msg": res.message}
+    info = {"nit": res.nit, "nfev": res.nfev, "msg": res.message, "history": history}
     return P_opt, info
