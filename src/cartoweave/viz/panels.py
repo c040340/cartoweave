@@ -13,15 +13,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import to_rgba
+from matplotlib.colors import to_hex, to_rgba
 from matplotlib.patches import Circle, Rectangle, FancyArrowPatch
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 
-from ..config.viz import viz_config, rgba
+from ..config.viz import viz_config
 
 
-def _force_color(name: str) -> Tuple[float, float, float, float]:
+def _force_color(name: str) -> str:
     """Return a colour for a force component ``name``.
 
     Unknown names are assigned colours from Matplotlib's default cycle so that
@@ -34,9 +34,9 @@ def _force_color(name: str) -> Tuple[float, float, float, float]:
     if key not in colors:
         cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
         if cycle:
-            colors[key] = to_rgba(cycle[len(colors) % len(cycle)])
+            colors[key] = to_hex(cycle[len(colors) % len(cycle)], keep_alpha=True)
         else:
-            colors[key] = rgba(119, 119, 119)  # grey default
+            colors[key] = "#777777FF"  # grey default
     return colors[key]
 
 
@@ -108,12 +108,12 @@ def draw_layout(
     ax.set_aspect("equal")
     ax.set_xlim(0, frame_w)
     ax.set_ylim(frame_h, 0)  # origin in the top-left corner
-    ax.set_facecolor(rgba(255, 255, 255))  # white background
+    ax.set_facecolor("#FFFFFFFF")  # white background
 
     # add simple tick marks to help gauge scale
     ax.set_xticks(np.linspace(0, frame_w, 5))
     ax.set_yticks(np.linspace(0, frame_h, 5))
-    ax.grid(True, color=rgba(221, 221, 221), lw=0.5)  # light gray grid
+    ax.grid(True, color="#DDDDDDFF", lw=0.5)  # light gray grid
 
     # --- background geometry -------------------------------------------------
     cfg = viz_config["layout"]
@@ -232,8 +232,8 @@ def draw_force_panel(
     ax.clear()
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.axhline(0, color=rgba(221, 221, 221), lw=1.0)  # light gray axes
-    ax.axvline(0, color=rgba(221, 221, 221), lw=1.0)  # light gray axes
+    ax.axhline(0, color="#DDDDDDFF", lw=1.0)  # light gray axes
+    ax.axvline(0, color="#DDDDDDFF", lw=1.0)  # light gray axes
     if title:
         ax.set_title(title, fontsize=viz_config["info"]["title_fontsize"])
 
@@ -322,7 +322,7 @@ def draw_info_panel(
 
     cfg = viz_config["info"]
 
-    rows: List[Tuple[str, Tuple[float, float, float, float], int]] = []
+    rows: List[Tuple[str, str, int]] = []
     if metrics:
         rows.append(
             (
@@ -331,7 +331,7 @@ def draw_info_panel(
                     f=float(metrics.get("f", np.nan)),
                     gnorm=float(metrics.get("gnorm_inf", np.nan)),
                 ),
-                rgba(34, 34, 34),  # dark grey text
+                "#222222FF",  # dark grey text
                 cfg["row_main_fontsize"],
             )
         )
@@ -350,7 +350,7 @@ def draw_info_panel(
         rows.append(
             (
                 f"ΔF={d_abs:.3e}  ΔF/F={d_rel:.3e}",
-                rgba(51, 51, 51),  # medium dark grey text
+                "#333333FF",  # medium dark grey text
                 cfg["row_main_fontsize"],
             )
         )
