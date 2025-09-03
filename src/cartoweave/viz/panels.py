@@ -18,7 +18,7 @@ from matplotlib.patches import Circle, Rectangle, FancyArrowPatch
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 
-from .config import viz_config
+from ..config.viz import viz_config
 
 
 def _force_color(name: str) -> str:
@@ -34,9 +34,10 @@ def _force_color(name: str) -> str:
     if key not in colors:
         cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
         if cycle:
-            colors[key] = cycle[len(colors) % len(cycle)]
+            r, g, b, a = to_rgba(cycle[len(colors) % len(cycle)])
+            colors[key] = f"rgba({int(r * 255)}, {int(g * 255)}, {int(b * 255)}, {a})"
         else:
-            colors[key] = "#777777"
+            colors[key] = "rgba(119, 119, 119, 1)"  # grey default
     return colors[key]
 
 
@@ -108,19 +109,20 @@ def draw_layout(
     ax.set_aspect("equal")
     ax.set_xlim(0, frame_w)
     ax.set_ylim(frame_h, 0)  # origin in the top-left corner
-    ax.set_facecolor("white")
+    ax.set_facecolor("rgba(255, 255, 255, 1)")  # white background
 
     # add simple tick marks to help gauge scale
     ax.set_xticks(np.linspace(0, frame_w, 5))
     ax.set_yticks(np.linspace(0, frame_h, 5))
-    ax.grid(True, color="#DDDDDD", lw=0.5)
+    ax.grid(True, color="rgba(221, 221, 221, 1)", lw=0.5)  # light gray grid
 
     # --- background geometry -------------------------------------------------
     cfg = viz_config["layout"]
+    colors = cfg["colors"]
 
     pts = _as_vec2(points)
     if pts is not None:
-        ax.scatter(pts[:, 0], pts[:, 1], c=cfg["point_color"], s=18, zorder=1)
+        ax.scatter(pts[:, 0], pts[:, 1], c=colors["point"], s=18, zorder=1)
 
     if isinstance(lines, (list, tuple)):
         for pl in lines:
@@ -129,7 +131,7 @@ def draw_layout(
                 ax.plot(
                     arr[:, 0],
                     arr[:, 1],
-                    color=cfg["line_color"],
+                    color=colors["line"],
                     lw=cfg["line_width"],
                     zorder=0,
                 )
@@ -141,8 +143,8 @@ def draw_layout(
                 path = Path(arr, closed=True)
                 patch = PathPatch(
                     path,
-                    facecolor=to_rgba(cfg["area_color"], alpha=cfg["area_face_alpha"]),
-                    edgecolor=cfg["area_color"],
+                    facecolor=to_rgba(colors["area"], alpha=cfg["area_face_alpha"]),
+                    edgecolor=colors["area"],
                     lw=cfg["area_edge_width"],
                 )
                 ax.add_patch(patch)
@@ -163,8 +165,8 @@ def draw_layout(
             (x - w / 2, y - h / 2),
             w,
             h,
-            facecolor=cfg["label_fill_color"],
-            edgecolor=cfg["label_edge_color"],
+            facecolor=colors["label_fill"],
+            edgecolor=colors["label_edge"],
             lw=cfg["label_edge_width"],
             picker=True,
             zorder=5,
@@ -186,14 +188,14 @@ def draw_layout(
             ax.plot(
                 [anchors[i, 0], x],
                 [anchors[i, 1], y],
-                color=cfg["anchor_line_color"],
+                color=colors["anchor_line"],
                 lw=cfg["line_width"],
             )
             circ = Circle(
                 (anchors[i, 0], anchors[i, 1]),
                 radius=cfg["anchor_marker_size"],
-                facecolor=cfg["anchor_marker_face"],
-                edgecolor=cfg["anchor_marker_edge"],
+                facecolor=colors["anchor_marker_face"],
+                edgecolor=colors["anchor_marker_edge"],
                 lw=cfg["line_width"],
                 zorder=4,
             )
@@ -231,8 +233,8 @@ def draw_force_panel(
     ax.clear()
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.axhline(0, color="#dddddd", lw=1.0)
-    ax.axvline(0, color="#dddddd", lw=1.0)
+    ax.axhline(0, color="rgba(221, 221, 221, 1)", lw=1.0)  # light gray axes
+    ax.axvline(0, color="rgba(221, 221, 221, 1)", lw=1.0)  # light gray axes
     if title:
         ax.set_title(title, fontsize=viz_config["info"]["title_fontsize"])
 
@@ -330,7 +332,7 @@ def draw_info_panel(
                     f=float(metrics.get("f", np.nan)),
                     gnorm=float(metrics.get("gnorm_inf", np.nan)),
                 ),
-                "#222222",
+                "rgba(34, 34, 34, 1)",  # dark grey text
                 cfg["row_main_fontsize"],
             )
         )
@@ -349,7 +351,7 @@ def draw_info_panel(
         rows.append(
             (
                 f"ΔF={d_abs:.3e}  ΔF/F={d_rel:.3e}",
-                "#333333",
+                "rgba(51, 51, 51, 1)",  # medium dark grey text
                 cfg["row_main_fontsize"],
             )
         )
