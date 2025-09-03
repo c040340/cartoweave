@@ -7,21 +7,28 @@ plain dictionaries so that users may easily override them if desired.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
+
+
+def rgba(r: int, g: int, b: int, a: float = 1.0) -> Tuple[float, float, float, float]:
+    """Return a Matplotlib friendly RGBA tuple from 8‑bit components."""
+
+    return (r / 255.0, g / 255.0, b / 255.0, a)
+
 
 # NOTE: configuration is stored in a nested dictionary. Consumers import
 # ``viz_config`` and read or modify values as needed.
 viz_config: Dict[str, Any] = {
     "layout": {
         "colors": {
-            "point": "rgba(31, 119, 180, 1)",  # blue
-            "line": "rgba(255, 127, 14, 1)",  # orange
-            "area": "rgba(44, 160, 44, 1)",  # green
-            "label_fill": "rgba(242, 242, 255, 0.8)",  # light blue fill
-            "label_edge": "rgba(43, 108, 176, 1)",  # blue outline
-            "anchor_line": "rgba(136, 136, 136, 1)",  # grey line
-            "anchor_marker_face": "rgba(26, 128, 230, 0.25)",  # translucent blue
-            "anchor_marker_edge": "rgba(43, 108, 176, 1)",  # blue edge
+            "point": rgba(31, 119, 180),  # blue
+            "line": rgba(255, 127, 14),  # orange
+            "area": rgba(44, 160, 44),  # green
+            "label_fill": rgba(242, 242, 255, 0.8),  # light blue fill
+            "label_edge": rgba(43, 108, 176),  # blue outline
+            "anchor_line": rgba(136, 136, 136),  # grey line
+            "anchor_marker_face": rgba(26, 128, 230, 0.25),  # translucent blue
+            "anchor_marker_edge": rgba(43, 108, 176),  # blue edge
         },
         "line_width": 1.0,
         "area_edge_width": 1.0,
@@ -32,11 +39,11 @@ viz_config: Dict[str, Any] = {
     },
     "forces": {
         "colors": {
-            "focus": "rgba(31, 119, 180, 1)",  # blue
-            "boundary": "rgba(255, 127, 14, 1)",  # orange
-            "label_label": "rgba(44, 160, 44, 1)",  # green
-            "anchor": "rgba(214, 39, 40, 1)",  # red
-            "total": "rgba(0, 0, 0, 1)",  # black
+            "focus": rgba(31, 119, 180),  # blue
+            "boundary": rgba(255, 127, 14),  # orange
+            "label_label": rgba(44, 160, 44),  # green
+            "anchor": rgba(214, 39, 40),  # red
+            "total": rgba(0, 0, 0),  # black
         },
         "component_arrow_lw": 2.0,
         "component_arrow_scale": 15,
@@ -51,4 +58,4 @@ viz_config: Dict[str, Any] = {
     },
 }
 
-__all__ = ["viz_config"]
+__all__ = ["viz_config", "rgba"]
