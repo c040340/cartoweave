@@ -13,9 +13,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
 from matplotlib.patches import Circle, Rectangle, FancyArrowPatch
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
+
+# Colours for background geometry in the layout view
+POINT_COLOR = "#1f77b4"
+LINE_COLOR = "#ff7f0e"
+AREA_COLOR = "#2ca02c"
 
 # Colour map for force components.  The keys are expected to match those
 # produced by ``force_getter`` functions.
@@ -26,6 +32,23 @@ FORCE_COLORS: Dict[str, str] = {
     "anchor": "#d62728",
     "total": "#000000",
 }
+
+
+def _force_color(name: str) -> str:
+    """Return a colour for a force component ``name``.
+
+    Unknown names are assigned colours from Matplotlib's default cycle so that
+    each component still receives a distinct hue.
+    """
+
+    key = name.lower()
+    if key not in FORCE_COLORS:
+        cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+        if cycle:
+            FORCE_COLORS[key] = cycle[len(FORCE_COLORS) % len(cycle)]
+        else:
+            FORCE_COLORS[key] = "#777777"
+    return FORCE_COLORS[key]
 
 
 # ---------------------------------------------------------------------------
@@ -91,20 +114,25 @@ def draw_layout(
     # --- background geometry -------------------------------------------------
     pts = _as_vec2(points)
     if pts is not None:
-        ax.scatter(pts[:, 0], pts[:, 1], c="#444444", s=18, zorder=1)
+        ax.scatter(pts[:, 0], pts[:, 1], c=POINT_COLOR, s=18, zorder=1)
 
     if isinstance(lines, (list, tuple)):
         for pl in lines:
             arr = _as_vec2(pl)
             if arr is not None:
-                ax.plot(arr[:, 0], arr[:, 1], color="#666666", lw=1.0, zorder=0)
+                ax.plot(arr[:, 0], arr[:, 1], color=LINE_COLOR, lw=1.0, zorder=0)
 
     if isinstance(areas, (list, tuple)):
         for poly in areas:
             arr = _as_vec2(poly)
             if arr is not None and len(arr) >= 3:
                 path = Path(arr, closed=True)
-                patch = PathPatch(path, facecolor="#EFEFEF", edgecolor="#222222", lw=1.0)
+                patch = PathPatch(
+                    path,
+                    facecolor=to_rgba(AREA_COLOR, alpha=0.15),
+                    edgecolor=AREA_COLOR,
+                    lw=1.0,
+                )
                 ax.add_patch(patch)
 
     # --- labels --------------------------------------------------------------
@@ -203,13 +231,14 @@ def draw_force_panel(
     total_x = 0.0
     total_y = 0.0
     for name, vx, vy in vecs:
-        color = FORCE_COLORS.get(name.lower(), "#777777")
+        color = _force_color(name)
         arr = FancyArrowPatch(
             (0, 0),
             (vx, vy),
             arrowstyle="->",
             mutation_scale=15,
             color=color,
+            edgecolor=color,
             lw=2.0,
         )
         ax.add_patch(arr)
@@ -222,7 +251,8 @@ def draw_force_panel(
         (total_x, total_y),
         arrowstyle="-|>",
         mutation_scale=18,
-        color=FORCE_COLORS["total"],
+        color=_force_color("total"),
+        edgecolor=_force_color("total"),
         lw=2.5,
     )
     ax.add_patch(total_arrow)
@@ -277,8 +307,13 @@ def draw_info_panel(
         )
 
     g_mag, g_ang = global_total
+    name_fmt = "ALL".ljust(6)
     rows.append(
-        (f"ALL  |F|={g_mag:.3e}  angle={g_ang:+.1f}°", FORCE_COLORS["total"], 9)
+        (
+            f"{name_fmt} |F|={g_mag:+9.3e} angle={g_ang:+6.1f}°       ",
+            _force_color("total"),
+            9,
+        )
     )
     if d_force is not None:
         d_abs, d_rel = d_force
@@ -291,12 +326,18 @@ def draw_info_panel(
         )
 
     l_mag, l_ang = label_total
+    name_fmt = "LABEL".ljust(6)
     rows.append(
-        (f"LABEL|F|={l_mag:.3e}  angle={l_ang:+.1f}°", FORCE_COLORS["total"], 9)
+        (
+            f"{name_fmt} |F|={l_mag:+9.3e} angle={l_ang:+6.1f}°       ",
+            _force_color("total"),
+            9,
+        )
     )
 
     tot_mag = l_mag if l_mag > 0 else 1.0
-    for name, arr in forces.items():
+    for name in sorted(forces):
+        arr = forces[name]
         a = _as_vec2(arr)
         if a is None or idx >= len(a):
             continue
@@ -304,13 +345,11 @@ def draw_info_panel(
         comp_mag = float(np.hypot(vx, vy))
         comp_ang = float(np.degrees(np.arctan2(vy, vx)))
         pct = comp_mag / tot_mag * 100.0
-        rows.append(
-            (
-                f"{name:<12s} |F|={comp_mag:.3e}  angle={comp_ang:+.1f}°  {pct:5.1f}%",
-                FORCE_COLORS.get(name.lower(), "#555555"),
-                8,
-            )
+        name_fmt = name[:6].ljust(6)
+        row_txt = (
+            f"{name_fmt} |F|={comp_mag:+9.3e} angle={comp_ang:+6.1f}° {pct:+6.1f}%"
         )
+        rows.append((row_txt, _force_color(name), 8))
 
     ax.clear()
     ax.set_xticks([])

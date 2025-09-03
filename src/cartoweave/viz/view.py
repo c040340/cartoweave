@@ -170,8 +170,15 @@ def interactive_view(
     action_ax.set_xticks([])
     action_ax.set_yticks([])
     action_slider: Optional[Slider] = None
-    if actions is not None and len(actions) > 0:
-        action_slider = Slider(action_ax, "action", 0, len(actions) - 1, valinit=0, valstep=1)
+    if actions is not None:
+        try:
+            n_actions = len(actions)
+        except TypeError:
+            actions = list(actions)
+            n_actions = len(actions)
+        if n_actions == 0:
+            n_actions = 1
+        action_slider = Slider(action_ax, "action", 0, n_actions - 1, valinit=0, valstep=1)
         action_slider.valtext.set_text("0")
     else:
         action_ax.set_visible(False)
