@@ -104,8 +104,12 @@ def draw_layout(
 
     # --- labels --------------------------------------------------------------
     patches: List[Tuple[int, Rectangle]] = []
-    pos_arr = _as_vec2(pos) or np.zeros((0, 2))
-    wh_arr = _as_vec2(rect_wh) or np.zeros_like(pos_arr)
+    pos_arr = _as_vec2(pos)
+    if pos_arr is None:
+        pos_arr = np.zeros((0, 2))
+    wh_arr = _as_vec2(rect_wh)
+    if wh_arr is None:
+        wh_arr = np.zeros_like(pos_arr)
 
     for i in range(min(len(labels), len(pos_arr), len(wh_arr))):
         x, y = pos_arr[i]
@@ -230,8 +234,25 @@ def draw_info_panel(
     ax.text(0.01, 0.99, "\n".join(lines), ha="left", va="top", family="monospace")
 
 
-def draw_field_panel(ax: plt.Axes, field: Any, kind: str = "heatmap") -> None:
-    """Render a scalar field either as a heatmap or as a 3‑D surface."""
+def draw_field_panel(
+    ax: plt.Axes,
+    field: Any,
+    kind: str = "heatmap",
+    cmap: str = "viridis",
+) -> None:
+    """Render a scalar field either as a heatmap or as a 3‑D surface.
+
+    Parameters
+    ----------
+    ax:
+        Matplotlib axis used for drawing.
+    field:
+        Two dimensional array containing the scalar values.
+    kind:
+        ``"heatmap"`` for a 2‑D colour map or ``"3d"`` for a surface plot.
+    cmap:
+        Name of the Matplotlib colormap to use.  Defaults to ``"viridis"``.
+    """
 
     ax.clear()
     arr = None if field is None else np.asarray(field, dtype=float)
@@ -243,11 +264,11 @@ def draw_field_panel(ax: plt.Axes, field: Any, kind: str = "heatmap") -> None:
         yy = np.arange(arr.shape[0])
         xx = np.arange(arr.shape[1])
         X, Y = np.meshgrid(xx, yy)
-        ax.plot_surface(X, Y, arr, cmap="viridis")
+        ax.plot_surface(X, Y, arr, cmap=cmap)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
     else:
-        ax.imshow(arr, origin="upper", cmap="viridis", aspect="auto")
+        ax.imshow(arr, origin="upper", cmap=cmap, aspect="auto")
         ax.set_xticks([])
         ax.set_yticks([])
 

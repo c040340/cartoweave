@@ -92,6 +92,7 @@ def interactive_view(
     metrics_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     field_getter: Optional[Callable[[int], Any]] = None,
     field_kind: str = "heatmap",
+    field_cmap: str = "viridis",
 ) -> None:
     """Display an interactive layout viewer.
 
@@ -101,7 +102,9 @@ def interactive_view(
     the labels.  ``force_getter``/``source_getter``/``metrics_getter`` and
     ``field_getter`` are callables returning data for a given iteration.  They
     may be omitted, in which case the corresponding panels simply show
-    placeholder information.
+    placeholder information. ``field_kind`` selects between a 2‑D heatmap and a
+    3‑D surface for scalar fields while ``field_cmap`` controls the colour map
+    used for either representation.
     """
 
     traj = np.asarray(traj, dtype=float)
@@ -176,7 +179,7 @@ def interactive_view(
         draw_info_panel(ax_info, forces, selected, total, metrics=metrics)
 
         field = _get_field(step)
-        draw_field_panel(ax_field, field, field_kind)
+        draw_field_panel(ax_field, field, field_kind, field_cmap)
 
         fig.canvas.draw_idle()
 
