@@ -22,6 +22,8 @@ pip install -e .
 
 ```python
 from cartoweave.api import solve_frame
+from cartoweave.config.presets import default_cfg
+from cartoweave.config.utils import merge, viz
 import numpy as np
 
 scene = {
@@ -33,10 +35,12 @@ scene = {
     "labels_init": np.zeros((0, 2), dtype=float),
 }
 
-P_opt, info = solve_frame(scene, cfg={})
+cfg = merge(default_cfg(), viz(show=False))
+P_opt, info = solve_frame(scene, cfg)
 ```
 
-Run `python examples/minimal_fit.py` for a tiny working demo.
+Run `python examples/minimal_fit.py` for a tiny working demo that also
+demonstrates the interactive viewer when ``viz.show`` is set to ``True``.
 
 ## Project layout
 

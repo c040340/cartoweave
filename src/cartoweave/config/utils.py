@@ -1,6 +1,6 @@
 # src/cartoweave/config/utils.py
 from __future__ import annotations
-from typing import Dict, Any, Iterable, Tuple
+from typing import Dict, Any, Tuple
 import numpy as np
 
 # ---------------------------
@@ -41,6 +41,8 @@ _ALLOWED_KEYS = {
     # reporting / debug
     "debug.check",
     "source.topk",
+    # visualization
+    "viz.show", "viz.field.kind", "viz.field.cmap",
 }
 
 def report(source_topk: int = 0) -> Dict[str, Any]:
@@ -263,4 +265,23 @@ def area_softout(
         "area.softout.outside_weight": outside_weight,
         "area.softout.out_decay": out_decay,
         "area.softout.in_decay": in_decay,
+    }
+
+
+def viz(show: bool = False, field_kind: str = "3d", field_cmap: str = "viridis") -> Dict[str, Any]:
+    """Visualization options exposed via config.
+
+    Parameters
+    ----------
+    show:
+        Whether to launch the interactive viewer after solving.
+    field_kind:
+        ``"3d"`` for surface plot or ``"heatmap"`` for 2D visualization.
+    field_cmap:
+        Matplotlib colormap name used when rendering scalar fields.
+    """
+    return {
+        "viz.show": bool(show),
+        "viz.field.kind": str(field_kind),
+        "viz.field.cmap": str(field_cmap),
     }
