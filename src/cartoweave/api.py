@@ -44,7 +44,7 @@ def solve_timeline(
     cache_path: str | None = None,
 ):
     """Run a sequence of actions (timeline). Returns (history, last_result).
-    This is a placeholder orchestrator-level API; see orchestrators.timeline_runner for details.
+    This is a placeholder orchestrator-level API; see orchestrators.timeline for details.
     """
     from .orchestrators.timeline import run_timeline
     return run_timeline(actions, scene, cfg or {}, mode=mode, cache_path=cache_path)
