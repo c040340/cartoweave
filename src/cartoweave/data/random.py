@@ -181,6 +181,104 @@ def generate_scene(
     return dict(points=points, lines=lines, areas=areas,
                 label_mode=label_mode, label_specs=label_specs)
 
+
+def make_timeline(
+    points: List[Dict[str, Any]],
+    lines: List[Dict[str, Any]],
+    areas: List[Dict[str, Any]],
+    base_modes: Dict[str, str],
+    seed: Optional[int] = None,
+    n_extra: Optional[int] = None,
+    allow_hide: bool = True,
+    hide_weight: float = 0.25,
+) -> List[Dict[str, Any]]:
+    """Generate a random appear/change/hide timeline for elements.
+
+    Parameters
+    ----------
+    points/lines/areas: lists of element dicts containing ``id``.
+    base_modes: preferred initial mode for each element.
+    seed: optional RNG seed.
+    n_extra: number of ``change`` actions; defaults to ``len(elements)``.
+    allow_hide: whether to allow ``hide`` actions.
+    hide_weight: relative weight of hide when sampling operations.
+    """
+    _apply_seed(seed)
+    rng = np.random.default_rng(seed)
+
+    ids_pt = [p["id"] for p in points]
+    ids_li = [l["id"] for l in lines]
+    ids_ar = [a["id"] for a in areas]
+    ids_all = ids_pt + ids_li + ids_ar
+    N = len(ids_all)
+
+    def allowed_modes(eid: str) -> List[str]:
+        return ["single", "detail", "circle"] if eid.startswith("p") else ["single", "detail"]
+
+    appeared: set[str] = set()
+    active_modes: Dict[str, str] = {}
+
+    tgt_extra = max(2, int(N * 1.0)) if n_extra is None else int(n_extra)
+    extra_done = 0
+
+    actions: List[Dict[str, Any]] = []
+    max_steps = 10 * (N + tgt_extra) + 50
+    steps = 0
+
+    while steps < max_steps and (len(appeared) < N or extra_done < tgt_extra):
+        steps += 1
+        not_appeared = [eid for eid in ids_all if eid not in appeared]
+        have_active = len(active_modes) > 0
+
+        ops: List[str] = []
+        weights: List[float] = []
+
+        if not_appeared:
+            ops.append("appear"); weights.append(1.0)
+        if have_active:
+            ops.append("change"); weights.append(1.0)
+        if allow_hide and len(active_modes) >= 2:
+            ops.append("hide"); weights.append(hide_weight)
+
+        if not ops:
+            break
+
+        op = rng.choice(ops, p=np.array(weights) / np.sum(weights))
+
+        if op == "appear":
+            eid = rng.choice(not_appeared)
+            m0 = base_modes.get(eid, rng.choice(allowed_modes(eid)))
+            active_modes[eid] = m0
+            appeared.add(eid)
+            actions.append({"op": "appear", "id": eid, "mode": str(m0)})
+
+        elif op == "change":
+            if not have_active:
+                continue
+            eid = rng.choice(list(active_modes.keys()))
+            old = active_modes[eid]
+            modes = [m for m in allowed_modes(eid) if m != old] or [old]
+            new_mode = str(rng.choice(modes))
+            active_modes[eid] = new_mode
+            actions.append({"op": "change", "id": eid, "mode": new_mode})
+            extra_done += 1
+
+        elif op == "hide":
+            eid = rng.choice(list(active_modes.keys()))
+            del active_modes[eid]
+            actions.append({"op": "hide", "id": eid})
+
+    for eid in ids_all:
+        if eid not in appeared:
+            m0 = base_modes.get(eid, rng.choice(allowed_modes(eid)))
+            active_modes[eid] = m0
+            appeared.add(eid)
+            actions.append({"op": "appear", "id": eid, "mode": str(m0)})
+
+    for k, a in enumerate(actions):
+        a["aid"] = int(k)
+    return actions
+
 def get_scene(
     use_random: bool = True,
     cache_path: Optional[str] = None,
@@ -195,11 +293,25 @@ def get_scene(
     行为与旧工程一致：
     - use_random=True  : 重新生成（可带 seed）→ （可选）生成 timeline → 写缓存 → 返回
     - use_random=False : 读缓存；若无则先生成并写缓存；（可选）缺失 timeline 时补齐并回写
+    当 ``make_timeline_fn`` 为 ``None`` 且 ``with_timeline`` 为 ``True`` 时，默认使
+    用 :func:`make_timeline`。
     """
     if cache_path is None:
         cache_path = _default_cache_path()
 
     _apply_seed(gen_kwargs.get("seed", None))
+
+    def _auto_tl(d: Dict[str, Any], **kw):
+        return make_timeline(
+            d.get("points", []),
+            d.get("lines", []),
+            d.get("areas", []),
+            d.get("label_mode", {}),
+            **kw,
+        )
+
+    if make_timeline_fn is None and with_timeline:
+        make_timeline_fn = _auto_tl
 
     if use_random:
         data = generate_scene(**gen_kwargs)
@@ -209,7 +321,6 @@ def get_scene(
         save_json(data, cache_path)
         return data
 
-    # use_random == False
     try:
         data = load_json(cache_path)
     except FileNotFoundError:
