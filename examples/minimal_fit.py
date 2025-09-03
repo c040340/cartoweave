@@ -16,7 +16,7 @@ matplotlib.use("TkAgg")
 from cartoweave.api import solve_frame
 from cartoweave.config.presets import default_cfg
 from cartoweave.config.utils import merge, viz
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+from cartoweave.engine.core_eval import energy_and_grad_fullP, scalar_potential_field
 from cartoweave.viz import interactive_view
 
 
@@ -52,7 +52,7 @@ scene = dict(
 # Configuration: merge defaults with visualization options
 # ---------------------------------------------------------------------------
 
-cfg = merge(default_cfg(), viz(show=True, field_kind="heatmap"))
+cfg = merge(default_cfg(), viz(show=True, field_kind="3d"))
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,10 @@ if cfg.get("viz.show", False):
             holder["sources"] = sources
 
         energy_and_grad_fullP(scene, traj[step], cfg, record=rec)
-        return holder.get("comps", {}), holder.get("sources", {})
+
+        field = scalar_potential_field(scene, traj[step], cfg)
+        # return as (forces, field, sources)
+        return holder.get("comps", {}), field, holder.get("sources", {})
 
     interactive_view(
         traj,
@@ -95,4 +98,3 @@ if cfg.get("viz.show", False):
         field_kind=cfg.get("viz.field.kind", "3d"),
         field_cmap=cfg.get("viz.field.cmap", "viridis"),
     )
-

@@ -74,3 +74,65 @@ def energy_and_grad_fullP(
         record(P.copy(), float(E_total), comps_copy, sources_merged)
 
     return float(E_total), g, {"sources": sources_merged}
+
+
+def scalar_potential_field(
+    scene: Dict[str, Any],
+    P: np.ndarray,
+    cfg: Dict[str, Any],
+    *,
+    label_index: int = 0,
+    resolution: int | tuple[int, int] | None = None,
+) -> np.ndarray:
+    """Evaluate a scalar potential field for one label on a grid.
+
+    This helper computes the total energy of the scene while probing the
+    position of a single label over a regular grid.  The other labels remain
+    fixed.  The result is an array ``(H, W)`` where ``H``/``W`` correspond to the
+    number of samples in the vertical and horizontal directions respectively.
+
+    Parameters
+    ----------
+    scene:
+        Scene description as used by :func:`energy_and_grad_fullP`.
+    P:
+        Current label positions ``(N, 2)``.
+    cfg:
+        Configuration dictionary.
+    label_index:
+        Index of the label to probe.  Defaults to ``0``.
+    resolution:
+        Either an integer specifying the number of samples for both axes or a
+        tuple ``(ny, nx)`` with individual resolutions.  If ``None`` (the
+        default), the value of ``cfg["viz.field.resolution"]`` is used when
+        present, otherwise ``100``.
+    """
+
+    P = np.asarray(P, dtype=float)
+    if P.ndim != 2 or P.shape[1] != 2:
+        raise ValueError("P must be of shape (N,2)")
+
+    if resolution is None:
+        resolution = cfg.get("viz.field.resolution", 100)
+
+    if isinstance(resolution, int):
+        ny = nx = int(resolution)
+    else:
+        ny, nx = map(int, resolution)
+
+    W, H = scene.get("frame_size", (1.0, 1.0))
+    xs = np.linspace(0.0, float(W), nx)
+    ys = np.linspace(0.0, float(H), ny)
+
+    base = P.copy()
+    E0, _, _ = energy_and_grad_fullP(scene, base, cfg)
+
+    field = np.zeros((ny, nx), dtype=float)
+    for iy, y in enumerate(ys):
+        for ix, x in enumerate(xs):
+            probe = base.copy()
+            probe[label_index] = (x, y)
+            E, _, _ = energy_and_grad_fullP(scene, probe, cfg)
+            field[iy, ix] = E - E0
+
+    return field

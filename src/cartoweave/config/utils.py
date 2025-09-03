@@ -42,7 +42,7 @@ _ALLOWED_KEYS = {
     "debug.check",
     "source.topk",
     # visualization
-    "viz.show", "viz.field.kind", "viz.field.cmap",
+    "viz.show", "viz.field.kind", "viz.field.cmap", "viz.field.resolution",
 }
 
 def report(source_topk: int = 0) -> Dict[str, Any]:
@@ -268,7 +268,12 @@ def area_softout(
     }
 
 
-def viz(show: bool = False, field_kind: str = "3d", field_cmap: str = "viridis") -> Dict[str, Any]:
+def viz(
+    show: bool = False,
+    field_kind: str = "3d",
+    field_cmap: str = "viridis",
+    field_resolution: int = 100,
+) -> Dict[str, Any]:
     """Visualization options exposed via config.
 
     Parameters
@@ -279,9 +284,12 @@ def viz(show: bool = False, field_kind: str = "3d", field_cmap: str = "viridis")
         ``"3d"`` for surface plot or ``"heatmap"`` for 2D visualization.
     field_cmap:
         Matplotlib colormap name used when rendering scalar fields.
+    field_resolution:
+        Grid resolution for scalar potential field visualizations.
     """
     return {
         "viz.show": bool(show),
         "viz.field.kind": str(field_kind),
         "viz.field.cmap": str(field_cmap),
+        "viz.field.resolution": int(field_resolution),
     }

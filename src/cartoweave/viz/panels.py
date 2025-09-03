@@ -414,7 +414,7 @@ def draw_info_panel(
 def draw_field_panel(
     ax: plt.Axes,
     field: Any,
-    kind: str = "heatmap",
+    kind: str = "3d",
     cmap: str = "viridis",
 ) -> None:
     """Render a scalar field either as a heatmap or as a 3‑D surface.

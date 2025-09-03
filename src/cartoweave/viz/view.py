@@ -110,7 +110,7 @@ def interactive_view(
     source_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     metrics_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     field_getter: Optional[Callable[[int], Any]] = None,
-    field_kind: str = "heatmap",
+    field_kind: str = "3d",
     field_cmap: str = "viridis",
     boundaries: Optional[Sequence[int]] = None,
     actions: Optional[Sequence[Any]] = None,

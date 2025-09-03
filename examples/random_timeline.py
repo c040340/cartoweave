@@ -32,7 +32,7 @@ from cartoweave.api import solve_frame
 from cartoweave.config.presets import default_cfg, area_pack_cfg
 from cartoweave.config.utils import merge, viz
 from cartoweave.data.random import get_scene, make_timeline
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+from cartoweave.engine.core_eval import energy_and_grad_fullP, scalar_potential_field
 from cartoweave.viz import interactive_view
 
 
@@ -89,7 +89,7 @@ for act in actions:
 # Configuration and a timeline with at least two optimisation steps
 # ---------------------------------------------------------------------------
 
-cfg_base = merge(default_cfg(), area_pack_cfg(), viz(show=True, field_kind="heatmap"))
+cfg_base = merge(default_cfg(), area_pack_cfg(), viz(show=True, field_kind="3d"))
 schedule = [
     {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}},
     {"name": "main_solve"},
@@ -214,7 +214,8 @@ if cfg_base.get("viz.show", False):
             arr_full = np.full_like(traj[step], np.nan)
             arr_full[act_idx] = arr
             expanded[name] = arr_full
-        return expanded
+        field = scalar_potential_field(sc, P_step, cfg_base)
+        return expanded, field
 
     def source_getter(step: int):
         return sources_per_step[step]
