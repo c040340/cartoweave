@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import numpy as np
 
+import matplotlib
+matplotlib.use("TkAgg")
+
 from cartoweave.api import solve_frame
 from cartoweave.config.presets import default_cfg
 from cartoweave.config.utils import merge, viz
