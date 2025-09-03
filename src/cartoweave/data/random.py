@@ -1,13 +1,13 @@
 # src/cartoweave/data/random.py
 from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional, Callable
-import os, json, time, math, string, random
+import os, time, math, string, random
 import numpy as np
 
 Array = np.ndarray
 
 # ---------- 非物理键，允许默认值 ----------
-_DEF_CACHE_NAME = "scene_cache.json"
+_DEF_CACHE_NAME = "scene_cache.npz"
 _DEF_CANVAS = (1080.0, 1920.0)
 
 # =============== 随机与缓存 ===============
@@ -25,14 +25,16 @@ def _default_cache_path(filename: str = _DEF_CACHE_NAME) -> str:
     os.makedirs(cache_dir, exist_ok=True)
     return os.path.join(cache_dir, filename)
 
-def save_json(data: Dict[str, Any], path: str) -> None:
+def save_scene(data: Dict[str, Any], path: str) -> None:
+    """Save scene dict using ``np.savez`` (allows storing arrays directly)."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    np.savez_compressed(path, data=np.array(data, dtype=object))
 
-def load_json(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+
+def load_scene(path: str) -> Dict[str, Any]:
+    """Load scene dict produced by :func:`save_scene`."""
+    obj = np.load(path, allow_pickle=True)["data"].item()
+    return obj
 
 # =============== 基础几何采样 ===============
 def _canvas_focus_box(canvas_size: Tuple[float, float], focus_ratio: float):
@@ -125,61 +127,106 @@ def _label_specs_for_len(text_len: int, rng=np.random) -> Dict[str, Dict[str, fl
 
 # =============== 公开 API ===============
 def generate_scene(
-    canvas_size: Tuple[float,float] = _DEF_CANVAS,
+    canvas_size: Tuple[float, float] = _DEF_CANVAS,
     focus_ratio: float = 0.8,
     n_points: int = 8,
     n_lines: int = 2,
     n_areas: int = 2,
-    seed: Optional[int] = None
+    seed: Optional[int] = None,
 ) -> Dict[str, Any]:
+    """Generate a random scene directly in ``SceneData`` format.
+
+    The previous implementation returned lists and separate label metadata which
+    required an adapter before feeding the solver.  This version constructs the
+    arrays expected by the solver directly:
+
+    - ``points``: ``(Np,2)`` float array.
+    - ``lines``: ``(Nl,4)`` float array of simple segments ``(x0,y0,x1,y1)``.
+    - ``areas``: list of dicts with ``{"polygon": np.ndarray}``.
+    - ``labels_init``/``WH``/``anchors``: arrays for every label (one per
+      element) so the solver can be invoked without any extra conversion step.
     """
-    生成 points/lines/areas + label_mode/label_specs（键结构与求解器输入保持一致）。
-    不含 timeline；如需 timeline 请用 get_scene(..., with_timeline=True)。
-    """
+
     _apply_seed(seed)
     W, H = canvas_size
 
-    # points: Poisson-disc，数量不足则补均匀点
-    pts_xy = _poisson_disc((W, H), r_min=H/20.0, rng=np.random)
+    # ---- points ---------------------------------------------------------
+    pts_xy = _poisson_disc((W, H), r_min=H / 20.0, rng=np.random)
     if len(pts_xy) < n_points:
-        extras = [(np.random.uniform(0, W), np.random.uniform(0, H)) for _ in range(n_points - len(pts_xy))]
+        extras = [
+            (np.random.uniform(0, W), np.random.uniform(0, H))
+            for _ in range(n_points - len(pts_xy))
+        ]
         pts_xy += extras
-    pts_xy = pts_xy[:n_points]
-    points = [dict(id=f"p{i}", x=float(x), y=float(y)) for i,(x,y) in enumerate(pts_xy)]
+    pts_xy = np.array(pts_xy[:n_points], float)
 
-    # lines
-    lines = []
-    for i in range(n_lines):
-        pl = _random_polyline((W,H), focus_ratio, n=int(np.random.randint(10, 18)), rng=np.random)
-        lines.append(dict(id=f"l{i}", polyline=[[float(x), float(y)] for x,y in pl]))
+    # ---- lines (as simple segments) ------------------------------------
+    line_segs: List[List[float]] = []
+    for _ in range(n_lines):
+        a = np.random.uniform(0, 1, size=2) * [W, H]
+        b = np.random.uniform(0, 1, size=2) * [W, H]
+        line_segs.append([float(a[0]), float(a[1]), float(b[0]), float(b[1])])
+    lines = np.array(line_segs, float).reshape(-1, 4)
 
-    # areas
-    areas = []
-    for i in range(n_areas):
-        poly = _random_polygon((W,H), focus_ratio, n=int(np.random.randint(6, 11)), rng=np.random)
-        areas.append(dict(id=f"a{i}", polygon=[[float(x), float(y)] for x,y in poly]))
+    # ---- areas ---------------------------------------------------------
+    areas: List[Dict[str, Any]] = []
+    for _ in range(n_areas):
+        poly = np.array(
+            _random_polygon((W, H), focus_ratio, n=int(np.random.randint(6, 11)), rng=np.random),
+            float,
+        )
+        areas.append({"polygon": poly})
 
-    # 模式与宽度
-    label_mode: Dict[str, str] = {}
-    label_specs: Dict[str, Dict[str, Dict[str, float]]] = {}
+    # ---- labels / anchors / sizes --------------------------------------
+    anchors: List[np.ndarray] = []
+    labels_init: List[np.ndarray] = []
+    WH: List[np.ndarray] = []
+    labels_meta: List[Dict[str, Any]] = []
 
-    def _mode_point(): return np.random.choice(["circle","single","detail"], p=[0.35, 0.40, 0.25])
-    def _mode_line_area(): return np.random.choice(["single","detail"], p=[0.55, 0.45])
+    def _rand_label_spec() -> float:
+        spec = _label_specs_for_len(int(np.random.randint(6, 25)))
+        return float(spec["single"]["w"])
 
-    for p in points:
-        label_mode[p["id"]] = _mode_point()
-        label_specs[p["id"]] = _label_specs_for_len(int(np.random.randint(6, 25)))
+    # point labels
+    for i, (x, y) in enumerate(pts_xy):
+        anc = np.array([x, y], float)
+        anchors.append(anc)
+        offset = np.random.uniform(-20.0, 20.0, size=2)
+        labels_init.append(anc + offset)
+        WH.append(np.array([_rand_label_spec(), 24.0], float))
+        labels_meta.append({"id": f"p{i}", "anchor_kind": "point", "anchor_index": i})
 
-    for l in lines:
-        label_mode[l["id"]] = _mode_line_area()
-        label_specs[l["id"]] = _label_specs_for_len(int(np.random.randint(6, 25)))
+    # line labels
+    for i, seg in enumerate(lines):
+        anc = np.array([(seg[0] + seg[2]) * 0.5, (seg[1] + seg[3]) * 0.5], float)
+        anchors.append(anc)
+        offset = np.random.uniform(-20.0, 20.0, size=2)
+        labels_init.append(anc + offset)
+        WH.append(np.array([_rand_label_spec(), 24.0], float))
+        labels_meta.append({"id": f"l{i}", "anchor_kind": "line", "anchor_index": i})
 
-    for a in areas:
-        label_mode[a["id"]] = _mode_line_area()
-        label_specs[a["id"]] = _label_specs_for_len(int(np.random.randint(6, 25)))
+    # area labels
+    for i, ar in enumerate(areas):
+        poly = np.asarray(ar["polygon"], float)
+        anc = poly.mean(axis=0)
+        anchors.append(anc)
+        offset = np.random.uniform(-20.0, 20.0, size=2)
+        labels_init.append(anc + offset)
+        WH.append(np.array([_rand_label_spec(), 24.0], float))
+        labels_meta.append({"id": f"a{i}", "anchor_kind": "area", "anchor_index": i})
 
-    return dict(points=points, lines=lines, areas=areas,
-                label_mode=label_mode, label_specs=label_specs)
+    scene = dict(
+        frame=0,
+        frame_size=(W, H),
+        points=pts_xy,
+        lines=lines,
+        areas=areas,
+        labels_init=np.vstack(labels_init),
+        WH=np.vstack(WH),
+        anchors=np.vstack(anchors),
+        labels=labels_meta,
+    )
+    return scene
 
 
 def make_timeline(
@@ -301,35 +348,23 @@ def get_scene(
 
     _apply_seed(gen_kwargs.get("seed", None))
 
-    def _auto_tl(d: Dict[str, Any], **kw):
-        return make_timeline(
-            d.get("points", []),
-            d.get("lines", []),
-            d.get("areas", []),
-            d.get("label_mode", {}),
-            **kw,
-        )
-
-    if make_timeline_fn is None and with_timeline:
-        make_timeline_fn = _auto_tl
-
     if use_random:
         data = generate_scene(**gen_kwargs)
         if with_timeline and callable(make_timeline_fn):
             tl = make_timeline_fn(dict(data), **(timeline_kwargs or {}))
             data["timeline"] = tl
-        save_json(data, cache_path)
+        save_scene(data, cache_path)
         return data
 
     try:
-        data = load_json(cache_path)
+        data = load_scene(cache_path)
     except FileNotFoundError:
         data = generate_scene(**gen_kwargs)
-        save_json(data, cache_path)
+        save_scene(data, cache_path)
 
     if with_timeline and ("timeline" not in data or not isinstance(data["timeline"], list) or len(data["timeline"]) == 0):
         if auto_make_timeline_if_missing and callable(make_timeline_fn):
             tl = make_timeline_fn(dict(data), **(timeline_kwargs or {}))
             data["timeline"] = tl
-            save_json(data, cache_path)
+            save_scene(data, cache_path)
     return data
