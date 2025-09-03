@@ -170,11 +170,7 @@ def interactive_view(
     action_ax.set_xticks([])
     action_ax.set_yticks([])
     action_slider: Optional[Slider] = None
-    if (
-        boundaries is not None
-        and actions is not None
-        and len(actions) == len(boundaries) - 1
-    ):
+    if actions is not None and len(actions) > 0:
         action_slider = Slider(action_ax, "action", 0, len(actions) - 1, valinit=0, valstep=1)
         action_slider.valtext.set_text("0")
     else:

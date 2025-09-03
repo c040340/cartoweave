@@ -203,15 +203,28 @@ def draw_force_panel(
     total_x = 0.0
     total_y = 0.0
     for name, vx, vy in vecs:
-        color = FORCE_COLORS.get(name, "#777777")
-        arr = FancyArrowPatch((0, 0), (vx, vy), arrowstyle="->", mutation_scale=10, color=color)
+        color = FORCE_COLORS.get(name.lower(), "#777777")
+        arr = FancyArrowPatch(
+            (0, 0),
+            (vx, vy),
+            arrowstyle="->",
+            mutation_scale=15,
+            color=color,
+            lw=2.0,
+        )
         ax.add_patch(arr)
         ax.text(vx, vy, name, color=color, fontsize=6)
         total_x += vx
         total_y += vy
 
-    total_arrow = FancyArrowPatch((0, 0), (total_x, total_y), arrowstyle="-|>", mutation_scale=13,
-                                  color=FORCE_COLORS["total"], lw=1.5)
+    total_arrow = FancyArrowPatch(
+        (0, 0),
+        (total_x, total_y),
+        arrowstyle="-|>",
+        mutation_scale=18,
+        color=FORCE_COLORS["total"],
+        lw=2.5,
+    )
     ax.add_patch(total_arrow)
 
     mag = float(np.hypot(total_x, total_y))
@@ -249,7 +262,7 @@ def draw_info_panel(
         Optional optimiser statistics provided by ``metrics_getter``.
     """
 
-    rows: List[Tuple[str, str]] = []
+    rows: List[Tuple[str, str, int]] = []
     if metrics:
         rows.append(
             (
@@ -259,12 +272,13 @@ def draw_info_panel(
                     gnorm=float(metrics.get("gnorm_inf", np.nan)),
                 ),
                 "#222222",
+                9,
             )
         )
 
     g_mag, g_ang = global_total
     rows.append(
-        (f"ALL  |F|={g_mag:.3e}  angle={g_ang:+.1f}°", FORCE_COLORS["total"])
+        (f"ALL  |F|={g_mag:.3e}  angle={g_ang:+.1f}°", FORCE_COLORS["total"], 9)
     )
     if d_force is not None:
         d_abs, d_rel = d_force
@@ -272,12 +286,13 @@ def draw_info_panel(
             (
                 f"ΔF={d_abs:.3e}  ΔF/F={d_rel:.3e}",
                 "#333333",
+                9,
             )
         )
 
     l_mag, l_ang = label_total
     rows.append(
-        (f"LABEL|F|={l_mag:.3e}  angle={l_ang:+.1f}°", FORCE_COLORS["total"])
+        (f"LABEL|F|={l_mag:.3e}  angle={l_ang:+.1f}°", FORCE_COLORS["total"], 9)
     )
 
     tot_mag = l_mag if l_mag > 0 else 1.0
@@ -292,14 +307,15 @@ def draw_info_panel(
         rows.append(
             (
                 f"{name:<12s} |F|={comp_mag:.3e}  angle={comp_ang:+.1f}°  {pct:5.1f}%",
-                FORCE_COLORS.get(name, "#555555"),
+                FORCE_COLORS.get(name.lower(), "#555555"),
+                8,
             )
         )
 
     ax.clear()
     ax.set_xticks([])
     ax.set_yticks([])
-    for i, (text, color) in enumerate(rows):
+    for i, (text, color, size) in enumerate(rows):
         ax.text(
             0.01,
             0.99 - i * 0.075,
@@ -308,6 +324,7 @@ def draw_info_panel(
             va="top",
             color=color,
             family="monospace",
+            fontsize=size,
             transform=ax.transAxes,
         )
 

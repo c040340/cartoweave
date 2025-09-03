@@ -24,13 +24,17 @@ def solve_frame(
     """
     cfg = cfg or {}
     if mode == "lbfgs":
-        return solve_layout_lbfgs(scene, cfg)
+        P, info = solve_layout_lbfgs(scene, cfg)
     elif mode == "semi_newton":
-        return solve_layout_semi_newton(scene, cfg)
+        P, info = solve_layout_semi_newton(scene, cfg)
     elif mode == "hybrid":
-        return solve_layout_hybrid(scene, cfg)
+        P, info = solve_layout_hybrid(scene, cfg)
     else:
         raise ValueError(f"Unknown mode: {mode}")
+    msg = info.get("msg", info.get("message", ""))
+    nit = info.get("nit", "?")
+    print(f"[solve_frame] mode={mode} nit={nit} {msg}")
+    return P, info
 
 def solve_timeline(
     actions: list[Dict[str, Any]],

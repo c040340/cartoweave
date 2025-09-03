@@ -67,4 +67,5 @@ Thumbs.db
 .env.*
 *.key
 *.pem
+*.zip
 .cache
