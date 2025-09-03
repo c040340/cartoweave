@@ -123,8 +123,9 @@ def interactive_view(
     used for either representation.
 
     ``boundaries`` and ``actions`` describe high level actions in the timeline.
-    When both are provided an additional slider is shown that lets the user
-    switch between actions while constraining the iteration slider to the
+    When action information is available (either explicit ``actions`` or
+    ``boundaries`` describing iteration ranges) an additional slider lets the
+    user switch between actions while constraining the iteration slider to the
     corresponding range.
     """
 
@@ -170,14 +171,21 @@ def interactive_view(
     action_ax.set_xticks([])
     action_ax.set_yticks([])
     action_slider: Optional[Slider] = None
+    n_actions = 0
     if actions is not None:
         try:
             n_actions = len(actions)
         except TypeError:
             actions = list(actions)
             n_actions = len(actions)
+    if boundaries is not None:
+        try:
+            boundaries = list(boundaries)
+        except TypeError:
+            boundaries = list(boundaries)
         if n_actions == 0:
-            n_actions = 1
+            n_actions = max(len(boundaries) - 1, 0)
+    if n_actions > 0:
         action_slider = Slider(action_ax, "action", 0, n_actions - 1, valinit=0, valstep=1)
         action_slider.valtext.set_text("0")
     else:

@@ -18,37 +18,26 @@ from matplotlib.patches import Circle, Rectangle, FancyArrowPatch
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 
-# Colours for background geometry in the layout view
-POINT_COLOR = "#1f77b4"
-LINE_COLOR = "#ff7f0e"
-AREA_COLOR = "#2ca02c"
-
-# Colour map for force components.  The keys are expected to match those
-# produced by ``force_getter`` functions.
-FORCE_COLORS: Dict[str, str] = {
-    "focus": "#1f77b4",
-    "boundary": "#ff7f0e",
-    "label_label": "#2ca02c",
-    "anchor": "#d62728",
-    "total": "#000000",
-}
+from .config import viz_config
 
 
 def _force_color(name: str) -> str:
     """Return a colour for a force component ``name``.
 
     Unknown names are assigned colours from Matplotlib's default cycle so that
-    each component still receives a distinct hue.
+    each component still receives a distinct hue.  Colours are drawn from the
+    ``viz_config['forces']['colors']`` mapping which users may modify.
     """
 
     key = name.lower()
-    if key not in FORCE_COLORS:
+    colors = viz_config["forces"]["colors"]
+    if key not in colors:
         cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
         if cycle:
-            FORCE_COLORS[key] = cycle[len(FORCE_COLORS) % len(cycle)]
+            colors[key] = cycle[len(colors) % len(cycle)]
         else:
-            FORCE_COLORS[key] = "#777777"
-    return FORCE_COLORS[key]
+            colors[key] = "#777777"
+    return colors[key]
 
 
 # ---------------------------------------------------------------------------
@@ -112,15 +101,23 @@ def draw_layout(
     ax.grid(True, color="#DDDDDD", lw=0.5)
 
     # --- background geometry -------------------------------------------------
+    cfg = viz_config["layout"]
+
     pts = _as_vec2(points)
     if pts is not None:
-        ax.scatter(pts[:, 0], pts[:, 1], c=POINT_COLOR, s=18, zorder=1)
+        ax.scatter(pts[:, 0], pts[:, 1], c=cfg["point_color"], s=18, zorder=1)
 
     if isinstance(lines, (list, tuple)):
         for pl in lines:
             arr = _as_vec2(pl)
             if arr is not None:
-                ax.plot(arr[:, 0], arr[:, 1], color=LINE_COLOR, lw=1.0, zorder=0)
+                ax.plot(
+                    arr[:, 0],
+                    arr[:, 1],
+                    color=cfg["line_color"],
+                    lw=cfg["line_width"],
+                    zorder=0,
+                )
 
     if isinstance(areas, (list, tuple)):
         for poly in areas:
@@ -129,9 +126,9 @@ def draw_layout(
                 path = Path(arr, closed=True)
                 patch = PathPatch(
                     path,
-                    facecolor=to_rgba(AREA_COLOR, alpha=0.15),
-                    edgecolor=AREA_COLOR,
-                    lw=1.0,
+                    facecolor=to_rgba(cfg["area_color"], alpha=cfg["area_face_alpha"]),
+                    edgecolor=cfg["area_color"],
+                    lw=cfg["area_edge_width"],
                 )
                 ax.add_patch(patch)
 
@@ -151,25 +148,38 @@ def draw_layout(
             (x - w / 2, y - h / 2),
             w,
             h,
-            facecolor=(0.95, 0.95, 1.0, 0.8),
-            edgecolor="#2B6CB0",
-            lw=1.0,
+            facecolor=cfg["label_fill_color"],
+            edgecolor=cfg["label_edge_color"],
+            lw=cfg["label_edge_width"],
             picker=True,
             zorder=5,
         )
         ax.add_patch(rect)
         patches.append((i, rect))
 
-        ax.text(x, y, _label_text(labels[i], i), ha="center", va="center", fontsize=9, zorder=6)
+        ax.text(
+            x,
+            y,
+            _label_text(labels[i], i),
+            ha="center",
+            va="center",
+            fontsize=cfg["label_fontsize"],
+            zorder=6,
+        )
 
         if anchors is not None and i < len(anchors):
-            ax.plot([anchors[i, 0], x], [anchors[i, 1], y], color="#888888", lw=1.0)
+            ax.plot(
+                [anchors[i, 0], x],
+                [anchors[i, 1], y],
+                color=cfg["anchor_line_color"],
+                lw=cfg["line_width"],
+            )
             circ = Circle(
                 (anchors[i, 0], anchors[i, 1]),
-                radius=5.0,
-                facecolor=(0.1, 0.5, 0.9, 0.25),
-                edgecolor="#2B6CB0",
-                lw=1.0,
+                radius=cfg["anchor_marker_size"],
+                facecolor=cfg["anchor_marker_face"],
+                edgecolor=cfg["anchor_marker_edge"],
+                lw=cfg["line_width"],
                 zorder=4,
             )
             ax.add_patch(circ)
@@ -209,7 +219,7 @@ def draw_force_panel(
     ax.axhline(0, color="#dddddd", lw=1.0)
     ax.axvline(0, color="#dddddd", lw=1.0)
     if title:
-        ax.set_title(title, fontsize=10)
+        ax.set_title(title, fontsize=viz_config["info"]["title_fontsize"])
 
     vecs: List[Tuple[str, float, float]] = []
     for name, arr in forces.items():
@@ -228,6 +238,8 @@ def draw_force_panel(
     ax.set_ylim(-limit, limit)
     ax.set_aspect("equal")
 
+    cfg = viz_config["forces"]
+
     total_x = 0.0
     total_y = 0.0
     for name, vx, vy in vecs:
@@ -236,13 +248,13 @@ def draw_force_panel(
             (0, 0),
             (vx, vy),
             arrowstyle="->",
-            mutation_scale=15,
+            mutation_scale=cfg["component_arrow_scale"],
             color=color,
             edgecolor=color,
-            lw=2.0,
+            lw=cfg["component_arrow_lw"],
         )
         ax.add_patch(arr)
-        ax.text(vx, vy, name, color=color, fontsize=6)
+        ax.text(vx, vy, name, color=color, fontsize=cfg["component_fontsize"])
         total_x += vx
         total_y += vy
 
@@ -250,10 +262,10 @@ def draw_force_panel(
         (0, 0),
         (total_x, total_y),
         arrowstyle="-|>",
-        mutation_scale=18,
+        mutation_scale=cfg["total_arrow_scale"],
         color=_force_color("total"),
         edgecolor=_force_color("total"),
-        lw=2.5,
+        lw=cfg["total_arrow_lw"],
     )
     ax.add_patch(total_arrow)
 
@@ -292,6 +304,8 @@ def draw_info_panel(
         Optional optimiser statistics provided by ``metrics_getter``.
     """
 
+    cfg = viz_config["info"]
+
     rows: List[Tuple[str, str, int]] = []
     if metrics:
         rows.append(
@@ -302,7 +316,7 @@ def draw_info_panel(
                     gnorm=float(metrics.get("gnorm_inf", np.nan)),
                 ),
                 "#222222",
-                9,
+                cfg["row_main_fontsize"],
             )
         )
 
@@ -312,7 +326,7 @@ def draw_info_panel(
         (
             f"{name_fmt} |F|={g_mag:+9.3e} angle={g_ang:+6.1f}°       ",
             _force_color("total"),
-            9,
+            cfg["row_main_fontsize"],
         )
     )
     if d_force is not None:
@@ -321,7 +335,7 @@ def draw_info_panel(
             (
                 f"ΔF={d_abs:.3e}  ΔF/F={d_rel:.3e}",
                 "#333333",
-                9,
+                cfg["row_main_fontsize"],
             )
         )
 
@@ -331,7 +345,7 @@ def draw_info_panel(
         (
             f"{name_fmt} |F|={l_mag:+9.3e} angle={l_ang:+6.1f}°       ",
             _force_color("total"),
-            9,
+            cfg["row_main_fontsize"],
         )
     )
 
@@ -349,7 +363,7 @@ def draw_info_panel(
         row_txt = (
             f"{name_fmt} |F|={comp_mag:+9.3e} angle={comp_ang:+6.1f}° {pct:+6.1f}%"
         )
-        rows.append((row_txt, _force_color(name), 8))
+        rows.append((row_txt, _force_color(name), cfg["row_component_fontsize"]))
 
     ax.clear()
     ax.set_xticks([])

@@ -6,6 +6,7 @@ remaining easy to understand.
 """
 
 from .view import interactive_view
+from .config import viz_config
 
-__all__ = ["interactive_view"]
+__all__ = ["interactive_view", "viz_config"]
 
