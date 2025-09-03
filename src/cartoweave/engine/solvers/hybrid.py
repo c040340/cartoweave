@@ -5,6 +5,7 @@ import numpy as np
 from ..core_eval import energy_and_grad_fullP
 from .lbfgs import solve_layout_lbfgs
 from .semi_newton import solve_layout_semi_newton
+from ...utils.logging import logger
 
 Array = np.ndarray
 
@@ -40,6 +41,7 @@ def solve_layout_hybrid(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[st
         gtol = 1e-3
     first = str(_cfg(cfg, "hybrid_first", "lbfgs")).lower()
     polish = bool(_cfg(cfg, "hybrid_polish_lbfgs", True))
+    logger.info("Hybrid solver start first=%s polish=%s", first, polish)
 
     stages = []
     history_pos: list[np.ndarray] = []
@@ -58,13 +60,16 @@ def solve_layout_hybrid(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[st
         history_E.extend(eng)
 
     if first == "lbfgs":
+        logger.info("Hybrid stage: L-BFGS")
         P1, info1 = solve_layout_lbfgs(scene, cfg)
         stages.append(("lbfgs", info1))
         _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
+            logger.info("Hybrid solver finished after L-BFGS stage")
             return P1, {"stages": stages, "success": True, "history": {"positions": history_pos, "energies": history_E}}
         sc = dict(scene)
         sc["labels_init"] = P1
+        logger.info("Hybrid stage: Semi-Newton")
         P2, info2 = solve_layout_semi_newton(sc, cfg)
         stages.append(("semi", info2))
         _extend_history(info2, skip_first=True)
@@ -73,24 +78,31 @@ def solve_layout_hybrid(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[st
             if polish:
                 sc2 = dict(sc)
                 sc2["labels_init"] = P_cur
+                logger.info("Hybrid stage: L-BFGS polish")
                 P3, info3 = solve_layout_lbfgs(sc2, cfg)
                 stages.append(("lbfgs_polish", info3))
                 _extend_history(info3, skip_first=True)
                 P_cur = P3
             success = _grad_inf(sc, P_cur, cfg) <= gtol
+            logger.info("Hybrid solver finished success=%s", success)
             return P_cur, {"stages": stages, "success": success, "history": {"positions": history_pos, "energies": history_E}}
         success = _grad_inf(sc, P_cur, cfg) <= gtol
+        logger.info("Hybrid solver finished success=%s", success)
         return P_cur, {"stages": stages, "success": success, "history": {"positions": history_pos, "energies": history_E}}
     else:
+        logger.info("Hybrid stage: Semi-Newton")
         P1, info1 = solve_layout_semi_newton(scene, cfg)
         stages.append(("semi", info1))
         _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
+            logger.info("Hybrid solver finished after Semi-Newton stage")
             return P1, {"stages": stages, "success": True, "history": {"positions": history_pos, "energies": history_E}}
         sc = dict(scene)
         sc["labels_init"] = P1
+        logger.info("Hybrid stage: L-BFGS")
         P2, info2 = solve_layout_lbfgs(sc, cfg)
         stages.append(("lbfgs", info2))
         _extend_history(info2, skip_first=True)
         success = _grad_inf(sc, P2, cfg) <= gtol
+        logger.info("Hybrid solver finished success=%s", success)
         return P2, {"stages": stages, "success": success, "history": {"positions": history_pos, "energies": history_E}}

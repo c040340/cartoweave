@@ -19,6 +19,8 @@ from cartoweave.config.utils import merge, viz
 from cartoweave.engine.core_eval import energy_and_grad_fullP, scalar_potential_field
 from cartoweave.viz import interactive_view
 
+from cartoweave.utils.logging import configure_logging
+configure_logging(True, 4)
 
 # ---------------------------------------------------------------------------
 # Scene setup: labels anchored to a point, a line and a triangular area

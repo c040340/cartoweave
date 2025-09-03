@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Callable, Optional
 import copy
 import numpy as np
 from cartoweave.api import solve_frame
+from ..utils.logging import logger
 
 Step = Dict[str, Any]
 Schedule = List[Step]
@@ -46,12 +47,14 @@ def run_timeline(
             {"name": "main_solve"},
         ]
 
+    logger.info("timeline start %d steps mode=%s", len(schedule), mode)
     timeline = []
-    P = np.asarray(sc.get("labels_init", np.zeros((0,2), float)), float).copy()
+    P = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float).copy()
 
     for step in schedule:
         step_name = step.get("name", "step")
         cfg_step = _apply_overrides(cfg_base, step)
+        logger.info("timeline step '%s' start", step_name)
 
         if carry_P:
             sc["labels_init"] = P  # 用上一步的解做初始值
@@ -63,8 +66,10 @@ def run_timeline(
             "name": step_name,
             "n_labels": int(P_step.shape[0]),
             "stage_info": info_step,  # 里面含 stage1/2 L-BFGS 的迭代统计
-            "cfg_diff": step,         # 记录本阶段与 base 的差异
+            "cfg_diff": step,  # 记录本阶段与 base 的差异
         })
         P = P_step
+        logger.info("timeline step '%s' done", step_name)
 
+    logger.info("timeline done")
     return P, {"timeline": timeline}

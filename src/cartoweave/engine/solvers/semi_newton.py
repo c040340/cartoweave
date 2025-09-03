@@ -3,6 +3,7 @@ from typing import Dict, Any, Tuple, Callable
 import numpy as np
 
 from ..core_eval import energy_and_grad_fullP
+from ...utils.logging import logger
 
 Array = np.ndarray
 
@@ -59,6 +60,7 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
     labels_init = scene.get("labels_init")
     N = 0 if labels_init is None else int(labels_init.shape[0])
     if N == 0:
+        logger.info("Semi-Newton early exit: no labels")
         return np.zeros((0, 2), float), {"nit": 0, "success": True, "msg": "no labels"}
 
     mov = scene.get("movable_idx")
@@ -82,6 +84,7 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
     x = P[mov].reshape(-1)
 
     history = {"positions": [], "energies": []}
+    logger.info("Semi-Newton start n_labels=%d max_outer=%d", N, max_outer)
 
     def fun_full(P_full: Array) -> Tuple[float, Array]:
         E, G, _ = energy_and_grad_fullP(scene, P_full, cfg)
@@ -98,8 +101,10 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
         history["positions"].append(P.copy())
         history["energies"].append(float(E))
         g_inf = float(np.linalg.norm(g_mov, np.inf))
+        logger.debug("Semi-Newton iter %d E=%.6g g_inf=%.6g", it, float(E), g_inf)
         if g_inf <= gtol:
             info = {"nit": it, "success": True, "g_inf": g_inf, "history": history}
+            logger.info("Semi-Newton converged nit=%d g_inf=%.6g", it, g_inf)
             return P, info
 
         grad_only = lambda z: fun_vars(z)[1]
@@ -142,4 +147,5 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
         "message": "max iterations reached" if g_inf_final > gtol else "",
         "history": history,
     }
+    logger.info("Semi-Newton done nit=%d g_inf=%.6g", max_outer, g_inf_final)
     return P, info
