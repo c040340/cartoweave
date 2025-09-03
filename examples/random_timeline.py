@@ -85,27 +85,86 @@ schedule = [
 
 
 # ---------------------------------------------------------------------------
-# Solve the schedule while recording positions
+# Solve the schedule for each timeline action while recording positions
 # ---------------------------------------------------------------------------
 
-traj = []
-P_init = scene["labels_init"]
-for step in schedule:
-    cfg_step = dict(cfg_base)
-    for k, s in step.get("scale", {}).items():
-        if k in cfg_step:
-            cfg_step[k] = float(cfg_step[k]) * float(s)
-    for k, v in step.get("override", {}).items():
-        cfg_step[k] = v
+id_to_idx = {lab["id"]: i for i, lab in enumerate(scene["labels"])}
 
-    scene["labels_init"] = P_init
-    P_opt, _ = solve_frame(scene, cfg_step, mode="hybrid")
-    traj.append(P_opt.copy())
-    P_init = P_opt
+P_all = np.full_like(scene["labels_init"], np.nan)
+traj = []
+sub_scenes: list[dict] = []
+active_idx_per_step: list[list[int]] = []
+sources_per_step: list[dict] = []
+boundaries = [0]
+active_ids: set[str] = set()
+
+for act in actions:
+    op = act.get("op")
+    eid = str(act.get("id"))
+    if op == "appear":
+        active_ids.add(eid)
+        idx = id_to_idx.get(eid)
+        if idx is not None:
+            P_all[idx] = scene["labels_init"][idx]
+    elif op == "hide":
+        active_ids.discard(eid)
+        idx = id_to_idx.get(eid)
+        if idx is not None:
+            P_all[idx] = np.nan
+    elif op == "change":
+        pass  # mode changes ignored in this simple example
+
+    active_idx = sorted(id_to_idx[iid] for iid in active_ids)
+    pt_idx = [int(i[1:]) for i in active_ids if i.startswith("p")]
+    ln_idx = [int(i[1:]) for i in active_ids if i.startswith("l")]
+    ar_idx = [int(i[1:]) for i in active_ids if i.startswith("a")]
+
+    sub_scene = dict(
+        frame=scene["frame"],
+        frame_size=scene["frame_size"],
+        points=scene["points"][pt_idx],
+        lines=scene["lines"][ln_idx],
+        areas=[scene["areas"][i] for i in ar_idx],
+        labels_init=P_all[active_idx],
+        WH=scene["WH"][active_idx],
+        anchors=scene["anchors"][active_idx],
+        labels=[scene["labels"][i] for i in active_idx],
+    )
+
+    for step in schedule:
+        cfg_step = dict(cfg_base)
+        for k, s in step.get("scale", {}).items():
+            if k in cfg_step:
+                cfg_step[k] = float(cfg_step[k]) * float(s)
+        for k, v in step.get("override", {}).items():
+            cfg_step[k] = v
+
+        P_opt, _ = solve_frame(sub_scene, cfg_step, mode="hybrid")
+        P_all[active_idx] = P_opt
+
+        anchors_full = np.full_like(P_all, np.nan)
+        anchors_full[active_idx] = sub_scene["anchors"]
+        sources_per_step.append(
+            {
+                "points": sub_scene["points"],
+                "lines": [seg.reshape(2, 2) for seg in sub_scene["lines"]],
+                "areas": [a["polygon"] for a in sub_scene["areas"]],
+                "anchors_xy": anchors_full,
+            }
+        )
+
+        traj.append(P_all.copy())
+        sub_scenes.append(dict(sub_scene))
+        active_idx_per_step.append(active_idx)
+
+        sub_scene["labels_init"] = P_opt
+
+    boundaries.append(len(traj))
 
 traj = np.stack(traj, axis=0)
 
 print("Ran actions:", [s["name"] for s in schedule])
+print("Action boundaries:", boundaries)
 print("Final positions:\n", traj[-1])
 
 
@@ -114,32 +173,41 @@ print("Final positions:\n", traj[-1])
 # ---------------------------------------------------------------------------
 
 if cfg_base.get("viz.show", False):
-    def compute_force(step: int):
+    def force_getter(step: int):
+        sc = sub_scenes[step]
+        act_idx = active_idx_per_step[step]
+        P_step = traj[step][act_idx]
         holder: dict[str, dict[str, np.ndarray]] = {}
 
         def rec(P, E, comps, sources):
             holder["comps"] = comps
-            holder["sources"] = sources
 
-        energy_and_grad_fullP(scene, traj[step], cfg_base, record=rec)
-        return holder.get("comps", {}), holder.get("sources", {})
+        energy_and_grad_fullP(sc, P_step, cfg_base, record=rec)
+        comps = holder.get("comps", {})
+        expanded: dict[str, np.ndarray] = {}
+        for name, arr in comps.items():
+            arr_full = np.full_like(traj[step], np.nan)
+            arr_full[act_idx] = arr
+            expanded[name] = arr_full
+        return expanded
 
-    lines_draw = [seg.reshape(2, 2) for seg in scene["lines"]]
-    areas_draw = [a["polygon"] for a in scene["areas"]]
+    def source_getter(step: int):
+        return sources_per_step[step]
 
     interactive_view(
         traj,
         scene["labels"],
         scene["WH"],
         scene["points"],
-        lines_draw,
-        areas_draw,
+        scene["lines"],
+        [a["polygon"] for a in scene["areas"]],
         W=scene["frame_size"][0],
         H=scene["frame_size"][1],
-        force_getter=lambda step: compute_force(step)[0],
-        source_getter=lambda step: compute_force(step)[1],
+        force_getter=force_getter,
+        source_getter=source_getter,
         field_kind=cfg_base.get("viz.field.kind", "heatmap"),
         field_cmap=cfg_base.get("viz.field.cmap", "viridis"),
         actions=actions,
+        boundaries=boundaries,
     )
 

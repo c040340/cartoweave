@@ -160,6 +160,10 @@ def draw_layout(
     for i in range(min(len(labels), len(pos_arr), len(wh_arr))):
         x, y = pos_arr[i]
         w, h = wh_arr[i]
+        if not (np.isfinite(x) and np.isfinite(y) and np.isfinite(w) and np.isfinite(h)):
+            continue
+        if w <= 0 or h <= 0:
+            continue
         rect = Rectangle(
             (x - w / 2, y - h / 2),
             w,
