@@ -34,9 +34,9 @@ def default_cfg() -> Dict[str, Any]:
         focus_huber(k_attract=30.0, center=(400.0, 300.0), sigma_x=80.0, sigma_y=120.0, delta=10.0),
         report(source_topk=0),
         # area* 先不启用，调试时再加入：
-        # area_embed(k_embed=200.0, k_tan=30.0, ratio_in=0.60),
-        # area_cross(k_cross=400.0),
-        # area_softout(k_softout=250.0),
+        area_embed(k_embed=200.0, k_tan=30.0, ratio_in=0.60),
+        area_cross(k_cross=400.0),
+        area_softout(k_softout=250.0),
     )
     validate(cfg)
     return cfg

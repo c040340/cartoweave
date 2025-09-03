@@ -106,7 +106,7 @@ def interactive_view(
     W: float,
     H: float,
     *,
-    force_getter: Optional[Callable[[int], Dict[str, np.ndarray]]] = None,
+    force_getter: Optional[Callable[[int], Any]] = None,
     source_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     metrics_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     field_getter: Optional[Callable[[int], Any]] = None,
@@ -121,11 +121,18 @@ def interactive_view(
     array with shape ``(T, N, 2)`` containing the centre positions of ``N``
     labels over ``T`` iterations. ``rect_wh`` stores the widths and heights of
     the labels. ``force_getter``/``source_getter``/``metrics_getter`` and
-    ``field_getter`` are callables returning data for a given iteration. They
-    may be omitted, in which case the corresponding panels simply show
-    placeholder information. ``field_kind`` selects between a 2‑D heatmap and a
-    3‑D surface for scalar fields while ``field_cmap`` controls the colour map
-    used for either representation.
+    ``field_getter`` are callables returning data for a given iteration.  The
+    ``force_getter`` may either return a mapping of force components or a
+    tuple containing the force mapping and optionally a scalar field array and
+    a source mapping.  Extra elements after the force dictionary are
+    interpreted by type: arrays (``numpy`` or ``array_like``) are treated as the
+    potential field while ``dict`` instances are stored as raw sources.  This
+    allows callers to supply ``(forces, field)``, ``(forces, sources, field)``
+    or any other ordering without redundant recomputation.  Missing pieces are
+    obtained via ``source_getter``/``field_getter`` when available.
+    ``field_kind`` selects between a 2‑D heatmap and a 3‑D surface for scalar
+    fields while ``field_cmap`` controls the colour map used for either
+    representation.
 
     ``boundaries`` and ``actions`` describe high level actions in the timeline.
     When action information is available (either explicit ``actions`` or
@@ -137,6 +144,7 @@ def interactive_view(
     traj = np.asarray(traj, dtype=float)
     rect_wh = np.asarray(rect_wh, dtype=float)
     T = len(traj)
+    N = len(labels)
 
     SHOW_ORDER = [k for k in viz_config["forces"]["colors"] if k != "total"]
 
@@ -346,22 +354,57 @@ def interactive_view(
     selected = 0
     patches = []
 
+    _force_cache: Dict[int, Dict[str, np.ndarray]] = {}
+    _source_cache: Dict[int, Dict[str, Any]] = {}
+    _field_cache: Dict[int, Any] = {}
+
+    def _looks_like_force_dict(d: Dict[str, Any]) -> bool:
+        if not isinstance(d, dict) or not d:
+            return False
+        for v in d.values():
+            arr = _as_vec2(v)
+            if arr is None or len(arr) != N:
+                return False
+        return True
+
     def _get_forces(step: int) -> Dict[str, np.ndarray]:
+        if step in _force_cache:
+            return _force_cache[step]
+        forces: Dict[str, np.ndarray] = {}
         if callable(force_getter):
             out = force_getter(step)
-            return out if isinstance(out, dict) else {}
-        return {}
+            if isinstance(out, tuple):
+                for extra in out:
+                    if isinstance(extra, dict) and not forces and _looks_like_force_dict(extra):
+                        forces = extra
+                    elif isinstance(extra, dict):
+                        _source_cache[step] = extra
+                    else:
+                        _field_cache[step] = extra
+            elif isinstance(out, dict):
+                forces = out
+        _force_cache[step] = forces
+        return forces
 
     def _get_sources(step: int) -> Dict[str, Any]:
+        if step in _source_cache:
+            return _source_cache[step]
         if callable(source_getter):
             out = source_getter(step)
-            return out if isinstance(out, dict) else {}
-        return {}
+            if isinstance(out, dict):
+                _source_cache[step] = out
+                return out
+        _get_forces(step)
+        return _source_cache.get(step, {})
 
     def _get_field(step: int) -> Any:
+        if step in _field_cache:
+            return _field_cache[step]
         if callable(field_getter):
-            return field_getter(step)
-        return None
+            _field_cache[step] = field_getter(step)
+            return _field_cache[step]
+        _get_forces(step)
+        return _field_cache.get(step)
 
     def _sum_all_forces(forces: Dict[str, np.ndarray]) -> np.ndarray:
         """Sum all force components over all labels and return the net vector.
@@ -381,6 +424,7 @@ def interactive_view(
 
     def _update(step: int) -> None:
         nonlocal patches
+        forces = _get_forces(step)
         src = _get_sources(step)
         pts = src.get("points", points)
         lns = src.get("lines", lines)
@@ -399,8 +443,6 @@ def interactive_view(
             areas=ars,
             anchors=anchors,
         )
-
-        forces = _get_forces(step)
         label_id = _label_name(labels[selected], selected)
         label_total = draw_force_panel(ax_force, forces, selected, title=label_id)
 

@@ -431,12 +431,30 @@ def draw_field_panel(
         Name of the Matplotlib colormap to use.  Defaults to ``"viridis"``.
     """
 
-    ax.clear()
-    ax.set_xticks([])
-    ax.set_yticks([])
+    # ``Axes3D.clear`` resets the plot and also removes any previously set
+    # axis limits.  When no field data is available Matplotlib would otherwise
+    # draw an empty panel without any frame or axes which looks as if the plot
+    # failed to render.  Explicitly reset sensible limits so that a coordinate
+    # frame remains visible even for missing data.
+    ax.cla()
     arr = None if field is None else np.asarray(field, dtype=float)
     if arr is None or arr.ndim != 2:
-        ax.text(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
+        if getattr(ax, "name", "") == "3d":
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.set_zlim(0, 1)
+            ax.set_xlabel("x")
+            ax.set_ylabel("y")
+            ax.set_zlabel("value")
+            ax.text2D(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
+        else:
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.set_xlabel("x")
+            ax.set_ylabel("y")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.text(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
         return
 
     if kind == "3d":
@@ -446,6 +464,7 @@ def draw_field_panel(
         ax.plot_surface(X, Y, arr, cmap=cmap)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
+        ax.set_zlabel("value")
     else:
         ax.imshow(arr, origin="upper", cmap=cmap, aspect="auto")
         ax.set_xticks([])
