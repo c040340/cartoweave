@@ -39,19 +39,40 @@ def run_timeline(
 
     cfg = cfg or {}
     P_cur = np.asarray(scene.get("labels_init", np.zeros((0, 2), float)), float)
-    infos: List[Dict[str, Any]] = []
+    actions_meta: List[Dict[str, Any]] = []
+
+    history_pos: List[np.ndarray] = []
+    history_E: List[float] = []
+    history_rec: List[Dict[str, Any]] = []
 
     for a_idx, action in enumerate(timeline):
-        def _rec_with_action(P, E, comps, meta):
-            m = {"action_id": a_idx, "action_name": action.get("name", f"action_{a_idx}")}
-            if meta:
-                m.update(meta)
-            if record:
-                record(P, E, comps, m)
-
-        info = lbfgs.run(scene, P_cur, cfg, record=_rec_with_action)
+        info = lbfgs.run(scene, P_cur, cfg, record=None)
         P_cur = info.get("P", P_cur)
-        infos.append(info)
 
-    return {"actions": infos, "P_final": P_cur}
+        hist = info.get("history", {})
+        pos = list(hist.get("positions", []))
+        eng = list(hist.get("energies", []))
+        rec = list(hist.get("records", []))
+
+        for r in rec:
+            meta = r.setdefault("meta", {})
+            meta.setdefault("action_id", a_idx)
+            meta.setdefault("action_name", action.get("name", f"action_{a_idx}"))
+            if record:
+                record(r.get("P"), r.get("E"), r.get("comps", {}), meta)
+
+        if history_pos:
+            if pos:
+                pos = pos[1:]
+                eng = eng[1:]
+                rec = rec[1:]
+
+        history_pos.extend(pos)
+        history_E.extend(eng)
+        history_rec.extend(rec)
+
+        actions_meta.append({"name": action.get("name", f"action_{a_idx}")})
+
+    history = {"positions": history_pos, "energies": history_E, "records": history_rec}
+    return {"actions": actions_meta, "P_final": P_cur, "history": history}
 

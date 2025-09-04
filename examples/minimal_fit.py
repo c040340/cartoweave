@@ -9,6 +9,8 @@
 from __future__ import annotations
 from typing import Dict, Any, Tuple, List
 import numpy as np
+import matplotlib
+matplotlib.use('tkagg')
 
 from cartoweave.api import solve_frame
 from cartoweave.config.layering import load_base_cfg, apply_calib_profile, apply_shape_profile
@@ -98,6 +100,24 @@ def _build_cfg() -> Dict[str, Any]:
     cfg["engine.max_iter_hint"] = cfg.get("engine.max_iter_hint", 200)
     return cfg
 
+
+def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert solver ``info`` into a viewer-friendly payload."""
+
+    hist = info.get("history", {}) if isinstance(info, dict) else {}
+    recs = hist.get("records") or hist.get("evals") or []
+    frames: List[Dict[str, Any]] = []
+    for r in recs:
+        frame = {
+            "P": np.asarray(r.get("P"), float),
+            "comps": {k: np.asarray(v, float) for k, v in r.get("comps", {}).items()},
+        }
+        m = r.get("meta")
+        if isinstance(m, dict):
+            frame["meta"] = dict(m)
+        frames.append(frame)
+    return {"frames": frames}
+
 def main():
     scene = _make_scene()
     cfg   = _build_cfg()
@@ -105,27 +125,29 @@ def main():
     P_opt, info = solve_frame(scene, cfg, mode="lbfgs")
     print("[minimal_fit] done. final positions shape:", P_opt.shape)
 
+    payload = build_viz_payload(info)
+
     # Optional interactive viewer
     if interactive_view and cfg.get("viz.show", False):
-        # The viewer in this repo typically wants geometry lists
         lines_draw = [seg for seg in scene["lines"]]
         areas_draw = [a["polygon"] for a in scene["areas"]]
 
-        def dummy_force_getter(idx=None):
-            # Cheap placeholder: no live field recompute here (keep example light)
-            field = np.zeros((64, 64), dtype=float)
-            return {}, field, {}
+        frames = payload["frames"]
+        traj = np.stack([f["P"] for f in frames]) if frames else np.asarray([P_opt])
+
+        def _force(idx=None):
+            return frames[idx]["comps"] if frames else {}
 
         interactive_view(
-            traj=np.asarray([P_opt]),  # (T,N,2)
-            labels=scene["labels"],  # list[dict]，每个含 anchor_kind / anchor_index
-            rect_wh=scene["WH"],  # (N,2)
+            traj=traj,
+            labels=scene["labels"],
+            rect_wh=scene["WH"],
             points=scene["points"],
-            lines=[seg for seg in scene["lines"]],
-            areas=[a["polygon"] for a in scene["areas"]],
+            lines=lines_draw,
+            areas=areas_draw,
             W=scene["frame_size"][0],
             H=scene["frame_size"][1],
-            force_getter=dummy_force_getter,  # 允许 None；示例提供占位
+            force_getter=_force,
             field_kind=cfg.get("viz.field.kind", "heatmap"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
             actions=None,

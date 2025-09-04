@@ -81,6 +81,8 @@ def solve_layout_hybrid(
         logger.info("Hybrid stage: L-BFGS")
         current_stage = "lbfgs"
         P1, info1 = solve_layout_lbfgs(scene, cfg, record=_rec_stage)
+        for r in info1.get("history", {}).get("records", []):
+            r.setdefault("meta", {})["stage"] = "lbfgs"
         stages.append(("lbfgs", info1))
         _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
@@ -91,6 +93,8 @@ def solve_layout_hybrid(
         logger.info("Hybrid stage: Semi-Newton")
         current_stage = "semi"
         P2, info2 = solve_layout_semi_newton(sc, cfg)
+        for r in info2.get("history", {}).get("records", []):
+            r.setdefault("meta", {})["stage"] = "semi"
         stages.append(("semi", info2))
         _extend_history(info2, skip_first=True)
         P_cur = P2
@@ -101,6 +105,8 @@ def solve_layout_hybrid(
                 logger.info("Hybrid stage: L-BFGS polish")
                 current_stage = "lbfgs_polish"
                 P3, info3 = solve_layout_lbfgs(sc2, cfg, record=_rec_stage)
+                for r in info3.get("history", {}).get("records", []):
+                    r.setdefault("meta", {})["stage"] = "lbfgs_polish"
                 stages.append(("lbfgs_polish", info3))
                 _extend_history(info3, skip_first=True)
                 P_cur = P3
@@ -114,6 +120,8 @@ def solve_layout_hybrid(
         logger.info("Hybrid stage: Semi-Newton")
         current_stage = "semi"
         P1, info1 = solve_layout_semi_newton(scene, cfg)
+        for r in info1.get("history", {}).get("records", []):
+            r.setdefault("meta", {})["stage"] = "semi"
         stages.append(("semi", info1))
         _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
@@ -124,6 +132,8 @@ def solve_layout_hybrid(
         logger.info("Hybrid stage: L-BFGS")
         current_stage = "lbfgs"
         P2, info2 = solve_layout_lbfgs(sc, cfg, record=_rec_stage)
+        for r in info2.get("history", {}).get("records", []):
+            r.setdefault("meta", {})["stage"] = "lbfgs"
         stages.append(("lbfgs", info2))
         _extend_history(info2, skip_first=True)
         success = _grad_inf(sc, P2, cfg) <= gtol

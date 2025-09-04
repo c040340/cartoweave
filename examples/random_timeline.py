@@ -10,10 +10,11 @@ from __future__ import annotations
 from typing import Dict, Any
 import os
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('tkagg')
+
 from cartoweave.config.layering import load_base_cfg, apply_calib_profile, apply_shape_profile
 from cartoweave.data.random import generate_scene, save_scene, load_scene
-from cartoweave.orchestrators.timeline import run_timeline
+from cartoweave.orchestrators.timeline_runner import run_timeline
 import numpy as np
 
 try:  # optional viewer
@@ -67,29 +68,53 @@ def _build_schedule():
         {"name": "main_solve"},
     ]
 
+def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
+    """Adapt timeline runner output for the viewer."""
+
+    hist = info.get("history", {}) if isinstance(info, dict) else {}
+    recs = hist.get("records") or hist.get("evals") or []
+    frames: list[Dict[str, Any]] = []
+    boundaries: list[int] = []
+    last_action = None
+    for i, r in enumerate(recs):
+        meta = dict(r.get("meta", {}))
+        frame = {
+            "P": np.asarray(r.get("P"), float),
+            "comps": {k: np.asarray(v, float) for k, v in r.get("comps", {}).items()},
+            "meta": meta,
+        }
+        aid = meta.get("action_id")
+        if aid != last_action:
+            boundaries.append(i)
+            last_action = aid
+        frames.append(frame)
+    if frames:
+        boundaries.append(len(frames))
+    return {"frames": frames, "actions": info.get("actions", []), "boundaries": boundaries}
+
+
 def main():
     scene = _get_scene()
     cfg   = _build_cfg()
     schedule = _build_schedule()
 
-    # Use legacy orchestrator signature which takes the scene as the first
-    # argument and returns (P_final, info).
-    P_final, info = run_timeline(scene, cfg, schedule, mode="hybrid", carry_P=True)
+    result = run_timeline(scene, schedule, cfg)
+    P_final = result["P_final"]
     max_disp = float(np.abs(P_final - scene["labels_init"]).max())
-    print(
-        "[random_timeline] steps:", len(info.get("timeline", [])),
-        "labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}",
-    )
+    print("[random_timeline] steps:", len(schedule), "labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}")
+
+    payload = build_viz_payload(result)
 
     if interactive_view and cfg.get("viz.show", False):
         lines_draw = [seg for seg in scene["lines"]]
         areas_draw = [a["polygon"] for a in scene["areas"]]
 
-        def _dummy_force(idx=None):
-            field = np.zeros((64, 64), float)
-            return {}, field, {}
+        frames = payload["frames"]
+        traj = np.stack([f["P"] for f in frames]) if frames else np.stack([scene["labels_init"], P_final])
 
-        traj = np.stack([scene["labels_init"], P_final])  # (2,N,2)
+        def _force(idx=None):
+            return frames[idx]["comps"] if frames else {}
+
         interactive_view(
             traj=traj,
             labels=scene["labels"],
@@ -99,11 +124,11 @@ def main():
             areas=areas_draw,
             W=scene["frame_size"][0],
             H=scene["frame_size"][1],
-            force_getter=_dummy_force,
+            force_getter=_force,
             field_kind=cfg.get("viz.field.kind", "heatmap"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
-            actions=None,
-            boundaries=None,
+            actions=payload.get("actions"),
+            boundaries=payload.get("boundaries"),
         )
 
 if __name__ == "__main__":
