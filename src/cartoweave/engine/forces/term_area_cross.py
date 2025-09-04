@@ -11,6 +11,7 @@ from cartoweave.utils.kernels import (
 from cartoweave.utils.geometry import (
     project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
 )
+from cartoweave.utils.shape import as_nx2
 
 def segment_intersects_rect(ax, ay, bx, by, cx, cy, w, h, pad=0.0) -> bool:
     # simple AABB overlap with rectangle expanded by pad
@@ -26,7 +27,11 @@ def term_area_cross(scene, P: np.ndarray, cfg, phase="pre_anchor"):
 
     labels = scene.get("labels", [])
     areas  = scene.get("areas", [])
-    WH     = np.asarray(scene.get("WH", np.zeros_like(P)), float)
+    N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.zeros((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
 
     k_cross   = float(cfg.get("area.k.cross", 900.0))
     min_gap   = float(cfg.get("area.cross.min_gap", 1.5))

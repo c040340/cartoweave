@@ -6,14 +6,18 @@ from cartoweave.utils.kernels import (
     invdist_energy, invdist_force_mag,
     EPS_DIST, EPS_NORM, EPS_ABS,
 )
+from cartoweave.utils.shape import as_nx2
 
 @register("ll.rect")
 def term_ll_rect(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if phase != "pre_anchor" or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {}
 
-    WH = np.asarray(scene.get("WH", np.ones_like(P)), float)
-    N  = P.shape[0]
+    N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.ones((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
     F  = np.zeros_like(P)
     E  = 0.0
 

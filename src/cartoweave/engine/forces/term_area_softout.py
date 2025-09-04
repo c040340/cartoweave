@@ -14,6 +14,7 @@ from cartoweave.utils.geometry import (
 )
 
 from cartoweave.utils.numerics import softmin_weights_np
+from cartoweave.utils.shape import as_nx2
 
 @register("area.softout")
 def term_area_softout(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -22,7 +23,11 @@ def term_area_softout(scene, P: np.ndarray, cfg, phase="pre_anchor"):
 
     labels = scene.get("labels", [])
     areas  = scene.get("areas", [])
-    WH     = np.asarray(scene.get("WH", np.zeros_like(P)), float)
+    N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.zeros((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
 
     k_push     = float(cfg.get("area.k.softout", 250.0))
     min_gap    = float(cfg.get("area.softout.min_gap", 0.0))

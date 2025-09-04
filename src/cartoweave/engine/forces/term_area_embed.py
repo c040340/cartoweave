@@ -10,6 +10,7 @@ from cartoweave.utils.kernels import (
 from cartoweave.utils.geometry import (
     project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
 )
+from cartoweave.utils.shape import as_nx2
 
 from cartoweave.utils.numerics import (
     sigmoid_np, d_sigmoid_np, softabs_np, softmin_weights_np,
@@ -35,7 +36,11 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
 
     labels = scene.get("labels", [])
     areas  = scene.get("areas", [])
-    WH     = np.asarray(scene.get("WH", np.zeros_like(P)), float)
+    N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.zeros((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
 
     k_embed   = float(cfg.get("area.k.embed", 200.0))
     k_tan     = float(cfg.get("area.k.tan",   30.0))

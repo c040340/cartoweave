@@ -6,6 +6,7 @@ from cartoweave.utils.kernels import (
     invdist_energy, invdist_force_mag,
     EPS_DIST, EPS_NORM, EPS_ABS,
 )
+from cartoweave.utils.shape import as_nx2
 
 @register("pl.rect")
 def term_point_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -15,7 +16,11 @@ def term_point_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if pts is None or len(pts) == 0:
         return 0.0, np.zeros_like(P), {}
 
-    WH = np.asarray(scene.get("WH", np.ones_like(P)), float)
+    N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.ones((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
     pts = np.asarray(pts, float).reshape(-1,2)
     N, M = P.shape[0], pts.shape[0]
     F = np.zeros_like(P); E = 0.0

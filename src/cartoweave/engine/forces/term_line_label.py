@@ -7,6 +7,7 @@ from cartoweave.utils.kernels import (
     invdist_energy, invdist_force_mag,
     EPS_DIST, EPS_NORM, EPS_ABS,
 )
+from cartoweave.utils.shape import as_nx2
 
 @register("ln.rect")
 def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -17,7 +18,11 @@ def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         return 0.0, np.zeros_like(P), {}
 
     segs = np.asarray(segs, float).reshape(-1,4)
-    WH   = np.asarray(scene.get("WH", np.ones_like(P)), float)
+    N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.ones((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
     F    = np.zeros_like(P); E = 0.0
 
     k_out = float(cfg.get("ln.k.repulse", 0.0))

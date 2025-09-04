@@ -9,6 +9,7 @@ from cartoweave.utils.kernels import (
     invdist_energy, invdist_force_mag,
     EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
 )
+from cartoweave.utils.shape import as_nx2
 
 from cartoweave.utils.geometry import (
     project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
@@ -19,8 +20,11 @@ def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if phase != "pre_anchor" or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {}
 
-    WH = np.asarray(scene.get("WH", np.ones_like(P)), float)
     N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.ones((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
 
     k_out  = float(cfg.get("ll.k.repulse", 900.0))
     p      = float(cfg.get("ll.edge_power", 2.0))

@@ -8,6 +8,7 @@ from cartoweave.utils.kernels import (
     invdist_energy, invdist_force_mag,
     EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
 )
+from cartoweave.utils.shape import as_nx2
 
 @register("anchor.spring")
 def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
@@ -26,13 +27,16 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
 
     eps_n = float(cfg.get("eps.norm", EPS_NORM))
     N = P.shape[0]
+    A = as_nx2(A, N, "anchors")
     F = np.zeros_like(P)
     E = 0.0
 
     # 兜底方向：来自 pre_anchor 阶段的外力合力
     ext_dir = scene.get("_ext_dir")
     if ext_dir is None:
-        ext_dir = np.zeros_like(P)
+        ext_dir = np.zeros((N, 2))
+    else:
+        ext_dir = as_nx2(ext_dir, N, "ext_dir")
 
     for i in range(N):
         px, py = P[i]
