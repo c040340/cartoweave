@@ -84,7 +84,7 @@ physics:
   quick:
     point_spring:
       rest_mode: at_point_center   # at_point_center | offset_edge | anchor_param
-      rest_offset_px: 0
+      rest_offset_px: 60
     line_spring:
       rest_mode: at_anchor_projection
       edge_follow_span_pct: 30
