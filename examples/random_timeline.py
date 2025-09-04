@@ -3,18 +3,16 @@
 - Generates or loads a cached random scene.
 - Loads layered config and fills calibration strategy (fill-only).
 - Keeps calibration gates OFF for stable example output.
-- Runs a short 2-step timeline using the public API (orchestrator).
+- Runs a short 2-step timeline using the legacy orchestrator (auto-carries P).
 """
 
 from __future__ import annotations
 from typing import Dict, Any
 import os
-import numpy as np
 
 from cartoweave.config.layering import load_base_cfg, apply_calib_profile
 from cartoweave.data.random import generate_scene, save_scene, load_scene
 from cartoweave.orchestrators.timeline import run_timeline
-from cartoweave.engine.solvers.hybrid import solve_layout_hybrid as hybrid_solve
 
 _CACHE = os.environ.get("CARTOWEAVE_EXAMPLE_CACHE", "examples/_scene_cache.npz")
 
@@ -52,9 +50,15 @@ def main():
     cfg   = _build_cfg()
     schedule = _build_schedule()
 
-    results = run_timeline(schedule, cfg, hybrid_solve)  # 返回 [(P_out, info), ...]
-    last_P, last_info = results[-1]
-    print("[random_timeline] steps:", len(results), "last labels:", len(scene.get("labels", [])))
+    # Use legacy orchestrator signature which takes the scene as the first
+    # argument and returns (P_final, info).
+    P_final, info = run_timeline(scene, cfg, schedule, mode="hybrid", carry_P=True)
+    print(
+        "[random_timeline] steps:",
+        len(info.get("timeline", [])),
+        "labels:",
+        P_final.shape[0],
+    )
 
 if __name__ == "__main__":
     main()
