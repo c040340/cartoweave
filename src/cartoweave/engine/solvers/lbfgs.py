@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Callable
 import numpy as np
 from scipy.optimize import minimize
 
@@ -7,7 +7,12 @@ from ..core_eval import energy_and_grad_fullP
 from ...utils.logging import logger
 
 
-def solve_layout_lbfgs(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str, Any]]:
+def solve_layout_lbfgs(
+    scene,
+    cfg: Dict[str, Any],
+    record: Callable[[np.ndarray, float, Dict[str, np.ndarray], Dict[str, Any]], None]
+    | None = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
     labels_init = scene.get("labels_init")
     N = 0 if labels_init is None else labels_init.shape[0]
     logger.info("L-BFGS start n_labels=%d", N)
@@ -23,16 +28,23 @@ def solve_layout_lbfgs(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str
     x0 = labels_init.reshape(-1).astype(float)
 
     history = {"positions": [], "energies": [], "records": []}
+    _eval_counter = {"n": 0}
 
     def _recorder(P, E, comps, meta):
-        history["records"].append({
-            "P": P.copy(),
-            "E": float(E),
-            "comps": {k: v.copy() for k, v in comps.items()},
-            "meta": dict(meta) if meta else {},
-        })
+        history["records"].append(
+            {
+                "P": np.asarray(P, float).copy(),
+                "E": float(E),
+                "comps": {k: np.asarray(v, float).copy() for k, v in comps.items()},
+                "meta": dict(meta) if meta else {},
+                "eval_index": _eval_counter["n"],
+            }
+        )
+        if record is not None:
+            record(P, E, comps, meta)
 
     E0, _, _ = energy_and_grad_fullP(scene, labels_init, cfg, record=_recorder)
+    _eval_counter["n"] += 1
     history["positions"].append(np.asarray(labels_init, float).copy())
     history["energies"].append(float(E0))
     last_E = E0
@@ -41,8 +53,9 @@ def solve_layout_lbfgs(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str
         nonlocal last_E
         P = x.reshape(N, 2)
         E, G, _ = energy_and_grad_fullP(scene, P, cfg, record=_recorder)
+        _eval_counter["n"] += 1
         last_E = E
-        return E, G.reshape(-1)
+        return E, G.reshape(-1).astype(float)
 
     def callback(xk: np.ndarray):
         P = xk.reshape(N, 2)
@@ -55,3 +68,32 @@ def solve_layout_lbfgs(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str
     info = {"nit": res.nit, "nfev": res.nfev, "msg": res.message, "history": history}
     logger.info("L-BFGS done nit=%s nfev=%s", res.nit, res.nfev)
     return P_opt, info
+
+
+def run(
+    scene: Dict[str, Any],
+    P0: np.ndarray,
+    cfg: Dict[str, Any],
+    record: Callable[[np.ndarray, float, Dict[str, np.ndarray], Dict[str, Any]], None]
+    | None = None,
+    **kw,
+) -> Dict[str, Any]:
+    """Convenience wrapper used by tests and timeline orchestrators.
+
+    Parameters
+    ----------
+    scene:
+        Scene dictionary describing forces and geometry.
+    P0:
+        Initial label positions ``(N,2)``.
+    cfg:
+        Solver configuration dictionary.
+    record:
+        Optional callback invoked on every energy/gradient evaluation.
+    """
+
+    sc = dict(scene)
+    sc["labels_init"] = np.asarray(P0, float)
+    P_opt, info = solve_layout_lbfgs(sc, cfg, record=record)
+    info["P"] = P_opt
+    return info

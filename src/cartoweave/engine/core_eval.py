@@ -70,8 +70,11 @@ def energy_and_grad_fullP(
 
     # 记录钩子：保留每帧 P/E/分力分解/sources（与旧工程的 record 协议一致）:contentReference[oaicite:3]{index=3}
     if record is not None:
-        comps_copy = {k: v.copy() for k, v in comps.items()}
-        record(P.copy(), float(E_total), comps_copy, sources_merged)
+        comps_copy = {k: np.asarray(v, float).copy() for k, v in comps.items()}
+        meta = {"core": "energy_and_grad_fullP"}
+        if sources_merged:
+            meta.update(sources_merged)
+        record(P.copy(), float(E_total), comps_copy, meta)
 
     return float(E_total), g, {"sources": sources_merged}
 
