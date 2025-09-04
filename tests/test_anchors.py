@@ -18,7 +18,16 @@ def test_anchor_point_trivial():
 def test_anchor_line_lshape():
     poly = np.array([[0.0, 0.0], [100.0, 0.0], [100.0, 100.0]], float)
     qx, qy = anchor_xy("line", 0, {"lines": [poly]}, FS)
-    assert qx == 100.0 and qy == 50.0
+    assert qx == 100.0 and np.isclose(qy, 25.49019607843137)
+
+
+def test_anchor_line_folded_plus_tail():
+    poly = np.array(
+        [[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0], [0.0, 200.0]],
+        float,
+    )
+    qx, qy = anchor_xy("line", 0, {"lines": [poly]}, FS)
+    assert np.isclose(qx, 49.504950495049506) and qy == 100.0
 
 
 def test_anchor_area_centroid_projection():

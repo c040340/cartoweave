@@ -5,6 +5,7 @@ import numpy as np
 
 from .layout_utils.geometry import (
     project_point_to_polyline,
+    polyline_uniform_arc_centroid,
     area_anchor_from_centroid_nearest_edge,
 )
 from .utils.kernels import EPS_DIST
@@ -55,10 +56,24 @@ def anchor_xy(kind: str, index: int, data: Dict[str, Any], frame: Tuple[float, f
                 poly = _as_polyline(item)
         if poly is None:
             return (float("nan"), float("nan"), {}) if with_meta else (float("nan"), float("nan"))
-        mid = 0.5 * (poly[0] + poly[-1])
-        qx, qy, seg_i, t = project_point_to_polyline(mid[0], mid[1], poly)
-        meta = {"seg_index": seg_i, "t": t, "polyline": poly}
-        return (qx, qy, meta) if with_meta else (qx, qy)
+
+        C = polyline_uniform_arc_centroid(poly, step_len=4.0)
+        Q, tau, seg_i = project_point_to_polyline(C, poly)
+        base_n = np.array([-tau[1], tau[0]], float)
+        side = np.sign(np.dot(C - Q, base_n))
+        if side == 0.0:
+            side = 1.0
+        n = base_n * side
+        delta = 0.0
+        anchor = Q + delta * n
+        meta = {
+            "seg_index": seg_i,
+            "polyline": poly,
+            "tangent": (float(tau[0]), float(tau[1])),
+            "normal": (float(n[0]), float(n[1])),
+        }
+        ax, ay = float(anchor[0]), float(anchor[1])
+        return (ax, ay, meta) if with_meta else (ax, ay)
 
     if k == "area":
         areas = data.get("areas")
@@ -110,23 +125,27 @@ def init_position(
         vy /= L
         return np.array([ax + nudge * vx, ay + nudge * vy], float)
     if (kind or "").lower() == "line":
-        poly = None if meta is None else meta.get("polyline")
-        seg_i = 0 if meta is None else int(meta.get("seg_index", 0))
-        if poly is not None and poly.shape[0] >= 2:
-            x1, y1 = poly[seg_i]
-            x2, y2 = poly[(seg_i + 1) % poly.shape[0]]
-            dx = x2 - x1
-            dy = y2 - y1
-            L = math.hypot(dx, dy)
-            if L <= EPS_DIST:
-                tx, ty = 1.0, 0.0
-            else:
-                tx, ty = dx / L, dy / L
-            nx, ny = -ty, tx
-            if (cx - ax) * nx + (cy - ay) * ny < 0:
-                nx, ny = -nx, -ny
+        if meta is not None and "normal" in meta and "tangent" in meta:
+            nx, ny = meta["normal"]
+            tx, ty = meta["tangent"]
         else:
-            nx, ny = 0.0, 1.0
+            poly = None if meta is None else meta.get("polyline")
+            seg_i = 0 if meta is None else int(meta.get("seg_index", 0))
+            if poly is not None and poly.shape[0] >= 2:
+                x1, y1 = poly[seg_i]
+                x2, y2 = poly[(seg_i + 1) % poly.shape[0]]
+                dx = x2 - x1
+                dy = y2 - y1
+                L = math.hypot(dx, dy)
+                if L <= EPS_DIST:
+                    tx, ty = 1.0, 0.0
+                else:
+                    tx, ty = dx / L, dy / L
+                nx, ny = -ty, tx
+                if (cx - ax) * nx + (cy - ay) * ny < 0:
+                    nx, ny = -nx, -ny
+            else:
+                nx, ny = 0.0, 1.0
         return np.array([ax + nudge * nx, ay + nudge * ny], float)
     if (kind or "").lower() == "area":
         nx, ny = (0.0, 1.0)

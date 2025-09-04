@@ -114,7 +114,7 @@ physics:
     boundary: { k_boundary: 10.0, inverse_square_eps: 1e-3, outside_penalty: 2.0 }
     area_softout: { k: 6.0, width_px: 12.0, decay: 1.0 }
     area_cross:   { k: 10.0, width_px: 6.0, decay: 1.0 }
-    anchor: { k_anchor_spring: 40.0, falloff: 1.0, clip: 3.0 }
+    anchor: { k_anchor_spring: 40.0, falloff: 1.0, clip: 3.0, sample_step_len: 4.0, pad_line: 0.0 }
 
   # Scaling / dimensional balance
   scaling:

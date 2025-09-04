@@ -235,6 +235,8 @@ class Anchor:
     k_anchor_spring: float
     falloff: float
     clip: float
+    sample_step_len: float
+    pad_line: float
 
 @dataclass(frozen=True)
 class PhysicsTuning:

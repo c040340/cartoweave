@@ -302,6 +302,7 @@ def draw_layout(
                 [anchors[i, 1], y],
                 color=colors["anchor_line"],
                 lw=cfg["line_width"],
+                linestyle='--',
             )
             ax.scatter(anchors[i, 0], anchors[i, 1], marker='x', s=(cfg.get("anchor_marker_size", 4.0) * 2) ** 2,
                        c=colors["anchor_marker_edge"], lw=cfg["line_width"], zorder=4)
