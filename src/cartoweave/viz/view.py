@@ -458,33 +458,56 @@ def interactive_view(
         ars_step = src.get("areas", areas) if src else areas
 
         active_ids = list(active_getter(step)) if active_getter else list(range(N))
+        labs = [labels[i] for i in active_ids]
 
         if active_ids != list(range(N)):
             pts_arr = _as_vec2(pts_step)
-            if pts_arr is not None:
-                idx = [i for i in active_ids if i < len(pts_arr)]
-                if idx:
-                    pts_step = pts_arr[idx]
+            lns_arr = None if isinstance(lns_step, (list, tuple)) else _as_vec2(lns_step)
+            ars_arr = None if isinstance(ars_step, (list, tuple)) else _as_vec2(ars_step)
 
-            if isinstance(lns_step, (list, tuple)):
-                idx = [i for i in active_ids if i < len(lns_step)]
-                lns_step = [lns_step[i] for i in idx]
+            # Gather per-kind anchor indices for active labels
+            pts_idx: list[int] = []
+            lns_idx: list[int] = []
+            ars_idx: list[int] = []
+            for lab in labs:
+                kind = str(lab.get("anchor_kind", "")).lower()
+                idx = lab.get("anchor_index")
+                if not isinstance(idx, int):
+                    continue
+                if kind == "point":
+                    pts_idx.append(idx)
+                elif kind == "line":
+                    lns_idx.append(idx)
+                elif kind == "area":
+                    ars_idx.append(idx)
+
+            if pts_idx or lns_idx or ars_idx:
+                if pts_arr is not None:
+                    pts_step = pts_arr[[i for i in pts_idx if 0 <= i < len(pts_arr)]]
+                if isinstance(lns_step, (list, tuple)):
+                    lns_step = [lns_step[i] for i in lns_idx if 0 <= i < len(lns_step)]
+                elif lns_arr is not None:
+                    lns_step = lns_arr[[i for i in lns_idx if 0 <= i < len(lns_arr)]]
+                if isinstance(ars_step, (list, tuple)):
+                    ars_step = [ars_step[i] for i in ars_idx if 0 <= i < len(ars_step)]
+                elif ars_arr is not None:
+                    ars_step = ars_arr[[i for i in ars_idx if 0 <= i < len(ars_arr)]]
             else:
-                lns_arr = _as_vec2(lns_step)
-                if lns_arr is not None:
+                if pts_arr is not None:
+                    idx = [i for i in active_ids if i < len(pts_arr)]
+                    pts_step = pts_arr[idx] if idx else np.zeros((0, 2), float)
+                if isinstance(lns_step, (list, tuple)):
+                    idx = [i for i in active_ids if i < len(lns_step)]
+                    lns_step = [lns_step[i] for i in idx]
+                elif lns_arr is not None:
                     idx = [i for i in active_ids if i < len(lns_arr)]
-                    if idx:
-                        lns_step = lns_arr[idx]
-
-            if isinstance(ars_step, (list, tuple)):
-                idx = [i for i in active_ids if i < len(ars_step)]
-                ars_step = [ars_step[i] for i in idx]
-            else:
-                ars_arr = _as_vec2(ars_step)
-                if ars_arr is not None:
+                    lns_step = lns_arr[idx] if idx else np.zeros((0, 2), float)
+                if isinstance(ars_step, (list, tuple)):
+                    idx = [i for i in active_ids if i < len(ars_step)]
+                    ars_step = [ars_step[i] for i in idx]
+                elif ars_arr is not None:
                     idx = [i for i in active_ids if i < len(ars_arr)]
-                    if idx:
-                        ars_step = ars_arr[idx]
+                    ars_step = ars_arr[idx] if idx else np.zeros((0, 2), float)
 
             a_arr = src.get("anchors_xy")
             if a_arr is None:
@@ -502,7 +525,6 @@ def interactive_view(
                 src.pop("anchor_xy", None)
 
         pos_step = traj[step][active_ids]
-        labs = [labels[i] for i in active_ids]
         wh_step = rect_wh[active_ids]
         if active_ids == list(range(N)):
             forces = forces_raw

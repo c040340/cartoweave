@@ -22,7 +22,7 @@ def test_step_specific_geometry(monkeypatch):
     payload = build_viz_payload({"history": {"records": recs, "scene_steps": steps}})
     frames = payload["frames"]
     traj = np.zeros((2, 1, 2), float)
-    labels = [{}]
+    labels = [{"anchor_kind": "point", "anchor_index": 0}]
     rect_wh = np.ones((1, 2), float)
     captured = {}
 
@@ -59,7 +59,10 @@ def test_geometry_respects_active_ids(monkeypatch):
     payload = build_viz_payload({"history": {"records": recs, "scene_steps": steps}})
     frames = payload["frames"]
     traj = np.zeros((1, 2, 2), float)
-    labels = [{}, {}]
+    labels = [
+        {"anchor_kind": "point", "anchor_index": 0},
+        {"anchor_kind": "point", "anchor_index": 1},
+    ]
     rect_wh = np.ones((2, 2), float)
     captured = {}
 

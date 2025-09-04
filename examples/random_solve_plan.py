@@ -29,7 +29,7 @@ except Exception:  # pragma: no cover - viewer not installed
     interactive_view = None
 
 CACHE_PATH = os.environ.get("CARTOWEAVE_EXAMPLE_CACHE", "examples/_scene_cache.npz")
-GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "1")))
+GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "0")))
 
 
 def _build_cfg() -> Dict[str, Any]:
