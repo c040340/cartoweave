@@ -376,7 +376,11 @@ def _merge(base: Dict[str, Any], override: Dict[str, Any], path: Tuple[str, ...]
             diffs.append(f"{'.'.join(path + (k,))}: {old} -> {v}")
 
 
-def load_configs(config_path: str = "config.yaml", viz_path: str = "viz.yaml", run_path: str = "run.yaml") -> ConfigBundle:
+def load_configs(
+    config_path: str = "configs/config.yaml",
+    viz_path: str = "configs/viz.yaml",
+    run_path: str = "configs/run.yaml",
+) -> ConfigBundle:
     """Load config.yaml and viz.yaml, then shallow-merge optional run.yaml."""
     with open(config_path, "r", encoding="utf-8") as f:
         core_dict = yaml.safe_load(f) or {}

@@ -13,10 +13,10 @@ def write_yaml(path: Path, text: str):
 
 
 def test_unknown_key_rejection(tmp_path: Path):
-    cfg_text = Path("config.yaml").read_text() + "unknown: 5\n"
+    cfg_text = Path("configs/config.yaml").read_text() + "unknown: 5\n"
     cfg_path = tmp_path / "config.yaml"
     write_yaml(cfg_path, cfg_text)
-    viz_path = Path("viz.yaml")
+    viz_path = Path("configs/viz.yaml")
     try:
         load_configs(config_path=str(cfg_path), viz_path=str(viz_path))
     except KeyError as e:
@@ -26,8 +26,8 @@ def test_unknown_key_rejection(tmp_path: Path):
 
 
 def test_run_override_shallow(tmp_path: Path):
-    cfg_path = Path("config.yaml")
-    viz_path = Path("viz.yaml")
+    cfg_path = Path("configs/config.yaml")
+    viz_path = Path("configs/viz.yaml")
     run_text = """
 solver:
   tuning:
