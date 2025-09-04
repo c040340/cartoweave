@@ -129,15 +129,27 @@ def scalar_potential_field(
     xs = np.linspace(0.0, float(W), nx)
     ys = np.linspace(0.0, float(H), ny)
 
-    base = P.copy()
-    E0, _, _ = energy_and_grad_fullP(scene, base, cfg)
+    # Build a grid of probe positions for the selected label.  We evaluate the
+    # energy/forces for all points in one batch using a "shadow" copy of the
+    # scene.  This avoids mutating the original scene and prevents accidental
+    # in-place writes when the scene only provides single-label (1,2) arrays.
+    grid = np.stack(np.meshgrid(xs, ys), axis=-1).reshape(-1, 2)
+    M = grid.shape[0]
 
-    field = np.zeros((ny, nx), dtype=float)
-    for iy, y in enumerate(ys):
-        for ix, x in enumerate(xs):
-            probe = base.copy()
-            probe[label_index] = (x, y)
-            E, _, _ = energy_and_grad_fullP(scene, probe, cfg)
-            field[iy, ix] = E - E0
+    # Shadow scene with per-label quantities expanded to ``M`` rows.  Any
+    # per-label 2D arrays must follow the grid length to avoid shape clashes.
+    from cartoweave.utils.shape import as_nx2
+
+    sc = dict(scene)
+    sc["labels_init"] = grid
+    sc["WH"] = as_nx2(scene.get("WH", (10.0, 5.0)), M, "WH")
+    sc["anchors"] = as_nx2(scene.get("anchors", (0.0, 0.0)), M, "anchors")
+
+    # Evaluate forces/energy on the grid.  ``energy_and_grad_fullP`` returns the
+    # total energy and per-point gradient; we use the gradient norm as a scalar
+    # field which matches the expected output shape and dtype.
+    _, G, _ = energy_and_grad_fullP(sc, grid, cfg)
+    field = (G[:, 0] ** 2 + G[:, 1] ** 2) ** 0.5
+    field = field.reshape(ny, nx)
 
     return field
