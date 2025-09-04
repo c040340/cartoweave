@@ -5,13 +5,8 @@ import copy
 import numpy as np
 from cartoweave.api import solve_frame
 from ..utils.logging import logger
-from ..engine.calibration import (
-    apply_shape_profile,
-    auto_calibrate_k,
-    crowding_score,
-    should_recalibrate_k,
-    ema_update_k,
-)
+from cartoweave.config.layering import validate_cfg, snapshot
+from cartoweave.engine import calibration as calib
 
 Step = Dict[str, Any]
 Schedule = List[Step]
@@ -28,7 +23,7 @@ def _apply_overrides(base: Dict[str, Any], step: Step) -> Dict[str, Any]:
         cfg[k] = v
     return cfg
 
-def run_timeline(
+def _legacy_run_timeline(
     scene: Dict[str, Any],
     cfg: Dict[str, Any],
     schedule: Optional[Schedule] = None,
@@ -50,7 +45,8 @@ def run_timeline(
     # Apply shape profile once to the base configuration so every step starts
     # from the profiled parameters.  The helper tracks whether a profile has
     # already been applied via ``_shape_applied``.
-    apply_shape_profile(cfg_base, logger)
+    if cfg_base.get("calib.shape.enable", False):
+        calib.apply_shape_profile(cfg_base, logger)
 
     if schedule is None:
         schedule = [
@@ -71,7 +67,8 @@ def run_timeline(
         # Re-apply shape profile when the name changes between steps
         if cfg_step.get("calib.shape.name") != cfg_base.get("calib.shape.name"):
             cfg_step.pop("_shape_applied", None)
-        apply_shape_profile(cfg_step, logger)
+        if cfg_step.get("calib.shape.enable", False):
+            calib.apply_shape_profile(cfg_step, logger)
 
         logger.info("timeline step '%s' start", step_name)
 
@@ -79,10 +76,10 @@ def run_timeline(
             sc["labels_init"] = P  # 用上一步的解做初始值
 
         P0 = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float)
-        C = crowding_score(sc, P0, cfg_step)
-        if should_recalibrate_k(C, C_prev, {}, step, cfg_step):
-            k_hat = auto_calibrate_k(sc, P0, cfg_step, logger)
-            k_state = ema_update_k(
+        C = calib.crowding_score(sc, P0, cfg_step)
+        if calib.should_recalibrate_k(C, C_prev, {}, step, cfg_step):
+            k_hat = calib.auto_calibrate_k(sc, P0, cfg_step, logger)
+            k_state = calib.ema_update_k(
                 k_state, k_hat, cfg_step.get("calib.k.ema_alpha", 0.3)
             )
 
@@ -105,3 +102,66 @@ def run_timeline(
 
     logger.info("timeline done")
     return P, {"timeline": timeline}
+
+
+def _run_timeline_new(
+    schedule: List[Dict[str, Any]],
+    base_cfg: Dict[str, Any],
+    solver_fn: Callable[[Dict[str, Any], Dict[str, Any]], tuple],
+) -> List[tuple[np.ndarray, Dict[str, Any]]]:
+    """Simplified timeline used by tests with optional calibration hooks."""
+    cfg = dict(base_cfg)
+    validate_cfg(cfg, phase="load")
+    snapshot(cfg, "_snapshot_load")
+
+    k_state: Dict[str, float] = {}
+    C_prev: float | None = None
+    results: List[tuple[np.ndarray, Dict[str, Any]]] = []
+
+    for step_idx, step in enumerate(schedule):
+        cfg_step = dict(cfg)
+        cfg_step.update(step.get("overrides", {}))
+
+        validate_cfg(cfg_step, phase="action_begin")
+        snapshot(cfg_step, "_snapshot_action")
+
+        patched = 0
+        if cfg_step.get("calib.shape.enable", False):
+            patched = calib.apply_shape_profile_from_cfg(cfg_step)
+            if patched:
+                logger.info(
+                    f"[shape] applied profile={cfg_step.get('calib.shape.name')} patched={patched}"
+                )
+
+        C = calib.crowding_score(step.get("scene", {}), step.get("P0", None), cfg_step)
+        if cfg_step.get("calib.k.enable", False):
+            if calib.should_recalibrate_k(C, C_prev, None, step, cfg_step):
+                k_hat = calib.auto_calibrate_k(
+                    step.get("scene", {}), step.get("P0", None), cfg_step
+                )
+                if k_hat:
+                    k_state = calib.ema_update_k(
+                        k_state, k_hat, cfg_step.get("calib.k.ema_alpha", 0.3)
+                    )
+                    for k, v in k_state.items():
+                        if k in cfg_step:
+                            cfg_step[k] = v
+                    logger.info(
+                        f"[timeline] action={step_idx} k-recalibrated keys={list(k_hat.keys())}"
+                    )
+
+        P_out, info = solver_fn(step.get("scene", {}), cfg_step)
+        results.append((P_out, info))
+
+        C_prev = C
+        cfg = cfg_step
+
+    return results
+
+
+def run_timeline(*args, **kwargs):
+    """Dispatch to the new or legacy timeline orchestrator."""
+    if args and isinstance(args[0], list):
+        schedule, base_cfg, solver_fn = args[0], args[1], args[2]
+        return _run_timeline_new(schedule, base_cfg, solver_fn)
+    return _legacy_run_timeline(*args, **kwargs)
