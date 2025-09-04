@@ -17,8 +17,9 @@ Phase A diagnostics:
 from __future__ import annotations
 from typing import Dict, Any, Tuple, List
 import numpy as np
-import matplotlib
-matplotlib.use('tkagg')
+
+from cartoweave.viz.backend import use_compatible_backend
+use_compatible_backend()
 
 from cartoweave.api import solve_frame
 from cartoweave.config.layering import load_base_cfg, apply_calib_profile, apply_shape_profile

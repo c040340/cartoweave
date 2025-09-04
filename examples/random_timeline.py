@@ -9,8 +9,9 @@
 from __future__ import annotations
 from typing import Dict, Any
 import os
-import matplotlib
-matplotlib.use('tkagg')
+
+from cartoweave.viz.backend import use_compatible_backend
+use_compatible_backend()
 
 from cartoweave.config.layering import load_base_cfg, apply_calib_profile, apply_shape_profile
 from cartoweave.data.random import generate_scene, save_scene, load_scene
