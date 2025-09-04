@@ -1,167 +1,99 @@
-# src/cartoweave/orchestrators/solve_plan.py
 from __future__ import annotations
-from typing import Dict, Any, List, Callable, Optional
-import copy
+from typing import Dict, Any, List, Callable
 import numpy as np
-from cartoweave.api import solve_frame
-from ..utils.logging import logger
-from cartoweave.config.layering import validate_cfg, snapshot
-from cartoweave.engine import calibration as calib
+
+from cartoweave.engine.solvers import lbfgs
 
 Stage = Dict[str, Any]
-SolvePlan = List[Stage]
 
-def _apply_overrides(base: Dict[str, Any], step: Stage) -> Dict[str, Any]:
-    """返回一个新的 cfg：先复制 base，再按 step 的 scale/override 应用."""
-    cfg = dict(base)  # 浅拷贝即可（值都是标量/ndarray）
-    # 1) scale: { "ll.k.repulse": 0.5, "anchor.k.spring": 0.0, ... }
-    for k, s in step.get("scale", {}).items():
+
+def _apply_stage_cfg(base: Dict[str, Any], stage: Stage) -> Dict[str, Any]:
+    cfg = dict(base)
+    for k, s in stage.get("scale", {}).items():
         if k in cfg and isinstance(cfg[k], (int, float)):
             cfg[k] = float(cfg[k]) * float(s)
-    # 2) override: 直接覆盖某些键
-    for k, v in step.get("override", {}).items():
+    for k, v in stage.get("override", {}).items():
         cfg[k] = v
     return cfg
 
-def _legacy_run_solve_plan(
+
+def run_solve_plan(
     scene: Dict[str, Any],
     cfg: Dict[str, Any],
-    plan: Optional[SolvePlan] = None,
+    plan: List[Stage],
     *,
-    mode: str = "hybrid",
+    mode: str = "lbfgs",
     carry_P: bool = True,
-) -> tuple[np.ndarray, Dict[str, Any]]:
+    record: Callable[[np.ndarray, float, Dict[str, np.ndarray], Dict[str, Any]], None]
+    | None = None,
+):
+    """Execute a simple multi-stage solve plan.
+
+    Parameters
+    ----------
+    scene:
+        Base scene dictionary shared by all stages.
+    cfg:
+        Base solver/physics configuration dictionary.
+    plan:
+        Sequence of stage dictionaries supporting optional ``scale`` and
+        ``override`` keys.
+    mode:
+        Solver mode.  Only ``"lbfgs"`` is implemented in this minimal runner.
+    carry_P:
+        If True, the result of one stage seeds the next stage's ``labels_init``.
+    record:
+        Optional callback receiving per-evaluation snapshots.
     """
-    执行时间线（多阶段）编排：
-    - scene/cfg: 原始输入（不会原地修改）
-    - schedule: 形如 [{"name": "...", "scale": {...}, "override": {...}}, ...]
-      若为 None，使用一个合理默认（pre_anchor 先不拉锚，随后正常求解）
-    - mode: 透传给 solve_frame（默认走现有 hybrid：半牛→LBFGS）
-    - carry_P: 每步把上一阶段的解作为下一阶段 labels_init
-    返回：(P_final, info)，其中 info["timeline"] 记录每步的信息
-    """
-    sc = copy.deepcopy(scene)
-    cfg_base = dict(cfg)
-    # Apply shape profile once to the base configuration so every step starts
-    # from the profiled parameters.  The helper tracks whether a profile has
-    # already been applied via ``_shape_applied``.
-    if cfg_base.get("calib.shape.enable", False):
-        calib.apply_shape_profile(cfg_base, logger)
 
-    if plan is None:
-        plan = [
-            {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}},
-            {"name": "main_solve"},
-        ]
+    if mode not in {"lbfgs", "hybrid", "semi_newton"}:
+        raise NotImplementedError(f"Unsupported mode: {mode}")
+    if not plan:
+        raise ValueError("run_solve_plan received empty solve_plan")
 
-    logger.info("timeline start %d steps mode=%s", len(plan), mode)
-    solve_plan_meta = []
-    P = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float).copy()
+    sc = dict(scene)
+    P_cur = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float)
+    history_pos: List[np.ndarray] = []
+    history_E: List[float] = []
+    history_rec: List[Dict[str, Any]] = []
+    stages_meta: List[Dict[str, Any]] = []
 
-    k_state: Dict[str, float] = {}
-    C_prev: float | None = None
-
-    for step in plan:
-        step_name = step.get("name", "step")
-        cfg_step = _apply_overrides(cfg_base, step)
-        # Re-apply shape profile when the name changes between steps
-        if cfg_step.get("calib.shape.name") != cfg_base.get("calib.shape.name"):
-            cfg_step.pop("_shape_applied", None)
-        if cfg_step.get("calib.shape.enable", False):
-            calib.apply_shape_profile(cfg_step, logger)
-
-        logger.info("timeline step '%s' start", step_name)
-
+    for stage_idx, stage in enumerate(plan):
+        cfg_stage = _apply_stage_cfg(cfg, stage)
+        stage_name = stage.get("name", f"stage_{stage_idx}")
         if carry_P:
-            sc["labels_init"] = P  # 用上一步的解做初始值
+            sc["labels_init"] = P_cur
 
-        P0 = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float)
-        C = calib.crowding_score(sc, P0, cfg_step)
-        if calib.should_recalibrate_k(C, C_prev, {}, step, cfg_step):
-            k_hat = calib.auto_calibrate_k(sc, P0, cfg_step, logger)
-            k_state = calib.ema_update_k(
-                k_state, k_hat, cfg_step.get("calib.k.ema_alpha", 0.3)
-            )
+        def _rec(P, E, comps, meta):
+            meta = dict(meta) if meta else {}
+            meta.setdefault("stage_id", stage_idx)
+            meta.setdefault("stage_name", stage_name)
+            if record:
+                record(P, E, comps, meta)
 
-        for kname, v in k_state.items():
-            if kname in cfg_step:
-                cfg_step[kname] = v
+        info = lbfgs.run(sc, sc["labels_init"], cfg_stage, record=_rec)
+        P_cur = info.get("P", P_cur)
+        hist = info.get("history", {})
+        pos = list(hist.get("positions", []))
+        eng = list(hist.get("energies", []))
+        rec = list(hist.get("records", []))
+        for r in rec:
+            meta = r.setdefault("meta", {})
+            meta.setdefault("stage_id", stage_idx)
+            meta.setdefault("stage_name", stage_name)
+        if history_pos:
+            if pos:
+                pos = pos[1:]
+                eng = eng[1:]
+                rec = rec[1:]
+        history_pos.extend(pos)
+        history_E.extend(eng)
+        history_rec.extend(rec)
+        stages_meta.append({"name": stage_name})
 
-        P_step, info_step = solve_frame(sc, cfg_step, mode=mode)
-
-        # 记录关键信息（可按需扩展）
-        solve_plan_meta.append({
-            "name": step_name,
-            "n_labels": int(P_step.shape[0]),
-            "stage_info": info_step,  # 里面含 stage1/2 L-BFGS 的迭代统计
-            "cfg_diff": step,  # 记录本阶段与 base 的差异
-        })
-        P = P_step
-        C_prev = C
-        logger.info("timeline step '%s' done", step_name)
-
-    logger.info("timeline done")
-    return P, {"solve_plan": solve_plan_meta}
-
-
-def _run_solve_plan_new(
-    plan: List[Dict[str, Any]],
-    base_cfg: Dict[str, Any],
-    solver_fn: Callable[[Dict[str, Any], Dict[str, Any]], tuple],
-) -> List[tuple[np.ndarray, Dict[str, Any]]]:
-    """Simplified timeline used by tests with optional calibration hooks."""
-    cfg = dict(base_cfg)
-    validate_cfg(cfg, phase="load")
-    snapshot(cfg, "_snapshot_load")
-
-    k_state: Dict[str, float] = {}
-    C_prev: float | None = None
-    results: List[tuple[np.ndarray, Dict[str, Any]]] = []
-
-    for step_idx, step in enumerate(plan):
-        cfg_step = dict(cfg)
-        cfg_step.update(step.get("overrides", {}))
-
-        validate_cfg(cfg_step, phase="action_begin")
-        snapshot(cfg_step, "_snapshot_action")
-
-        patched = 0
-        if cfg_step.get("calib.shape.enable", False):
-            patched = calib.apply_shape_profile_from_cfg(cfg_step)
-            if patched:
-                logger.info(
-                    f"[shape] applied profile={cfg_step.get('calib.shape.name')} patched={patched}"
-                )
-
-        C = calib.crowding_score(step.get("scene", {}), step.get("P0", None), cfg_step)
-        if cfg_step.get("calib.k.enable", False):
-            if calib.should_recalibrate_k(C, C_prev, None, step, cfg_step):
-                k_hat = calib.auto_calibrate_k(
-                    step.get("scene", {}), step.get("P0", None), cfg_step
-                )
-                if k_hat:
-                    k_state = calib.ema_update_k(
-                        k_state, k_hat, cfg_step.get("calib.k.ema_alpha", 0.3)
-                    )
-                    for k, v in k_state.items():
-                        if k in cfg_step:
-                            cfg_step[k] = v
-                    logger.info(
-                        f"[timeline] action={step_idx} k-recalibrated keys={list(k_hat.keys())}"
-                    )
-
-        P_out, info = solver_fn(step.get("scene", {}), cfg_step)
-        results.append((P_out, info))
-
-        C_prev = C
-        cfg = cfg_step
-
-    return results
+    history = {"positions": history_pos, "energies": history_E, "records": history_rec}
+    info = {"solve_plan": stages_meta, "history": history}
+    return P_cur, info
 
 
-def run_solve_plan(*args, **kwargs):
-    """Dispatch to the new or legacy timeline orchestrator."""
-    if args and isinstance(args[0], list):
-        plan, base_cfg, solver_fn = args[0], args[1], args[2]
-        return _run_solve_plan_new(plan, base_cfg, solver_fn)
-    return _legacy_run_solve_plan(*args, **kwargs)
+__all__ = ["run_solve_plan"]

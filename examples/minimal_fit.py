@@ -1,7 +1,7 @@
 """Minimal end-to-end example (config-compatible, T1–T7).
 
 - Builds a tiny scene with three labels (point/line/area anchors).
-- Loads config via layered presets.
+- Provides a hand-rolled configuration dictionary.
 - Fills calibration strategy (fill-only) but keeps all calibration gates OFF by default.
 - Solves one frame with LBFGS and (optionally) opens the viewer if cfg says so.
 
@@ -24,7 +24,6 @@ from cartoweave.viz.backend import use_compatible_backend
 use_compatible_backend()
 
 from cartoweave.api import solve_frame
-from cartoweave.config.layering import load_base_cfg, apply_calib_profile, apply_shape_profile
 
 try:
     # optional viz
@@ -79,35 +78,24 @@ def _make_scene() -> Dict[str, Any]:
     )
 
 def _build_cfg() -> Dict[str, Any]:
-    cfg = load_base_cfg()
+    """Return a minimal configuration dictionary for the example.
 
-    # Fill calibration strategy dicts (target_rel/trigger/quantiles/limits)
-    # but DO NOT turn calibration on in the example:
-    apply_calib_profile(cfg, cfg.get("calib.k.profile", "default"), fill_only=True)
+    The previous version depended on a layered configuration package.  To
+    keep the example lightweight and self-contained, we now construct the
+    few required parameters directly.
+    """
 
-    # Apply a shape profile once so default forces are present; keep dynamic
-    # calibration gates off for deterministic, lightweight examples.
-    apply_shape_profile(cfg, cfg.get("calib.shape.name", "default"), enable=True)
-    cfg["calib.shape.enable"] = False
-    cfg["calib.k.enable"]     = False
-
-    # Seed basic force weights so the solver actually moves labels.
-    cfg.update({
+    return {
         "ll.k.repulse": 150.0,
         "pl.k.repulse": 200.0,
         "ln.k.repulse": 180.0,
         "boundary.k.wall": 80.0,
         "anchor.k.spring": 10.0,
-    })
-
-    # Optional viewer knobs (safe defaults). If you don’t use viewer, ignore these.
-    cfg["viz.show"] = True
-    cfg["viz.field.kind"] = cfg.get("viz.field.kind", "heatmap")   # "3d" | "heatmap"
-    cfg["viz.field.cmap"] = cfg.get("viz.field.cmap", "viridis")
-
-    # Typical solver hint
-    cfg["engine.max_iter_hint"] = cfg.get("engine.max_iter_hint", 200)
-    return cfg
+        "viz.show": False,
+        "viz.field.kind": "heatmap",
+        "viz.field.cmap": "viridis",
+        "engine.max_iter_hint": 200,
+    }
 
 
 def main():

@@ -1,7 +1,7 @@
 """Random scene + short solve plan using scene script.
 
 - Generates or loads a cached random scene and its scene script.
-- Loads layered config with calibration profiles turned off for determinism.
+- Uses a hand-crafted configuration with calibration disabled for determinism.
 - Executes a two-stage solve plan over all script steps.
 """
 
@@ -16,11 +16,6 @@ from cartoweave.viz.backend import use_compatible_backend
 
 use_compatible_backend()
 
-from cartoweave.config.layering import (
-    load_base_cfg,
-    apply_calib_profile,
-    apply_shape_profile,
-)
 from cartoweave.data.random import get_scene
 from cartoweave.api import solve_scene_script
 
@@ -34,43 +29,34 @@ GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "0")))
 
 
 def _build_cfg() -> Dict[str, Any]:
-    cfg = load_base_cfg()
-    apply_calib_profile(cfg, cfg.get("calib.k.profile", "default"), fill_only=True)
+    """Return a tiny configuration dictionary for the example.
 
-    # Apply one shape profile so base forces exist but keep gates OFF for
-    # deterministic lightweight runs.
-    apply_shape_profile(cfg, cfg.get("calib.shape.name", "default"), enable=True)
-    cfg["calib.shape.enable"] = False
-    cfg["calib.k.enable"] = False
+    This mirrors the values previously obtained from the removed configuration
+    module but keeps the example self-contained.
+    """
 
-    # Basic force weights so the plan run yields non-trivial results.
-    cfg.update(
-        {
-            "ll.k.repulse": 150.0,
-            "pl.k.repulse": 200.0,
-            "ln.k.repulse": 180.0,
-            "boundary.k.wall": 80.0,
-            "anchor.k.spring": 10.0,
-        }
-    )
-
-    # Viewer flags (examples should not pop UI by default)
-    cfg["viz.show"] = True
-    cfg["viz.field.kind"] = cfg.get("viz.field.kind", "heatmap")
-    cfg["viz.field.cmap"] = cfg.get("viz.field.cmap", "viridis")
-    return cfg
+    return {
+        "ll.k.repulse": 150.0,
+        "pl.k.repulse": 200.0,
+        "ln.k.repulse": 180.0,
+        "boundary.k.wall": 80.0,
+        "anchor.k.spring": 10.0,
+        "viz.show": True,
+        "viz.field.kind": "heatmap",
+        "viz.field.cmap": "viridis",
+    }
 
 
-def build_random_schema(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
-    """Return a trivial schema describing the example's two stages."""
+def build_random_plan(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
+    """Return a trivial specification describing the example's two stages."""
 
     return {"stages": build_solve_plan(scene, cfg)}
 
 
-def compile_solve_plan(schema: Dict[str, Any], cfg: Dict[str, Any] | None = None):
-    """Compile a schema into a concrete solve plan."""
+def compile_solve_plan(spec: Dict[str, Any], cfg: Dict[str, Any] | None = None):
+    """Compile a specification into a concrete solve plan."""
 
-    plan = list(schema.get("stages", [])) if isinstance(schema, dict) else []
+    plan = list(spec.get("stages", [])) if isinstance(spec, dict) else []
     if not plan:
         raise ValueError("empty solve_plan content in random_solve_plan example")
     return plan

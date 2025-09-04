@@ -13,7 +13,7 @@ without rebuilding common infrastructure.
 ## Features
 
 * Pluggable force-based engine for point, line and area labels
-* Config presets for common layouts (`default_cfg`, `focus_only_cfg`, etc.)
+* Example configurations for common layouts
 * Multiple solvers: L-BFGS, semi-Newton and a hybrid strategy
 * Timeline orchestrator that runs multi-stage schedules across frames
 * Random scene generator for demos and tests
@@ -30,8 +30,6 @@ pip install -e .
 
 ```python
 from cartoweave.api import solve_frame
-from cartoweave.config.presets import default_cfg
-from cartoweave.config.utils import merge, viz
 import numpy as np
 
 scene = {
@@ -58,7 +56,6 @@ demonstrates the interactive viewer when ``viz.show`` is set to ``True``.
 ## Project layout
 
 * `cartoweave/api.py` – public API for solving a single frame or a timeline
-* `cartoweave/config` – utilities and presets for force constants
 * `cartoweave/engine` – energy evaluation and numerical solvers
 * `cartoweave/orchestrators` – multi-phase timeline runner
 * `cartoweave/data` – random scene and timeline generators
@@ -110,8 +107,6 @@ pip install -e .
 
 ```python
 from cartoweave.api import solve_frame
-from cartoweave.config.presets import default_cfg
-from cartoweave.config.utils import merge, viz
 import numpy as np
 
 scene = {
@@ -138,7 +133,6 @@ P_opt, info = solve_frame(scene, cfg)
 ## 项目结构
 
 * `cartoweave/api.py` – 用于求解单帧或时间线的公共 API；
-* `cartoweave/config` – 力常数的工具函数和预设；
 * `cartoweave/engine` – 能量评估和数值求解器；
 * `cartoweave/orchestrators` – 多阶段时间线运行器；
 * `cartoweave/data` – 随机场景和时间线生成器；

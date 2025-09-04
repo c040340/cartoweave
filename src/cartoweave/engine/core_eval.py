@@ -146,7 +146,7 @@ def scalar_potential_field(
     if P.ndim != 2 or P.shape[1] != 2:
         raise ValueError("P must be of shape (N,2)")
 
-    from cartoweave.config.utils import lock_viz_field
+    from .config_utils import lock_viz_field
 
     W, H = scene.get("frame_size", (1.0, 1.0))
 

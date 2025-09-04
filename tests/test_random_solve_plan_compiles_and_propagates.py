@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-import numpy as np
 
 
 def _tiny_scene():
@@ -19,13 +18,13 @@ def _tiny_scene():
 def test_random_solve_plan_builds_and_propagates(monkeypatch):
     try:
         from examples.random_solve_plan import (
-            build_random_schema,
+            build_random_plan,
             compile_solve_plan,
             run_example_headless,
         )
         scene = _tiny_scene()
-        schema = build_random_schema(scene, cfg={})
-        plan = compile_solve_plan(schema, cfg={})
+        spec = build_random_plan(scene, cfg={})
+        plan = compile_solve_plan(spec, cfg={})
         assert isinstance(plan, list) and len(plan) > 0
         info = run_example_headless(scene, plan, cfg={})
     except Exception:

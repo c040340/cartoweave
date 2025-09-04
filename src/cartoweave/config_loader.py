@@ -1,4 +1,4 @@
-"""Loading configuration files with a strict schema.
+"""Loading configuration files with a strict structure.
 """
 from __future__ import annotations
 
@@ -302,6 +302,12 @@ class CoreConfig:
 class VizLayout:
     grid: List[int]
     aspect_mode: str
+    line_width: float
+    area_face_alpha: float
+    area_edge_width: float
+    label_edge_width: float
+    label_fontsize: int
+    anchor_marker_size: float
 
 @dataclass(frozen=True)
 class VizExportVideo:
@@ -313,6 +319,16 @@ class VizExportVideo:
 class VizExport:
     out_dir: str
     video: VizExportVideo
+
+@dataclass(frozen=True)
+class VizForces:
+    colors: Dict[str, str]
+    component_arrow_scale: float
+    component_arrow_lw: float
+    component_fontsize: int
+    total_arrow_scale: float
+    total_arrow_lw: float
+
 
 @dataclass(frozen=True)
 class VizConfig:
@@ -328,6 +344,7 @@ class VizConfig:
     colors: Dict[str, str]
     alpha: Dict[str, float]
     zorder: Dict[str, int]
+    forces: VizForces
     force_vectors: Dict[str, Any]
     force_breakdown: Dict[str, Any]
     surface3d: Dict[str, Any]

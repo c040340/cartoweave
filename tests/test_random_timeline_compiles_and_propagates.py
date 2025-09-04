@@ -24,13 +24,13 @@ def test_random_timeline_builds_and_propagates(monkeypatch):
     scene = _tiny_scene()
     try:
         from examples.random_solve_plan import (
-            build_random_schema,
+            build_random_plan,
             compile_solve_plan,
             run_example_headless,
         )
 
-        schema = build_random_schema(scene, cfg={})
-        plan = compile_solve_plan(schema, cfg={})
+        spec = build_random_plan(scene, cfg={})
+        plan = compile_solve_plan(spec, cfg={})
         assert isinstance(plan, list) and len(plan) > 0
         info = run_example_headless(scene, plan, cfg={})
     except Exception:

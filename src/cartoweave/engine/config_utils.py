@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 from ..config_loader import CoreConfig
 
@@ -37,3 +37,23 @@ def get_focus_params(cfg: CoreConfig, frame_size: Tuple[int, int]) -> FocusParam
     )
 
 __all__ = ["get_enabled_terms", "get_focus_params", "FocusParams"]
+
+
+def lock_viz_field(cfg: Dict[str, Any], scene: Dict[str, Any], nx: int | None = None) -> None:
+    """Populate legacy viz.field keys based on frame size.
+
+    This is a lightweight stand-in for the old configuration helper.  It
+    computes ``viz.field.aspect`` as well as the derived ``viz.field.nx`` and
+    ``viz.field.ny`` entries based on the scene's frame dimensions.
+    """
+
+    w, h = scene.get("frame_size", (1.0, 1.0))
+    if nx is None:
+        nx = int(cfg.get("viz.field.resolution", 100))
+    nx = int(nx)
+    cfg["viz.field.aspect"] = (float(w), float(h))
+    cfg["viz.field.nx"] = nx
+    cfg["viz.field.ny"] = int(round(nx * float(h) / float(w)))
+
+
+__all__.append("lock_viz_field")
