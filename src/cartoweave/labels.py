@@ -11,16 +11,8 @@ from .utils.kernels import EPS_DIST
 
 
 def _as_polyline(obj: Any) -> Optional[np.ndarray]:
-    if isinstance(obj, np.ndarray):
-        arr = np.asarray(obj, float)
-        if arr.ndim == 2 and arr.shape[1] == 2:
-            return arr
-        if arr.ndim == 2 and arr.shape[1] == 4:
-            arr2 = np.stack([arr[:, :2], arr[:, 2:]], axis=1)
-            return arr2
-        if arr.ndim == 1 and arr.shape[0] == 4:
-            return arr.reshape(2, 2)
-    if isinstance(obj, (list, tuple)):
+    """Return ``obj`` as a ``(N,2)`` float array if possible."""
+    if isinstance(obj, (np.ndarray, list, tuple)):
         arr = np.asarray(obj, float)
         if arr.ndim == 2 and arr.shape[1] == 2:
             return arr
@@ -53,11 +45,14 @@ def anchor_xy(kind: str, index: int, data: Dict[str, Any], frame: Tuple[float, f
         lines = data.get("lines")
         poly = None
         if isinstance(lines, np.ndarray):
-            if lines.ndim == 2 and lines.shape[1] == 4 and 0 <= index < lines.shape[0]:
-                seg = lines[index]
-                poly = np.array([[seg[0], seg[1]], [seg[2], seg[3]]], float)
+            if lines.ndim == 3 and lines.shape[2] == 2 and 0 <= index < lines.shape[0]:
+                poly = lines[index]
         elif isinstance(lines, (list, tuple)) and 0 <= index < len(lines):
-            poly = _as_polyline(lines[index])
+            item = lines[index]
+            if isinstance(item, dict):
+                poly = _as_polyline(item.get("polyline"))
+            else:
+                poly = _as_polyline(item)
         if poly is None:
             return (float("nan"), float("nan"), {}) if with_meta else (float("nan"), float("nan"))
         mid = 0.5 * (poly[0] + poly[-1])

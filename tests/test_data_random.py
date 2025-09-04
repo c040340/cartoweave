@@ -21,7 +21,7 @@ def _compare_scene(a, b):
 def test_generate_scene_minimum_shape():
     data = generate_scene(canvas_size=(640,480), n_points=5, n_lines=1, n_areas=1, seed=123)
     assert data["points"].shape == (5,2)
-    assert data["lines"].shape[0] == 1
+    assert data["lines"].shape == (1,2,2)
     assert len(data["areas"]) == 1
     n_labels = 5 + 1 + 1
     assert data["labels_init"].shape == (n_labels,2)

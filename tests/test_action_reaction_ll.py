@@ -13,7 +13,7 @@ def test_ll_global_force_zero(geom):
         frame=0, frame_size=(1000,1000),
         labels_init=P0, WH=WH,
         labels=[{"anchor_kind":"none"}]*4,
-        points=np.zeros((0,2)), lines=np.zeros((0,4)),
+        points=np.zeros((0,2)), lines=np.zeros((0,2,2)),
         areas=np.zeros((0,6)), anchors=np.zeros((4,2)),
     )
     cfg = {"ll.geom": geom, "ll.k.repulse": 200.0, "ll.k.inside": 50.0}

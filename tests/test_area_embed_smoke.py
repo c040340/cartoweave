@@ -20,7 +20,7 @@ def test_area_embed_smoke():
             WH=WH.copy(),
             labels=[{"anchor_kind":"area","anchor_index":0}],
             areas=[{"polygon": poly}],
-            points=np.zeros((0,2)), lines=np.zeros((0,4)),
+            points=np.zeros((0,2)), lines=np.zeros((0,2,2)),
             anchors=np.zeros((1,2)),
         )
         cfg = {

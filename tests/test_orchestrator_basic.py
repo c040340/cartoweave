@@ -8,7 +8,7 @@ def make_scene():
         WH=np.array([[60.,24.],[60.,24.]], float),
         labels=[{"anchor_kind":"none"},{"anchor_kind":"none"}],
         points=np.zeros((0,2), float),
-        lines=np.zeros((0,4), float),
+        lines=np.zeros((0,2,2), float),
         areas=[],
         anchors=np.array([[180.,150.],[220.,150.]], float),
     )

@@ -76,6 +76,14 @@ def _as_vec2(a: Any) -> Optional[np.ndarray]:
     return None
 
 
+def _assert_vec2(arr: Any, name: str) -> np.ndarray:
+    """Assert that ``arr`` is a ``(N,2)`` float array."""
+    arr = np.asarray(arr, float)
+    if not (arr.ndim == 2 and arr.shape[1] == 2):
+        raise ValueError(f"{name} must be (N,2), got shape={arr.shape}")
+    return arr
+
+
 def _compute_anchors(
     labels: Sequence[Dict[str, Any]],
     *,
@@ -577,8 +585,22 @@ def interactive_view(
         else:
             forces = {k: np.asarray(v, float)[active_ids] for k, v in forces_raw.items()}
 
+        pts_arr = _assert_vec2(pts_step, "points") if pts_step is not None else np.zeros((0, 2), float)
+        lns_list = None
+        if lns_step is not None:
+            iterable = lns_step if isinstance(lns_step, (list, tuple)) else lns_step
+            lns_list = [_assert_vec2(pl, "line") for pl in iterable]
+        ars_list = None
+        if ars_step is not None:
+            iterable = ars_step if isinstance(ars_step, (list, tuple)) else ars_step
+            ars_list = []
+            for poly in iterable:
+                if isinstance(poly, dict):
+                    poly = poly.get("polygon")
+                ars_list.append(_assert_vec2(poly, "area"))
+
         anchors = _compute_anchors(
-            labs, points=pts_step, lines=lns_step, areas=ars_step, sources=src
+            labs, points=pts_arr, lines=lns_list, areas=ars_list, sources=src
         )
 
         if selected >= len(active_ids):
@@ -591,9 +613,9 @@ def interactive_view(
             wh_step,
             frame_w=W,
             frame_h=H,
-            points=pts_step,
-            lines=lns_step,
-            areas=ars_step,
+            points=pts_arr,
+            lines=lns_list,
+            areas=ars_list,
             anchors=anchors,
         )
         label_id = _label_name(labs[selected], selected)

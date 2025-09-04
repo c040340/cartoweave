@@ -8,7 +8,7 @@ def test_focus_huber_anisotropy():
         labels_init=np.array([[300., 300.]], float),
         WH=np.array([[60., 24.]], float),
         labels=[{"anchor_kind":"none"}],
-        points=np.zeros((0,2)), lines=np.zeros((0,4)),
+        points=np.zeros((0,2)), lines=np.zeros((0,2,2)),
         areas=np.zeros((0,6)), anchors=np.zeros((1,2)),
     )
     cfg = {

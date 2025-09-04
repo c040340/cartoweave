@@ -37,7 +37,7 @@ def test_ll_rect_action_reaction():
         frame=0, frame_size=(1000, 1000),
         labels_init=np.array([[100., 100.], [140., 100.], [120., 130.]], float),
         WH=np.array([[60., 24.], [60., 24.], [60., 24.]], float),
-        points=np.zeros((0, 2)), lines=np.zeros((0, 4)), areas=np.zeros((0, 6)),
+        points=np.zeros((0, 2)), lines=np.zeros((0, 2, 2)), areas=np.zeros((0, 6)),
         anchors=np.zeros((3, 2)),
     )
     cfg = {"ll.geom": "rect", "ll.k.repulse": 200.0, "ll.k.inside": 50.0}
@@ -61,7 +61,7 @@ def test_pl_rect_translation_invariance():
         labels_init=np.array([[300., 300.], [360., 320.]], float),
         WH=np.array([[80., 28.], [80., 28.]], float),
         points=np.array([[330., 300.], [450., 350.]], float),
-        lines=np.zeros((0, 4)), areas=np.zeros((0, 6)),
+        lines=np.zeros((0, 2, 2)), areas=np.zeros((0, 6)),
         anchors=np.zeros((2, 2)),
     )
     cfg = {"pl.k.repulse": 200.0, "pl.k.inside": 50.0}

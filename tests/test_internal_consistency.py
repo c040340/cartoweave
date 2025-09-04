@@ -20,7 +20,7 @@ def test_sumF_plus_grad_zero_anchor_ll_boundary():
         labels_init=np.array([[200., 150.], [212., 152.]], float),
         WH=np.array([[60., 24.], [60., 24.]], float),
         anchors=np.array([[180., 150.], [220., 150.]], float),
-        points=np.zeros((0, 2)), lines=np.zeros((0, 4)), areas=np.zeros((0, 6)),
+        points=np.zeros((0, 2)), lines=np.zeros((0, 2, 2)), areas=np.zeros((0, 6)),
     )
     cfg = {
         "anchor.k.spring": 10.0,

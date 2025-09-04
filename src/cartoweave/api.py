@@ -20,7 +20,7 @@ def solve_frame(
       - frame: int
       - frame_size: tuple[int,int]  (W,H)
       - points: (Np,2) float
-      - lines:  (Nl,4) float  (placeholder format)
+      - lines:  (Nl,2,2) float polylines
       - areas:  (Na, >= 6) float (placeholder packed polygon)
       - labels_init: (N,2) float (optional)
     """

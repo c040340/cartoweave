@@ -20,7 +20,7 @@ def make_scene(points):
         WH=np.array([[60.,24.]], float),
         labels=[{"anchor_kind":"none"}],
         points=points,
-        lines=np.zeros((0,4), float), areas=[],
+        lines=np.zeros((0,2,2), float), areas=[],
         anchors=np.zeros((1,2), float),
     )
 

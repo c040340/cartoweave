@@ -40,7 +40,7 @@ def test_area_embed_fd():
         WH=np.array([[80., 28.]], float),
         labels=[{"anchor_kind":"area","anchor_index":0}],
         areas=[{"polygon": poly}],
-        points=np.zeros((0,2)), lines=np.zeros((0,4)),
+        points=np.zeros((0,2)), lines=np.zeros((0,2,2)),
         anchors=np.zeros((1,2)),
     )
     cfg = {
@@ -60,7 +60,7 @@ def test_area_cross_fd_logcosh():
         WH=np.array([[80., 28.],[80., 28.]], float),
         labels=[{"anchor_kind":"none"},{"anchor_kind":"none"}],  # 不绑定 area
         areas=[{"polygon": poly}],
-        points=np.zeros((0,2)), lines=np.zeros((0,4)),
+        points=np.zeros((0,2)), lines=np.zeros((0,2,2)),
         anchors=np.zeros((2,2)),
     )
     cfg = {

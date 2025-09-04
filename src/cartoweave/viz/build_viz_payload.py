@@ -53,7 +53,7 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
             arr = np.asarray(seg, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
                 lns.append(arr)
-        if not lns_raw:
+        if len(lns) == 0:
             lns = None
 
         ars_raw = src.get("areas")
@@ -64,7 +64,7 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
             arr = np.asarray(poly, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
                 ars.append(arr)
-        if not ars_raw:
+        if len(ars) == 0:
             ars = None
 
         act_viz = list(steps_raw[step_idx].get("active_ids_viz", [])) if steps_raw else list(range(len(labels_all)))

@@ -23,7 +23,9 @@ def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if segs is None or len(segs) == 0:
         return 0.0, np.zeros_like(P), {}
 
-    segs = np.asarray(segs, float).reshape(-1,4)
+    segs = np.asarray(segs, float)
+    if not (segs.ndim == 3 and segs.shape[1:] == (2, 2)):
+        raise ValueError(f"lines must have shape (N,2,2), got {segs.shape}")
     N = P.shape[0]
     WH = np.asarray(scene.get("WH"), float)
     assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
@@ -51,7 +53,8 @@ def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         w, h = float(WH[i, 0]), float(WH[i, 1])
         cx, cy = float(P[i, 0]), float(P[i, 1])
         for s in segs:
-            ax, ay, bx, by = map(float, s)
+            ax, ay = float(s[0, 0]), float(s[0, 1])
+            bx, by = float(s[1, 0]), float(s[1, 1])
             qx, qy, t, tx, ty = project_point_to_segment(cx, cy, ax, ay, bx, by)
             nx, ny = -ty, tx   # 线段左法向
 

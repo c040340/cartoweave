@@ -67,7 +67,7 @@ def base_scene():
         WH=np.array([[60., 24.], [60., 24.]], float),
         anchors=np.array([[180., 150.], [220., 150.]], float),
         points=np.array([[190., 150.]], float),
-        lines=np.array([[100., 140., 300., 140.]], float),
+        lines=np.array([[[100., 140.], [300., 140.]]], float),
         areas=np.zeros((0, 6)),
     )
 

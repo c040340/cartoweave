@@ -142,7 +142,7 @@ def generate_scene(
     arrays expected by the solver directly:
 
     - ``points``: ``(Np,2)`` float array.
-    - ``lines``: ``(Nl,4)`` float array of simple segments ``(x0,y0,x1,y1)``.
+    - ``lines``: ``(Nl,2,2)`` float array of simple segment polylines.
     - ``areas``: list of dicts with ``{"polygon": np.ndarray}``.
     - ``labels_init``/``WH``/``anchors``: arrays for every label (one per
       element) so the solver can be invoked without any extra conversion step.
@@ -159,15 +159,18 @@ def generate_scene(
             for _ in range(n_points - len(pts_xy))
         ]
         pts_xy += extras
-    pts_xy = np.array(pts_xy[:n_points], float)
+    if n_points > 0:
+        pts_xy = np.stack(pts_xy[:n_points]).astype(float)
+    else:
+        pts_xy = np.zeros((0, 2), float)
 
     # ---- lines (as simple segments) ------------------------------------
-    line_segs: List[List[float]] = []
+    line_segs: List[List[List[float]]] = []
     for _ in range(n_lines):
         a = np.random.uniform(0, 1, size=2) * [W, H]
         b = np.random.uniform(0, 1, size=2) * [W, H]
-        line_segs.append([float(a[0]), float(a[1]), float(b[0]), float(b[1])])
-    lines = np.array(line_segs, float).reshape(-1, 4)
+        line_segs.append([[float(a[0]), float(a[1])], [float(b[0]), float(b[1])]])
+    lines = np.array(line_segs, float)
 
     # ---- areas ---------------------------------------------------------
     areas: List[Dict[str, Any]] = []
@@ -358,7 +361,7 @@ def get_scene(
             return False
 
         n_pts = data.get("points", np.zeros((0, 2))).shape[0]
-        n_lines = data.get("lines", np.zeros((0, 4))).shape[0]
+        n_lines = data.get("lines", np.zeros((0, 2, 2))).shape[0]
         n_areas = len(data.get("areas", []))
 
         pts = [{"id": f"p{i}"} for i in range(n_pts)]
