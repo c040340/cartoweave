@@ -1,0 +1,27 @@
+LL_EDGE_POWER          = "ll.edge_power"
+BOUNDARY_WALL_POWER    = "boundary.wall_power"
+BETA_SOFTPLUS_DIST     = "beta.softplus.dist"
+ANCHOR_SPRING_ALPHA    = "anchor.spring.alpha"
+EPS_ABS                = "eps.abs"
+
+FOCUS_K_ATTRACT        = "focus.k.attract"
+LL_K_REPULSE           = "ll.k.repulse"
+BOUNDARY_K_WALL        = "boundary.k.wall"
+
+CALIB_SHAPE_ENABLE     = "calib.shape.enable"
+CALIB_SHAPE_NAME       = "calib.shape.name"
+CALIB_SHAPE_SIGMA      = "calib.shape.sigma_scale"
+
+CALIB_K_ENABLE         = "calib.k.enable"
+CALIB_K_CLIP_Q         = "calib.k.clip_q"
+CALIB_K_P_Q            = "calib.k.p_q"
+CALIB_K_MIN_ACT        = "calib.k.min_act"
+CALIB_K_HYSTERESIS     = "calib.k.hysteresis"
+CALIB_K_CLAMP_MIN      = "calib.k.clamp_min"
+CALIB_K_CLAMP_MAX      = "calib.k.clamp_max"
+CALIB_K_BASE_TERM      = "calib.k.base_term"
+
+CALIB_TRIG_ENABLE      = "calib.trigger.enable"
+CALIB_TRIG_TAU_ON      = "calib.trigger.tau_on"
+CALIB_TRIG_TAU_OFF     = "calib.trigger.tau_off"
+CALIB_TRIG_DELTA       = "calib.trigger.delta"
