@@ -10,6 +10,7 @@ from typing import Dict, Any
 import os
 import numpy as np
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
+from cartoweave.viz.metrics import collect_solver_metrics  # noqa: E402
 
 from cartoweave.viz.backend import use_compatible_backend
 
@@ -144,6 +145,26 @@ def main():
         def _active(idx=None):
             return frames[idx].get("active_ids_viz", list(range(len(scene["labels"])))) if frames else list(range(len(scene["labels"])))
 
+        def _metrics(idx=None):
+            if not frames:
+                return {}
+            i = 0 if idx is None else int(idx)
+            frm = frames[i]
+            comps = frm.get("comps", {})
+            total = np.zeros_like(frm.get("P"), dtype=float)
+            for arr in comps.values():
+                if arr is not None:
+                    total += np.asarray(arr, float)
+            solver_info = frm.get("meta", {}).get("solver_info", {})
+            return collect_solver_metrics(
+                frm.get("P"),
+                total,
+                comps,
+                scene.get("labels", []),
+                solver_info,
+                cfg,
+            )
+
         interactive_view(
             traj=traj,
             labels=scene["labels"],
@@ -154,6 +175,7 @@ def main():
             W=scene["frame_size"][0],
             H=scene["frame_size"][1],
             force_getter=_force,
+            metrics_getter=_metrics,
             active_getter=_active,
             field_kind=cfg.get("viz.field.kind", "heatmap"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),

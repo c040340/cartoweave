@@ -59,6 +59,11 @@ def solve_layout_hybrid(
         m = {"stage": current_stage}
         if meta:
             m.update(meta)
+        si = dict(m.get("solver_info", {}))
+        si["solver"] = "hybrid"
+        si["stage"] = current_stage
+        si["gtol"] = gtol
+        m["solver_info"] = si
         if record:
             record(P, E, comps, m)
 
@@ -77,12 +82,21 @@ def solve_layout_hybrid(
         history_E.extend(eng)
         history_rec.extend(rec)
 
+    def _annotate(info: Dict[str, Any], stage_name: str) -> None:
+        for r in info.get("history", {}).get("records", []):
+            meta = r.setdefault("meta", {})
+            si = dict(meta.get("solver_info", {}))
+            si["solver"] = "hybrid"
+            si["stage"] = stage_name
+            si["gtol"] = gtol
+            meta["solver_info"] = si
+            meta.setdefault("stage", stage_name)
+
     if first == "lbfgs":
         logger.info("Hybrid stage: L-BFGS")
         current_stage = "lbfgs"
         P1, info1 = solve_layout_lbfgs(scene, cfg, record=_rec_stage)
-        for r in info1.get("history", {}).get("records", []):
-            r.setdefault("meta", {})["stage"] = "lbfgs"
+        _annotate(info1, "lbfgs")
         stages.append(("lbfgs", info1))
         _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
@@ -93,8 +107,7 @@ def solve_layout_hybrid(
         logger.info("Hybrid stage: Semi-Newton")
         current_stage = "semi"
         P2, info2 = solve_layout_semi_newton(sc, cfg)
-        for r in info2.get("history", {}).get("records", []):
-            r.setdefault("meta", {})["stage"] = "semi"
+        _annotate(info2, "semi")
         stages.append(("semi", info2))
         _extend_history(info2, skip_first=True)
         P_cur = P2
@@ -105,8 +118,7 @@ def solve_layout_hybrid(
                 logger.info("Hybrid stage: L-BFGS polish")
                 current_stage = "lbfgs_polish"
                 P3, info3 = solve_layout_lbfgs(sc2, cfg, record=_rec_stage)
-                for r in info3.get("history", {}).get("records", []):
-                    r.setdefault("meta", {})["stage"] = "lbfgs_polish"
+                _annotate(info3, "lbfgs_polish")
                 stages.append(("lbfgs_polish", info3))
                 _extend_history(info3, skip_first=True)
                 P_cur = P3
@@ -120,8 +132,7 @@ def solve_layout_hybrid(
         logger.info("Hybrid stage: Semi-Newton")
         current_stage = "semi"
         P1, info1 = solve_layout_semi_newton(scene, cfg)
-        for r in info1.get("history", {}).get("records", []):
-            r.setdefault("meta", {})["stage"] = "semi"
+        _annotate(info1, "semi")
         stages.append(("semi", info1))
         _extend_history(info1, skip_first=False)
         if _grad_inf(scene, P1, cfg) <= gtol:
@@ -132,8 +143,7 @@ def solve_layout_hybrid(
         logger.info("Hybrid stage: L-BFGS")
         current_stage = "lbfgs"
         P2, info2 = solve_layout_lbfgs(sc, cfg, record=_rec_stage)
-        for r in info2.get("history", {}).get("records", []):
-            r.setdefault("meta", {})["stage"] = "lbfgs"
+        _annotate(info2, "lbfgs")
         stages.append(("lbfgs", info2))
         _extend_history(info2, skip_first=True)
         success = _grad_inf(sc, P2, cfg) <= gtol

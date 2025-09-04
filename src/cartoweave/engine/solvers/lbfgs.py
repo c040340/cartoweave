@@ -7,6 +7,11 @@ from ..core_eval import energy_and_grad_fullP
 from ...utils.logging import logger
 
 
+def _cfg(cfg: Dict[str, Any], key: str, default):
+    """Read ``key`` from ``cfg`` without raising on missing entries."""
+    return cfg[key] if key in cfg else default
+
+
 def solve_layout_lbfgs(
     scene,
     cfg: Dict[str, Any],
@@ -52,18 +57,42 @@ def solve_layout_lbfgs(
         if record is not None:
             record(P, E, comps, meta)
 
-    E0, _, _ = energy_and_grad_fullP(scene, labels_init, cfg, record=_recorder)
+    pgtol = float(_cfg(cfg, "lbfgs_pgtol", 1e-3))
+    maxiter = int(_cfg(cfg, "lbfgs_maxiter", 150))
+
+    E0, G0, _ = energy_and_grad_fullP(scene, labels_init, cfg, record=_recorder)
+    g0 = float(np.linalg.norm(G0, np.inf))
     _eval_counter["n"] += 1
     history["positions"].append(np.asarray(labels_init, float).copy())
     history["energies"].append(float(E0))
     last_E = E0
+    meta0 = history["records"][-1].setdefault("meta", {})
+    meta0["solver_info"] = {
+        "solver": "lbfgs",
+        "g_inf": g0,
+        "gtol": pgtol,
+        "iter": 0,
+        "iter_max": maxiter,
+    }
+
+    last_g = g0
 
     def fun(x: np.ndarray):
-        nonlocal last_E
+        nonlocal last_E, last_g
         P = x.reshape(N, 2)
         E, G, _ = energy_and_grad_fullP(scene, P, cfg, record=_recorder)
+        g = float(np.linalg.norm(G, np.inf))
         _eval_counter["n"] += 1
+        meta = history["records"][-1].setdefault("meta", {})
+        meta["solver_info"] = {
+            "solver": "lbfgs",
+            "g_inf": g,
+            "gtol": pgtol,
+            "iter": _eval_counter["n"],
+            "iter_max": maxiter,
+        }
         last_E = E
+        last_g = g
         return E, G.reshape(-1).astype(float)
 
     def callback(xk: np.ndarray):
@@ -72,9 +101,23 @@ def solve_layout_lbfgs(
         history["energies"].append(float(last_E))
         logger.debug("L-BFGS iter %d E=%.6g", len(history["energies"]) - 1, float(last_E))
 
-    res = minimize(fun, x0, jac=True, method="L-BFGS-B", callback=callback)
+    res = minimize(
+        fun,
+        x0,
+        jac=True,
+        method="L-BFGS-B",
+        callback=callback,
+        options={"maxiter": maxiter, "gtol": pgtol},
+    )
     P_opt = res.x.reshape(N, 2)
-    info = {"nit": res.nit, "nfev": res.nfev, "msg": res.message, "history": history}
+    info = {
+        "nit": res.nit,
+        "nfev": res.nfev,
+        "msg": res.message,
+        "history": history,
+        "g_inf": last_g,
+        "gtol": pgtol,
+    }
     logger.info("L-BFGS done nit=%s nfev=%s", res.nit, res.nfev)
     return P_opt, info
 

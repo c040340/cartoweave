@@ -113,6 +113,14 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
         history["positions"].append(P.copy())
         history["energies"].append(float(E))
         g_inf = float(np.linalg.norm(g_mov, np.inf))
+        meta = history["records"][-1].setdefault("meta", {})
+        meta["solver_info"] = {
+            "solver": "semi",
+            "g_inf": g_inf,
+            "gtol": gtol,
+            "iter": it,
+            "iter_max": max_outer,
+        }
         logger.debug("Semi-Newton iter %d E=%.6g g_inf=%.6g", it, float(E), g_inf)
         if g_inf <= gtol:
             info = {"nit": it, "success": True, "g_inf": g_inf, "history": history}
@@ -152,6 +160,14 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
     history["positions"].append(P.copy())
     history["energies"].append(float(E_final))
     g_inf_final = float(np.linalg.norm(g_mov_final, np.inf))
+    meta = history["records"][-1].setdefault("meta", {})
+    meta["solver_info"] = {
+        "solver": "semi",
+        "g_inf": g_inf_final,
+        "gtol": gtol,
+        "iter": max_outer,
+        "iter_max": max_outer,
+    }
     info = {
         "nit": max_outer,
         "success": g_inf_final <= gtol,

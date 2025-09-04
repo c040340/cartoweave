@@ -199,31 +199,39 @@ def interactive_view(
         global_tot: tuple[float, float],
         d_pair: Optional[tuple[float, float]],
         label_name: str,
-    ) -> list[tuple[str, str, int]]:
-        rows: list[tuple[str, str, int]] = []
+    ) -> list[tuple]:
+        rows: list[tuple] = []
         if metrics_getter is not None:
             try:
                 m = metrics_getter(step) or {}
-                factr = float(m.get("factr", 0.0))
-                epsmch = float(m.get("epsmch", 2.220446049250313e-16))
-                thresh = factr * epsmch if factr > 0 else float("nan")
+                ui = m.get("ui", {})
+                f_style = ui.get("F_style", {})
+                g_style = ui.get("g_style", {})
+                f_ratio = ui.get("F_ratio")
+                g_ratio = ui.get("g_ratio")
                 rows.append(
                     (
-                        f"iter={m.get('iter','?')}  f={_fmt_sci3(m.get('f',np.nan))}  Δf={_fmt_sci3(m.get('df',np.nan))}  Δf/f={float(m.get('rel_df',float('nan'))):.2e}",
-                        THEME["global_text"],
+                        f"|F|_inf = {float(m.get('F_inf', float('nan'))):.3e} / F_tol = {float(m.get('F_tol', float('nan'))):.3e}  (r={float(f_ratio):.2f})",
+                        f_style.get("color", THEME["global_text"]),
                         GLOBAL_FS,
+                        f_style,
                     )
                 )
                 rows.append(
                     (
-                        f"||g||_inf={float(m.get('gnorm_inf', float('nan'))):.2e}   thresh={_fmt_sci3(thresh)}   α={_fmt_sci3(m.get('alpha', np.nan))}   ls={int(m.get('ls', 0))}",
+                        f"g_inf   = {float(m.get('g_inf', float('nan'))):.3e} / gtol  = {float(m.get('gtol', float('nan'))):.3e}   (r={float(g_ratio):.2f})",
+                        g_style.get("color", THEME["global_text"]),
+                        GLOBAL_FS,
+                        g_style,
+                    )
+                )
+                rows.append(
+                    (
+                        f"iter = {m.get('iter', '?')}/{m.get('iter_max', '?')}   solver={m.get('solver', '?')}  stage={m.get('stage', '')}",
                         THEME["global_text"],
                         GLOBAL_FS,
                     )
                 )
-                ts = str(m.get('task', '')).strip()
-                if ts:
-                    rows.append((f"task={ts}", THEME["global_text"], GLOBAL_FS))
             except Exception:
                 pass
 
@@ -279,11 +287,17 @@ def interactive_view(
                 )
         return rows
 
-    def _draw_info(ax: plt.Axes, rows: list[tuple[str, str, int]]) -> None:
+    def _draw_info(ax: plt.Axes, rows: list[tuple]) -> None:
         ax.clear()
         ax.set_xticks([])
         ax.set_yticks([])
-        for i, (text, color, size) in enumerate(rows):
+        for i, row in enumerate(rows):
+            if len(row) == 4:
+                text, color, size, style = row
+            else:
+                text, color, size = row
+                style = {}
+            weight = "bold" if style.get("bold") else "normal"
             ax.text(
                 0.01,
                 0.99 - i * 0.065,
@@ -294,6 +308,7 @@ def interactive_view(
                 family="monospace",
                 fontsize=size,
                 transform=ax.transAxes,
+                fontweight=weight,
             )
 
     # ------------------------------------------------------------------
