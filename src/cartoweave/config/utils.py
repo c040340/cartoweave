@@ -45,6 +45,31 @@ _ALLOWED_KEYS = {
     "viz.show", "viz.field.kind", "viz.field.cmap", "viz.field.resolution",
 }
 
+_ALLOWED_KEYS.update({
+    # shape
+    "calib.shape.enable",
+    "calib.shape.name",
+    "calib.shape.sigma_scale",
+
+    # k-only calibration
+    "calib.k.enable",
+    "calib.k.profile",
+    "calib.k.base_term",
+    "calib.k.clip_q",
+    "calib.k.p_q",
+    "calib.k.min_act",
+    "calib.k.hysteresis",
+    "calib.k.clamp_min",
+    "calib.k.clamp_max",
+    "calib.k.ema_alpha",
+
+    # trigger
+    "calib.trigger.enable",
+    "calib.trigger.tau_on",
+    "calib.trigger.tau_off",
+    "calib.trigger.delta",
+})
+
 def report(source_topk: int = 0) -> Dict[str, Any]:
     """信息记录相关参数，目前只用到 source.topk（0 表示不截断）"""
     return {"source.topk": int(source_topk)}
