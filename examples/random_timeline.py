@@ -9,17 +9,28 @@
 from __future__ import annotations
 from typing import Dict, Any
 import os
-
-from cartoweave.config.layering import load_base_cfg, apply_calib_profile
+import matplotlib
+matplotlib.use('TkAgg')
+from cartoweave.config.layering import load_base_cfg, apply_calib_profile, apply_shape_profile
 from cartoweave.data.random import generate_scene, save_scene, load_scene
 from cartoweave.orchestrators.timeline import run_timeline
+import numpy as np
+
+try:  # optional viewer
+    from cartoweave.viz.view import interactive_view
+except Exception:  # pragma: no cover - viewer not installed
+    interactive_view = None
 
 _CACHE = os.environ.get("CARTOWEAVE_EXAMPLE_CACHE", "examples/_scene_cache.npz")
 
 def _get_scene() -> Dict[str, Any]:
+    """Load cached scene if valid; otherwise regenerate."""
     if os.path.exists(_CACHE):
-        return load_scene(_CACHE)
-    data = generate_scene(canvas_size=(1920, 1080),
+        data = load_scene(_CACHE)
+        required = {"labels_init", "WH", "anchors", "labels"}
+        if required.issubset(data.keys()):
+            return data
+    data = generate_scene(canvas_size=(1080, 1920),
                           n_points=12, n_lines=2, n_areas=1, seed=42)
     save_scene(data, _CACHE)
     return data
@@ -28,9 +39,20 @@ def _build_cfg() -> Dict[str, Any]:
     cfg = load_base_cfg()
     apply_calib_profile(cfg, cfg.get("calib.k.profile", "default"), fill_only=True)
 
-    # Keep gates OFF in examples:
+    # Apply one shape profile so base forces exist but keep gates OFF for
+    # deterministic lightweight runs.
+    apply_shape_profile(cfg, cfg.get("calib.shape.name", "default"), enable=True)
     cfg["calib.shape.enable"] = False
     cfg["calib.k.enable"]     = False
+
+    # Basic force weights so the timeline run yields non-trivial results.
+    cfg.update({
+        "ll.k.repulse": 150.0,
+        "pl.k.repulse": 200.0,
+        "ln.k.repulse": 180.0,
+        "boundary.k.wall": 80.0,
+        "anchor.k.spring": 10.0,
+    })
 
     # Viewer flags (examples should not pop UI by default)
     cfg["viz.show"] = True
@@ -53,12 +75,36 @@ def main():
     # Use legacy orchestrator signature which takes the scene as the first
     # argument and returns (P_final, info).
     P_final, info = run_timeline(scene, cfg, schedule, mode="hybrid", carry_P=True)
+    max_disp = float(np.abs(P_final - scene["labels_init"]).max())
     print(
-        "[random_timeline] steps:",
-        len(info.get("timeline", [])),
-        "labels:",
-        P_final.shape[0],
+        "[random_timeline] steps:", len(info.get("timeline", [])),
+        "labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}",
     )
+
+    if interactive_view and cfg.get("viz.show", False):
+        lines_draw = [seg for seg in scene["lines"]]
+        areas_draw = [a["polygon"] for a in scene["areas"]]
+
+        def _dummy_force(idx=None):
+            field = np.zeros((64, 64), float)
+            return {}, field, {}
+
+        traj = np.stack([scene["labels_init"], P_final])  # (2,N,2)
+        interactive_view(
+            traj=traj,
+            labels=scene["labels"],
+            rect_wh=scene["WH"],
+            points=scene["points"],
+            lines=lines_draw,
+            areas=areas_draw,
+            W=scene["frame_size"][0],
+            H=scene["frame_size"][1],
+            force_getter=_dummy_force,
+            field_kind=cfg.get("viz.field.kind", "heatmap"),
+            field_cmap=cfg.get("viz.field.cmap", "viridis"),
+            actions=None,
+            boundaries=None,
+        )
 
 if __name__ == "__main__":
     main()

@@ -11,7 +11,7 @@ from typing import Dict, Any, Tuple, List
 import numpy as np
 
 from cartoweave.api import solve_frame
-from cartoweave.config.layering import load_base_cfg, apply_calib_profile
+from cartoweave.config.layering import load_base_cfg, apply_calib_profile, apply_shape_profile
 
 try:
     # optional viz
@@ -46,6 +46,12 @@ def _make_scene() -> Dict[str, Any]:
         {"anchor_kind": "area",  "anchor_index": 0},
     ]
 
+    anchors = np.vstack([
+        points[0],
+        lines[0].mean(axis=0),
+        areas[0]["polygon"].mean(axis=0),
+    ])
+
     return dict(
         frame=0,
         frame_size=frame_size,
@@ -55,8 +61,8 @@ def _make_scene() -> Dict[str, Any]:
         labels_init=P0,
         WH=WH,
         labels=labels,
-        # Some viewers in this repo expect these derived fields; add conservative defaults:
-        anchors={"points": points, "lines": lines, "areas": [a["polygon"] for a in areas]},
+        anchors=anchors,
+        # Some viewers expect these size bounds; add conservative defaults:
         WH_min=np.minimum(WH, WH),  # placeholder
         WH_max=np.maximum(WH, WH),  # placeholder
     )
@@ -68,9 +74,20 @@ def _build_cfg() -> Dict[str, Any]:
     # but DO NOT turn calibration on in the example:
     apply_calib_profile(cfg, cfg.get("calib.k.profile", "default"), fill_only=True)
 
-    # Keep shape/k calibration OFF so examples are deterministic and lightweight.
+    # Apply a shape profile once so default forces are present; keep dynamic
+    # calibration gates off for deterministic, lightweight examples.
+    apply_shape_profile(cfg, cfg.get("calib.shape.name", "default"), enable=True)
     cfg["calib.shape.enable"] = False
     cfg["calib.k.enable"]     = False
+
+    # Seed basic force weights so the solver actually moves labels.
+    cfg.update({
+        "ll.k.repulse": 150.0,
+        "pl.k.repulse": 200.0,
+        "ln.k.repulse": 180.0,
+        "boundary.k.wall": 80.0,
+        "anchor.k.spring": 10.0,
+    })
 
     # Optional viewer knobs (safe defaults). If you don’t use viewer, ignore these.
     cfg["viz.show"] = True
