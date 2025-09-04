@@ -4,6 +4,14 @@
 - Loads config via layered presets.
 - Fills calibration strategy (fill-only) but keeps all calibration gates OFF by default.
 - Solves one frame with LBFGS and (optionally) opens the viewer if cfg says so.
+
+Phase A diagnostics:
+- ``build_viz_payload`` reads per-iteration data from ``info['history']['records']``.
+- ``cartoweave.viz.view`` builds the action slider from ``boundaries`` and wires it via
+  ``_on_action`` to update the iteration slider.
+- The right force panel is plotted by ``draw_force_panel`` inside ``interactive_view``.
+- Missing action→frame mapping and invalid force dictionaries (entries not shaped
+  ``(N,2)``) left the action bar idle and the right panel blank.
 """
 
 from __future__ import annotations
@@ -107,16 +115,50 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
     hist = info.get("history", {}) if isinstance(info, dict) else {}
     recs = hist.get("records") or hist.get("evals") or []
     frames: List[Dict[str, Any]] = []
-    for r in recs:
-        frame = {
-            "P": np.asarray(r.get("P"), float),
-            "comps": {k: np.asarray(v, float) for k, v in r.get("comps", {}).items()},
-        }
-        m = r.get("meta")
-        if isinstance(m, dict):
-            frame["meta"] = dict(m)
+    action_segments: List[Dict[str, Any]] = []
+    last_aid = None
+    last_name = None
+    seg_start = 0
+    for i, r in enumerate(recs):
+        comps = {}
+        for k, v in r.get("comps", {}).items():
+            arr = np.asarray(v, float)
+            if arr.ndim == 2 and arr.shape[1] == 2:
+                comps[k] = arr
+        frame: Dict[str, Any] = {"P": np.asarray(r.get("P"), float), "comps": comps}
+        meta = r.get("meta") or {}
+        aid = meta.get("action_id")
+        aname = meta.get("action_name", f"action_{aid}") if aid is not None else None
+        if aid is not None and aid != last_aid:
+            if last_aid is not None:
+                action_segments.append({"id": last_aid, "name": last_name, "start": seg_start, "end": i})
+            last_aid = aid
+            last_name = aname
+            seg_start = i
+        if isinstance(meta, dict):
+            frame["meta"] = dict(meta)
         frames.append(frame)
-    return {"frames": frames}
+    if last_aid is not None:
+        action_segments.append({"id": last_aid, "name": last_name, "start": seg_start, "end": len(recs)})
+
+    boundaries = [seg["start"] for seg in action_segments]
+    if frames:
+        boundaries.append(len(frames))
+
+    def _get_idx(aid: int) -> int:
+        for seg in action_segments:
+            if seg.get("id") == aid:
+                return int(seg.get("start", 0))
+        return 0
+
+    return {
+        "frames": frames,
+        "action_segments": action_segments,
+        "actions": action_segments,  # compat alias
+        "boundaries": boundaries,
+        "get_frame_index_for_action": _get_idx,
+        "selected_label": 0,
+    }
 
 def main():
     scene = _make_scene()
@@ -150,8 +192,8 @@ def main():
             force_getter=_force,
             field_kind=cfg.get("viz.field.kind", "heatmap"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
-            actions=None,
-            boundaries=None,
+            actions=payload.get("actions"),
+            boundaries=payload.get("boundaries"),
         )
 
 if __name__ == "__main__":

@@ -74,23 +74,48 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
     hist = info.get("history", {}) if isinstance(info, dict) else {}
     recs = hist.get("records") or hist.get("evals") or []
     frames: list[Dict[str, Any]] = []
-    boundaries: list[int] = []
-    last_action = None
+    action_segments: list[Dict[str, Any]] = []
+    last_aid = None
+    last_name = None
+    seg_start = 0
     for i, r in enumerate(recs):
+        comps = {}
+        for k, v in r.get("comps", {}).items():
+            arr = np.asarray(v, float)
+            if arr.ndim == 2 and arr.shape[1] == 2:
+                comps[k] = arr
         meta = dict(r.get("meta", {}))
-        frame = {
-            "P": np.asarray(r.get("P"), float),
-            "comps": {k: np.asarray(v, float) for k, v in r.get("comps", {}).items()},
-            "meta": meta,
-        }
+        frame = {"P": np.asarray(r.get("P"), float), "comps": comps, "meta": meta}
         aid = meta.get("action_id")
-        if aid != last_action:
-            boundaries.append(i)
-            last_action = aid
+        aname = meta.get("action_name", f"action_{aid}") if aid is not None else None
+        if aid is not None and aid != last_aid:
+            if last_aid is not None:
+                action_segments.append({"id": last_aid, "name": last_name, "start": seg_start, "end": i})
+            last_aid = aid
+            last_name = aname
+            seg_start = i
         frames.append(frame)
+    if last_aid is not None:
+        action_segments.append({"id": last_aid, "name": last_name, "start": seg_start, "end": len(recs)})
+
+    boundaries = [seg["start"] for seg in action_segments]
     if frames:
         boundaries.append(len(frames))
-    return {"frames": frames, "actions": info.get("actions", []), "boundaries": boundaries}
+
+    def _get_idx(aid: int) -> int:
+        for seg in action_segments:
+            if seg.get("id") == aid:
+                return int(seg.get("start", 0))
+        return 0
+
+    return {
+        "frames": frames,
+        "action_segments": action_segments,
+        "actions": action_segments,
+        "boundaries": boundaries,
+        "get_frame_index_for_action": _get_idx,
+        "selected_label": 0,
+    }
 
 
 def main():

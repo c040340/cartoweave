@@ -364,14 +364,17 @@ def interactive_view(
     _source_cache: Dict[int, Dict[str, Any]] = {}
     _field_cache: Dict[int, Any] = {}
 
-    def _looks_like_force_dict(d: Dict[str, Any]) -> bool:
+    def _coerce_force_dict(d: Dict[str, Any]) -> Dict[str, np.ndarray]:
+        """Return only entries from ``d`` that look like force vectors."""
+
         if not isinstance(d, dict) or not d:
-            return False
-        for v in d.values():
+            return {}
+        out: Dict[str, np.ndarray] = {}
+        for k, v in d.items():
             arr = _as_vec2(v)
-            if arr is None or len(arr) != N:
-                return False
-        return True
+            if arr is not None and len(arr) == N:
+                out[k] = arr
+        return out
 
     def _get_forces(step: int) -> Dict[str, np.ndarray]:
         if step in _force_cache:
@@ -381,14 +384,18 @@ def interactive_view(
             out = force_getter(step)
             if isinstance(out, tuple):
                 for extra in out:
-                    if isinstance(extra, dict) and not forces and _looks_like_force_dict(extra):
-                        forces = extra
+                    if isinstance(extra, dict) and not forces:
+                        cand = _coerce_force_dict(extra)
+                        if cand:
+                            forces = cand
+                        else:
+                            _source_cache[step] = extra
                     elif isinstance(extra, dict):
                         _source_cache[step] = extra
                     else:
                         _field_cache[step] = extra
             elif isinstance(out, dict):
-                forces = out
+                forces = _coerce_force_dict(out)
         _force_cache[step] = forces
         return forces
 
