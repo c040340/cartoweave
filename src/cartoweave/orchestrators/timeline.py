@@ -5,6 +5,13 @@ import copy
 import numpy as np
 from cartoweave.api import solve_frame
 from ..utils.logging import logger
+from ..engine.calibration import (
+    apply_shape_profile,
+    auto_calibrate_k,
+    crowding_score,
+    should_recalibrate_k,
+    ema_update_k,
+)
 
 Step = Dict[str, Any]
 Schedule = List[Step]
@@ -40,6 +47,10 @@ def run_timeline(
     """
     sc = copy.deepcopy(scene)
     cfg_base = dict(cfg)
+    # Apply shape profile once to the base configuration so every step starts
+    # from the profiled parameters.  The helper tracks whether a profile has
+    # already been applied via ``_shape_applied``.
+    apply_shape_profile(cfg_base, logger)
 
     if schedule is None:
         schedule = [
@@ -51,13 +62,33 @@ def run_timeline(
     timeline = []
     P = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float).copy()
 
+    k_state: Dict[str, float] = {}
+    C_prev: float | None = None
+
     for step in schedule:
         step_name = step.get("name", "step")
         cfg_step = _apply_overrides(cfg_base, step)
+        # Re-apply shape profile when the name changes between steps
+        if cfg_step.get("calib.shape.name") != cfg_base.get("calib.shape.name"):
+            cfg_step.pop("_shape_applied", None)
+        apply_shape_profile(cfg_step, logger)
+
         logger.info("timeline step '%s' start", step_name)
 
         if carry_P:
             sc["labels_init"] = P  # 用上一步的解做初始值
+
+        P0 = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float)
+        C = crowding_score(sc, P0, cfg_step)
+        if should_recalibrate_k(C, C_prev, {}, step, cfg_step):
+            k_hat = auto_calibrate_k(sc, P0, cfg_step, logger)
+            k_state = ema_update_k(
+                k_state, k_hat, cfg_step.get("calib.k.ema_alpha", 0.3)
+            )
+
+        for kname, v in k_state.items():
+            if kname in cfg_step:
+                cfg_step[kname] = v
 
         P_step, info_step = solve_frame(sc, cfg_step, mode=mode)
 
@@ -69,6 +100,7 @@ def run_timeline(
             "cfg_diff": step,  # 记录本阶段与 base 的差异
         })
         P = P_step
+        C_prev = C
         logger.info("timeline step '%s' done", step_name)
 
     logger.info("timeline done")
