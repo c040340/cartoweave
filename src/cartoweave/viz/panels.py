@@ -382,7 +382,7 @@ def draw_force_panel(
             (vx, vy),
             arrowstyle="->",
             mutation_scale=cfg["component_arrow_scale"],
-            color=color,
+            facecolor=color,
             edgecolor=color,
             lw=cfg["component_arrow_lw"],
         )
@@ -394,7 +394,7 @@ def draw_force_panel(
         (total_x, total_y),
         arrowstyle="-|>",
         mutation_scale=cfg["total_arrow_scale"],
-        color=_force_color("total", cfg["colors"]),
+        facecolor=_force_color("total", cfg["colors"]),
         edgecolor=_force_color("total", cfg["colors"]),
         lw=cfg["total_arrow_lw"],
     )

@@ -92,7 +92,8 @@ def collect_solver_metrics(
         deltaF_over_F = np.zeros(N, dtype=float)
     else:
         deltaF = absF - _prev_absF
-        deltaF_over_F = np.where(_prev_absF > _EPS, deltaF / _prev_absF, 0.0)
+        safe_prev_absF = np.where(_prev_absF > _EPS, _prev_absF, 1.0)
+        deltaF_over_F = np.where(_prev_absF > _EPS, deltaF / safe_prev_absF, 0.0)
     _prev_absF = absF.copy()
 
     # Movable mask excludes circles and locked labels
