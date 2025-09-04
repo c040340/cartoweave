@@ -61,7 +61,12 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
     N = 0 if labels_init is None else int(labels_init.shape[0])
     if N == 0:
         logger.info("Semi-Newton early exit: no labels")
-        return np.zeros((0, 2), float), {"nit": 0, "success": True, "msg": "no labels"}
+        return np.zeros((0, 2), float), {
+            "nit": 0,
+            "success": True,
+            "msg": "no labels",
+            "history": {"positions": [], "energies": [], "records": []},
+        }
 
     mov = scene.get("movable_idx")
     if mov is None:
@@ -83,17 +88,24 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
     P = np.asarray(labels_init, float).copy()
     x = P[mov].reshape(-1)
 
-    history = {"positions": [], "energies": []}
+    history = {"positions": [], "energies": [], "records": []}
+    def _recorder(P, E, comps, meta):
+        history["records"].append({
+            "P": P.copy(),
+            "E": float(E),
+            "comps": {k: v.copy() for k, v in comps.items()},
+            "meta": dict(meta) if meta else {},
+        })
     logger.info("Semi-Newton start n_labels=%d max_outer=%d", N, max_outer)
 
-    def fun_full(P_full: Array) -> Tuple[float, Array]:
-        E, G, _ = energy_and_grad_fullP(scene, P_full, cfg)
+    def fun_full(P_full: Array, *, record_cb=_recorder) -> Tuple[float, Array]:
+        E, G, _ = energy_and_grad_fullP(scene, P_full, cfg, record=record_cb)
         return E, G
 
-    def fun_vars(x_vars: Array) -> Tuple[float, Array]:
+    def fun_vars(x_vars: Array, *, record_cb=_recorder) -> Tuple[float, Array]:
         P_full = P.copy()
         P_full[mov] = x_vars.reshape(-1, 2)
-        E, G = fun_full(P_full)
+        E, G = fun_full(P_full, record_cb=record_cb)
         return E, G[mov].reshape(-1)
 
     for it in range(max_outer):
@@ -107,7 +119,7 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
             logger.info("Semi-Newton converged nit=%d g_inf=%.6g", it, g_inf)
             return P, info
 
-        grad_only = lambda z: fun_vars(z)[1]
+        grad_only = lambda z: fun_vars(z, record_cb=None)[1]
 
         def apply_A(vec: Array) -> Array:
             Hv = _hvp_fd(grad_only, x, vec, hvp_eps)
@@ -123,7 +135,7 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
             x_try = x + alpha * d
             P_try = P.copy()
             P_try[mov] = x_try.reshape(-1, 2)
-            E_try, _ = fun_full(P_try)
+            E_try, _ = fun_full(P_try, record_cb=None)
             if E_try <= E + armijo_c1 * alpha * gTd:
                 x = x_try
                 P = P_try
