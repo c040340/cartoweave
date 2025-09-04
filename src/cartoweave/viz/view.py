@@ -17,11 +17,16 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
 from .panels import (
+    ALL_FORCE_KEYS,
     draw_field_panel,
     draw_force_panel,
     draw_layout,
+    normalize_comps_for_info,
+    select_terms_for_arrows,
 )
 from ..config.viz import viz_config
+from ..config.presets import VIZ_FORCE_CONFIG
+from cartoweave.utils.logging import logger
 
 
 def _as_vec2(a: Any) -> Optional[np.ndarray]:
@@ -111,6 +116,7 @@ def interactive_view(
     metrics_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     field_getter: Optional[Callable[[int], Any]] = None,
     active_getter: Optional[Callable[[int], Sequence[int]]] = None,
+    frames: Optional[Sequence[Dict[str, Any]]] = None,
     field_kind: str = "3d",
     field_cmap: str = "viridis",
     boundaries: Optional[Sequence[int]] = None,
@@ -147,7 +153,7 @@ def interactive_view(
     T = len(traj)
     N = len(labels)
 
-    SHOW_ORDER = [k for k in viz_config["forces"]["colors"] if k != "total"]
+    SHOW_ORDER = list(ALL_FORCE_KEYS)
 
     cfg_info = viz_config["info"]
     GLOBAL_FS = cfg_info["row_main_fontsize"] + 1
@@ -403,6 +409,11 @@ def interactive_view(
     def _get_sources(step: int) -> Dict[str, Any]:
         if step in _source_cache:
             return _source_cache[step]
+        if frames is not None and 0 <= step < len(frames):
+            sfs = frames[step].get("sources_for_step")
+            if sfs is not None:
+                _source_cache[step] = sfs
+                return sfs
         if callable(source_getter):
             out = source_getter(step)
             if isinstance(out, dict):
@@ -439,13 +450,57 @@ def interactive_view(
     def _update(step: int) -> None:
         nonlocal patches, selected
         forces_raw = _get_forces(step)
-        src = _get_sources(step)
-        pts = src.get("points", points)
-        lns = src.get("lines", lines)
-        ars = src.get("areas", areas)
-        anchors = _compute_anchors(labels, points=pts, lines=lns, areas=ars, sources=src)
+        src_full = _get_sources(step)
+        src = dict(src_full) if isinstance(src_full, dict) else {}
+
+        pts_step = src.get("points", points) if src else points
+        lns_step = src.get("lines", lines) if src else lines
+        ars_step = src.get("areas", areas) if src else areas
 
         active_ids = list(active_getter(step)) if active_getter else list(range(N))
+
+        if active_ids != list(range(N)):
+            pts_arr = _as_vec2(pts_step)
+            if pts_arr is not None:
+                idx = [i for i in active_ids if i < len(pts_arr)]
+                if idx:
+                    pts_step = pts_arr[idx]
+
+            if isinstance(lns_step, (list, tuple)):
+                idx = [i for i in active_ids if i < len(lns_step)]
+                lns_step = [lns_step[i] for i in idx]
+            else:
+                lns_arr = _as_vec2(lns_step)
+                if lns_arr is not None:
+                    idx = [i for i in active_ids if i < len(lns_arr)]
+                    if idx:
+                        lns_step = lns_arr[idx]
+
+            if isinstance(ars_step, (list, tuple)):
+                idx = [i for i in active_ids if i < len(ars_step)]
+                ars_step = [ars_step[i] for i in idx]
+            else:
+                ars_arr = _as_vec2(ars_step)
+                if ars_arr is not None:
+                    idx = [i for i in active_ids if i < len(ars_arr)]
+                    if idx:
+                        ars_step = ars_arr[idx]
+
+            a_arr = src.get("anchors_xy")
+            if a_arr is None:
+                a_arr = src.get("anchor_xy")
+            a = _as_vec2(a_arr)
+            if a is not None:
+                idx = [i for i in active_ids if i < len(a)]
+                if idx:
+                    src["anchors_xy"] = a[idx]
+                else:
+                    src.pop("anchors_xy", None)
+                    src.pop("anchor_xy", None)
+            else:
+                src.pop("anchors_xy", None)
+                src.pop("anchor_xy", None)
+
         pos_step = traj[step][active_ids]
         labs = [labels[i] for i in active_ids]
         wh_step = rect_wh[active_ids]
@@ -453,6 +508,10 @@ def interactive_view(
             forces = forces_raw
         else:
             forces = {k: np.asarray(v, float)[active_ids] for k, v in forces_raw.items()}
+
+        anchors = _compute_anchors(
+            labs, points=pts_step, lines=lns_step, areas=ars_step, sources=src
+        )
 
         if selected >= len(active_ids):
             selected = 0
@@ -464,13 +523,17 @@ def interactive_view(
             wh_step,
             frame_w=W,
             frame_h=H,
-            points=pts,
-            lines=lns,
-            areas=ars,
+            points=pts_step,
+            lines=lns_step,
+            areas=ars_step,
             anchors=anchors,
         )
         label_id = _label_name(labs[selected], selected)
-        label_total = draw_force_panel(ax_force, forces, selected, title=label_id)
+
+        terms_to_plot = select_terms_for_arrows(forces, VIZ_FORCE_CONFIG)
+        label_total = draw_force_panel(
+            ax_force, forces, selected, title=label_id, terms_to_plot=terms_to_plot
+        )
 
         vec_all = _sum_all_forces(forces)
         g_mag = float(np.hypot(vec_all[0], vec_all[1]))
@@ -485,8 +548,27 @@ def interactive_view(
             d_rel = d_abs / prev_mag if prev_mag > 0 else 0.0
             d_pair = (d_abs, d_rel)
 
-        rows = _compose_info_rows(step, forces, selected, label_total, (g_mag, g_ang), d_pair, label_id)
+        if VIZ_FORCE_CONFIG.get("info_show_all_terms", True):
+            comps_info = normalize_comps_for_info(forces, len(active_ids))
+        else:
+            comps_info = forces
+        rows = _compose_info_rows(
+            step, comps_info, selected, label_total, (g_mag, g_ang), d_pair, label_id
+        )
         _draw_info(ax_info, rows)
+
+        pts_arr = _as_vec2(pts_step)
+        lns_arr = _as_vec2(lns_step) if not isinstance(lns_step, (list, tuple)) else None
+        ars_arr = _as_vec2(ars_step) if not isinstance(ars_step, (list, tuple)) else None
+        logger.info(
+            "[viz] step=%d geom pts/lns/ars=%d/%d/%d | arrows terms=%d | info terms=%d",
+            step,
+            0 if pts_arr is None else len(pts_arr),
+            len(lns_step) if isinstance(lns_step, (list, tuple)) else (0 if lns_arr is None else len(lns_arr)),
+            len(ars_step) if isinstance(ars_step, (list, tuple)) else (0 if ars_arr is None else len(ars_arr)),
+            len(terms_to_plot),
+            len(comps_info.keys()),
+        )
 
         if ax_field is not None:
             field = _get_field(step)

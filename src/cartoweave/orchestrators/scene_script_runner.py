@@ -262,6 +262,21 @@ def run_scene_script(
                         comps_full[k] = arr_np
                 r["comps"] = comps_full
 
+                if cfg.get("DEBUG_VISIBILITY_ASSERTS", False):
+                    active = set(active_ids_solver)
+                    for name, arr_chk in comps_full.items():
+                        if arr_chk is None:
+                            continue
+                        mask = np.ones(arr_chk.shape[0], dtype=bool)
+                        for a in active:
+                            if 0 <= a < mask.size:
+                                mask[a] = False
+                        if mask.any():
+                            leaked = np.linalg.norm(arr_chk[mask], axis=1).max(initial=0.0)
+                            assert leaked < 1e-9, (
+                                f"Force leaked on inactive labels for term '{name}': max={leaked:.3e}"
+                            )
+
             meta = r.setdefault("meta", {})
             meta.setdefault("step_id", step_idx)
             meta.setdefault("step_name", step.get("name", f"step_{step_idx}"))

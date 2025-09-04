@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import numpy as np
 
+from cartoweave.utils.logging import logger
+
 
 def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
     """Convert solver output into a viewer-friendly payload.
@@ -21,21 +23,61 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
             arr = np.asarray(v, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
                 comps[k] = arr
-        frame = {
-            "P": np.asarray(r.get("P"), float),
-            "comps": comps,
-            "meta": dict(r.get("meta", {})),
-        }
-        # attach per-frame viz mask
+        meta = dict(r.get("meta", {}))
+
+        # determine which step the record belongs to
+        step_idx = 0
         if steps_raw:
-            step_idx = 0
             for i, s in enumerate(steps_raw):
                 if int(s.get("rec_start", 0)) <= t < int(s.get("rec_end", 0)):
                     step_idx = i
                     break
+
+        # pull geometry sources for the current step
+        src = meta.get("sources") or {}
+        pts_val = src.get("points")
+        if pts_val is None:
+            pts_val = src.get("points_xy")
+        pts = np.asarray(pts_val, float).reshape(-1, 2) if pts_val is not None else np.zeros((0, 2), float)
+
+        lns_raw = src.get("lines")
+        if lns_raw is None:
+            lns_raw = src.get("lines_xy") or []
+        lns = []
+        for seg in lns_raw:
+            arr = np.asarray(seg, float)
+            if arr.ndim == 2 and arr.shape[1] == 2:
+                lns.append(arr)
+
+        ars_raw = src.get("areas")
+        if ars_raw is None:
+            ars_raw = src.get("areas_xy") or []
+        ars = []
+        for poly in ars_raw:
+            arr = np.asarray(poly, float)
+            if arr.ndim == 2 and arr.shape[1] == 2:
+                ars.append(arr)
+
+        frame = {
+            "P": np.asarray(r.get("P"), float),
+            "comps": comps,
+            "meta": meta,
+            "sources_for_step": {"points": pts, "lines": lns, "areas": ars},
+        }
+
+        if steps_raw:
             frame["active_ids_viz"] = list(steps_raw[step_idx].get("active_ids_viz", []))
         else:
             frame["active_ids_viz"] = list(range(frame["P"].shape[0]))
+
+        logger.info(
+            "[viz] step %d: pts=%d lines=%d areas=%d",
+            step_idx,
+            len(pts),
+            len(lns),
+            len(ars),
+        )
+
         frames.append(frame)
 
     steps: List[Dict[str, Any]] = []

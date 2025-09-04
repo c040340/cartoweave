@@ -18,9 +18,82 @@ from matplotlib.patches import Circle, Rectangle, FancyArrowPatch
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 
+from ..layout_utils import is_circle_label
+
 from ..config.viz import viz_config
 
+# ---------------------------------------------------------------------------
+# Force term helpers
+# ---------------------------------------------------------------------------
 
+# Superset of force keys used for zero-filling and consistent ordering in the
+# info panel.  Additional keys encountered at runtime are appended verbatim.
+ALL_FORCE_KEYS: List[str] = [
+    "ll.rect",
+    "ll.disk",
+    "boundary.wall",
+    "pl.rect",
+    "ln.rect",
+    "area.embed",
+    "area.cross",
+    "area.softout",
+    "focus.attract",
+    "anchor.spring",
+]
+
+
+def normalize_comps_for_info(comps: Dict[str, np.ndarray], N: int) -> Dict[str, np.ndarray]:
+    """Ensure that *comps* contains all known force keys.
+
+    Missing entries are filled with zero arrays of shape ``(N, 2)`` so the info
+    panel can list every term for debugging purposes.
+    """
+
+    out: Dict[str, np.ndarray] = {}
+    for k in ALL_FORCE_KEYS:
+        arr = comps.get(k)
+        if arr is None:
+            arr = np.zeros((N, 2), dtype=np.float64)
+        else:
+            arr = np.asarray(arr, dtype=np.float64)
+        out[k] = arr
+    for k, v in comps.items():
+        if k not in out:
+            out[k] = np.asarray(v, dtype=np.float64)
+    return out
+
+
+def select_terms_for_arrows(comps: Dict[str, np.ndarray], cfg: Dict[str, Any]) -> List[str]:
+    """Return force component names that should be drawn as arrows."""
+
+    if cfg.get("arrows_show_all", False):
+        return [k for k in comps.keys()]
+
+    term_peak: Dict[str, float] = {}
+    peak = 0.0
+    for k, arr in comps.items():
+        if arr is None:
+            continue
+        a = _as_vec2(arr)
+        if a is None:
+            continue
+        mag = np.linalg.norm(a, axis=1)
+        m = float(np.max(mag)) if mag.size else 0.0
+        term_peak[k] = m
+        peak = max(peak, m)
+
+    keep: List[str] = []
+    min_abs = float(cfg.get("arrows_min_abs", 1e-9))
+    min_ratio = float(cfg.get("arrows_min_ratio", 1e-2))
+    for k, m in term_peak.items():
+        if m >= min_abs and (peak == 0.0 or (m / peak) >= min_ratio):
+            keep.append(k)
+
+    cap = cfg.get("arrows_max_terms")
+    if isinstance(cap, int) and cap > 0 and len(keep) > cap:
+        keep = sorted(keep, key=lambda x: term_peak[x], reverse=True)[:cap]
+
+    return keep
 def _force_color(name: str) -> str:
     """Return a colour for a force component ``name``.
 
@@ -108,12 +181,12 @@ def draw_layout(
     lines: Any = None,
     areas: Any = None,
     anchors: Optional[np.ndarray] = None,
-) -> List[Tuple[int, Rectangle]]:
+) -> List[Tuple[int, plt.Artist]]:
     """Render the main layout panel.
 
-    The function returns a list of ``(index, Rectangle)`` tuples.  The
-    rectangles are marked as pickable so that callers can detect clicks and
-    change the selected label.
+    The function returns a list of ``(index, Artist)`` tuples.  Patches are
+    marked as pickable so that callers can detect clicks and change the selected
+    label.
     """
 
     ax.clear()
@@ -161,7 +234,7 @@ def draw_layout(
                 ax.add_patch(patch)
 
     # --- labels --------------------------------------------------------------
-    patches: List[Tuple[int, Rectangle]] = []
+    patches: List[Tuple[int, plt.Artist]] = []
     pos_arr = _as_vec2(pos)
     if pos_arr is None:
         pos_arr = np.zeros((0, 2))
@@ -172,32 +245,52 @@ def draw_layout(
     for i in range(min(len(labels), len(pos_arr), len(wh_arr))):
         x, y = pos_arr[i]
         w, h = wh_arr[i]
-        if not (np.isfinite(x) and np.isfinite(y) and np.isfinite(w) and np.isfinite(h)):
+        if not (
+            np.isfinite(x)
+            and np.isfinite(y)
+            and np.isfinite(w)
+            and np.isfinite(h)
+        ):
             continue
         if w <= 0 or h <= 0:
             continue
-        rect = Rectangle(
-            (x - w / 2, y - h / 2),
-            w,
-            h,
-            facecolor=colors["label_fill"],
-            edgecolor=colors["label_edge"],
-            lw=cfg["label_edge_width"],
-            picker=True,
-            zorder=5,
-        )
-        ax.add_patch(rect)
-        patches.append((i, rect))
+        lab = labels[i] if i < len(labels) else {}
+        if is_circle_label(lab):
+            radius = float(min(w, h)) / 2.0
+            circ = Circle(
+                (x, y),
+                radius=radius,
+                facecolor=colors.get("label_fill", "#F2F2FFCC"),
+                edgecolor=colors.get("label_edge", "#2B6CB0FF"),
+                lw=cfg["label_edge_width"],
+                picker=True,
+                zorder=5,
+            )
+            ax.add_patch(circ)
+            patches.append((i, circ))
+        else:
+            rect = Rectangle(
+                (x - w / 2, y - h / 2),
+                w,
+                h,
+                facecolor=colors["label_fill"],
+                edgecolor=colors["label_edge"],
+                lw=cfg["label_edge_width"],
+                picker=True,
+                zorder=5,
+            )
+            ax.add_patch(rect)
+            patches.append((i, rect))
 
-        ax.text(
-            x,
-            y,
-            _label_text(labels[i], i),
-            ha="center",
-            va="center",
-            fontsize=cfg["label_fontsize"],
-            zorder=6,
-        )
+            ax.text(
+                x,
+                y,
+                _label_text(labels[i], i),
+                ha="center",
+                va="center",
+                fontsize=cfg["label_fontsize"],
+                zorder=6,
+            )
 
         if anchors is not None and i < len(anchors):
             ax.plot(
@@ -224,6 +317,8 @@ def draw_force_panel(
     forces: Dict[str, np.ndarray],
     idx: int,
     title: str | None = None,
+    *,
+    terms_to_plot: Optional[Sequence[str]] = None,
 ) -> Tuple[float, float]:
     """Draw a simple force decomposition diagram.
 
@@ -253,24 +348,21 @@ def draw_force_panel(
     if title:
         ax.set_title(title, fontsize=viz_config["info"]["title_fontsize"])
 
-    vecs: List[Tuple[str, float, float]] = []
-    mags: List[float] = []
+    vecs: Dict[str, Tuple[float, float, float]] = {}
     for name, arr in forces.items():
         if name == "total":
             # Some force providers may already include a pre‑summed total.
-            # Ignore it here so that magnitude filtering is based solely on
-            # the largest individual component rather than the net result.
             continue
         a = _as_vec2(arr)
         if a is not None and idx < len(a):
             vx, vy = float(a[idx, 0]), float(a[idx, 1])
-            vecs.append((name, vx, vy))
-            mags.append(float(np.hypot(vx, vy)))
+            vecs[name] = (vx, vy, float(np.hypot(vx, vy)))
 
     if not vecs:
         ax.text(0.5, 0.5, "no forces", transform=ax.transAxes, ha="center", va="center")
         return 0.0, 0.0
 
+    mags = [v[2] for v in vecs.values()]
     vmax = max(mags)
     limit = vmax * 1.2 if vmax > 0 else 1.0
     ax.set_xlim(-limit, limit)
@@ -279,12 +371,12 @@ def draw_force_panel(
 
     cfg = viz_config["forces"]
 
-    total_x = sum(vx for _, vx, vy in vecs)
-    total_y = sum(vy for _, vx, vy in vecs)
-    thresh = vmax * 0.01
-    for (name, vx, vy), mag in zip(vecs, mags):
-        if mag < thresh:
-            continue
+    total_x = sum(v[0] for v in vecs.values())
+    total_y = sum(v[1] for v in vecs.values())
+
+    terms = list(vecs.keys()) if terms_to_plot is None else [t for t in terms_to_plot if t in vecs]
+    for name in terms:
+        vx, vy, mag = vecs[name]
         color = _force_color(name)
         arr = FancyArrowPatch(
             (0, 0),

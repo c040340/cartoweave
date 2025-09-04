@@ -7,6 +7,27 @@ from .utils import (
     area_embed, area_cross, area_softout,
 )
 
+
+# ---------------------------------------------------------------------------
+# Visualisation configuration toggles
+# ---------------------------------------------------------------------------
+
+# ``VIZ_FORCE_CONFIG`` centralises thresholds that affect how forces are
+# displayed in the viewer.  The info panel always lists all force terms while
+# the arrow plot may hide tiny components for clarity.  Consumers import this
+# dictionary and read or update the values directly.
+VIZ_FORCE_CONFIG: Dict[str, Any] = {
+    # Info panel: show every force term without filtering.
+    "info_show_all_terms": True,
+
+    # Arrow plot: hide small arrows purely on the UI side.  These thresholds do
+    # not affect the recorded force data or the info panel above.
+    "arrows_min_abs": 1e-9,
+    "arrows_min_ratio": 1e-2,
+    "arrows_max_terms": None,  # Optional cap on the number of terms drawn.
+    "arrows_show_all": False,  # Developer override to draw all terms.
+}
+
 def minimal_cfg() -> Dict[str, Any]:
     """
     所有 k=0 的最小模板，仅提供数值保护参数。
