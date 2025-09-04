@@ -10,7 +10,7 @@ compact and easy to follow.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, Optional, Sequence, Mapping
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,45 +24,10 @@ from .panels import (
     normalize_comps_for_info,
     select_terms_for_arrows,
 )
+from .defaults import merge_defaults
 from cartoweave.utils.logging import logger
 from ..labels import anchor_xy
-
-# Minimal stubs replacing the removed configuration helpers.
-VIZ_FORCE_CONFIG: Dict[str, Any] = {}
-viz_config: Dict[str, Any] = {
-    "info": {"title_fontsize": 10, "row_main_fontsize": 8, "row_component_fontsize": 8},
-    # default force colours mirror those in :mod:`cartoweave.viz.panels`
-    "forces": {
-        "colors": {
-            "ll.rect": "#1f77b4",
-            "boundary.wall": "#ff7f0e",
-            "anchor.spring": "#2ca02c",
-        },
-        "component_arrow_scale": 10.0,
-        "component_arrow_lw": 1.0,
-        "component_fontsize": 8,
-        "total_arrow_scale": 12.0,
-        "total_arrow_lw": 1.5,
-    },
-    "layout": {
-        "colors": {
-            "point": "#000000",
-            "line": "#000000",
-            "area": "#000000",
-            "label_fill": "#FFFFFF",
-            "label_edge": "#000000",
-            "anchor_line": "#000000",
-            "anchor_marker_face": "#FFFFFF",
-            "anchor_marker_edge": "#000000",
-        },
-        "line_width": 1.0,
-        "area_face_alpha": 0.3,
-        "area_edge_width": 1.0,
-        "label_edge_width": 1.0,
-        "label_fontsize": 10,
-        "anchor_marker_size": 4.0,
-    },
-}
+import warnings
 
 
 def _as_vec2(a: Any) -> Optional[np.ndarray]:
@@ -160,6 +125,7 @@ def interactive_view(
     field_cmap: str = "viridis",
     boundaries: Optional[Sequence[int]] = None,
     actions: Optional[Sequence[Any]] = None,
+    viz: Mapping[str, Any] | None = None,
 ) -> None:
     """Display an interactive layout viewer.
 
@@ -191,6 +157,13 @@ def interactive_view(
     rect_wh = np.asarray(rect_wh, dtype=float)
     T = len(traj)
     N = len(labels)
+
+    viz_config = merge_defaults(viz)
+    if viz is None:
+        warnings.warn(
+            "interactive_view called without viz configuration; using defaults",
+            DeprecationWarning,
+        )
 
     SHOW_ORDER = list(ALL_FORCE_KEYS)
 
@@ -617,12 +590,19 @@ def interactive_view(
             lines=lns_list,
             areas=ars_list,
             anchors=anchors,
+            viz_layout=viz_config["layout"],
         )
         label_id = _label_name(labs[selected], selected)
 
-        terms_to_plot = select_terms_for_arrows(forces, VIZ_FORCE_CONFIG)
+        terms_to_plot = select_terms_for_arrows(forces, viz_config["forces"])
         label_total = draw_force_panel(
-            ax_force, forces, selected, title=label_id, terms_to_plot=terms_to_plot
+            ax_force,
+            forces,
+            selected,
+            title=label_id,
+            terms_to_plot=terms_to_plot,
+            viz_forces=viz_config["forces"],
+            viz_info=viz_config["info"],
         )
 
         vec_all = _sum_all_forces(forces)
@@ -638,7 +618,7 @@ def interactive_view(
             d_rel = d_abs / prev_mag if prev_mag > 0 else 0.0
             d_pair = (d_abs, d_rel)
 
-        if VIZ_FORCE_CONFIG.get("info_show_all_terms", True):
+        if viz_config["forces"].get("info_show_all_terms", True):
             comps_info = normalize_comps_for_info(forces, len(active_ids))
         else:
             comps_info = forces

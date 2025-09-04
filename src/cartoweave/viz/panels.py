@@ -9,7 +9,7 @@ Matplotlib primitives.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Mapping
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,43 +20,8 @@ from matplotlib.patches import PathPatch
 
 from ..layout_utils import is_circle_label
 
-# Minimal configuration placeholders for viewer defaults.  Rich configuration is
-# supplied externally by higher-level loaders.
-viz_config: Dict[str, Any] = {
-    # default colours for common force terms; unknown names fall back to the
-    # Matplotlib cycle in :func:`_color_for`
-    "forces": {
-        "colors": {
-            "ll.rect": "#1f77b4",  # blue
-            "boundary.wall": "#ff7f0e",  # orange
-            "anchor.spring": "#2ca02c",  # green
-        },
-        "component_arrow_scale": 10.0,
-        "component_arrow_lw": 1.0,
-        "component_fontsize": 8,
-        "total_arrow_scale": 12.0,
-        "total_arrow_lw": 1.5,
-    },
-    "layout": {
-        "colors": {
-            "point": "#000000",
-            "line": "#000000",
-            "area": "#000000",
-            "label_fill": "#FFFFFF",
-            "label_edge": "#000000",
-            "anchor_line": "#000000",
-            "anchor_marker_face": "#FFFFFF",
-            "anchor_marker_edge": "#000000",
-        },
-        "line_width": 1.0,
-        "area_face_alpha": 0.3,
-        "area_edge_width": 1.0,
-        "label_edge_width": 1.0,
-        "label_fontsize": 10,
-        "anchor_marker_size": 4.0,
-    },
-    "info": {"title_fontsize": 10, "row_main_fontsize": 8, "row_component_fontsize": 8},
-}
+# Configuration is supplied externally.  Functions accept the relevant slices of
+# the viewer configuration so that callers can merge YAML defaults beforehand.
 
 # ---------------------------------------------------------------------------
 # Force term helpers
@@ -130,16 +95,18 @@ def select_terms_for_arrows(comps: Dict[str, np.ndarray], cfg: Dict[str, Any]) -
         keep = sorted(keep, key=lambda x: term_peak[x], reverse=True)[:cap]
 
     return keep
-def _force_color(name: str) -> str:
+
+
+def _force_color(name: str, colors: Dict[str, str]) -> str:
     """Return a colour for a force component ``name``.
 
     Unknown names are assigned colours from Matplotlib's default cycle so that
     each component still receives a distinct hue.  Colours are drawn from the
-    ``viz_config['forces']['colors']`` mapping which users may modify.
+    caller-provided ``colors`` mapping which may be mutated to cache new
+    assignments.
     """
 
     key = name.lower()
-    colors = viz_config["forces"]["colors"]
     if key not in colors:
         cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
         if cycle:
@@ -217,6 +184,7 @@ def draw_layout(
     lines: Any = None,
     areas: Any = None,
     anchors: Optional[np.ndarray] = None,
+    viz_layout: Mapping[str, Any],
 ) -> List[Tuple[int, plt.Artist]]:
     """Render the main layout panel.
 
@@ -237,7 +205,7 @@ def draw_layout(
     ax.grid(True, color="#DDDDDDFF", lw=0.5)  # light gray grid
 
     # --- background geometry -------------------------------------------------
-    cfg = viz_config["layout"]
+    cfg = viz_layout
     colors = cfg["colors"]
 
     pts = _as_vec2(points)
@@ -337,7 +305,7 @@ def draw_layout(
             )
             circ = Circle(
                 (anchors[i, 0], anchors[i, 1]),
-                radius=cfg["anchor_marker_size"],
+                radius=cfg.get("anchor_marker_size", 4.0),
                 facecolor=colors["anchor_marker_face"],
                 edgecolor=colors["anchor_marker_edge"],
                 lw=cfg["line_width"],
@@ -355,6 +323,8 @@ def draw_force_panel(
     title: str | None = None,
     *,
     terms_to_plot: Optional[Sequence[str]] = None,
+    viz_forces: Mapping[str, Any],
+    viz_info: Mapping[str, Any],
 ) -> Tuple[float, float]:
     """Draw a simple force decomposition diagram.
 
@@ -382,7 +352,7 @@ def draw_force_panel(
     ax.axhline(0, color="#DDDDDDFF", lw=1.0)  # light gray axes
     ax.axvline(0, color="#DDDDDDFF", lw=1.0)  # light gray axes
     if title:
-        ax.set_title(title, fontsize=viz_config["info"]["title_fontsize"])
+        ax.set_title(title, fontsize=viz_info["title_fontsize"])
 
     vecs: Dict[str, Tuple[float, float, float]] = {}
     for name, arr in forces.items():
@@ -405,7 +375,7 @@ def draw_force_panel(
     ax.set_ylim(-limit, limit)
     ax.set_aspect("equal")
 
-    cfg = viz_config["forces"]
+    cfg = viz_forces
 
     total_x = sum(v[0] for v in vecs.values())
     total_y = sum(v[1] for v in vecs.values())
@@ -413,7 +383,7 @@ def draw_force_panel(
     terms = list(vecs.keys()) if terms_to_plot is None else [t for t in terms_to_plot if t in vecs]
     for name in terms:
         vx, vy, mag = vecs[name]
-        color = _force_color(name)
+        color = _force_color(name, cfg["colors"])
         arr = FancyArrowPatch(
             (0, 0),
             (vx, vy),
@@ -431,8 +401,8 @@ def draw_force_panel(
         (total_x, total_y),
         arrowstyle="-|>",
         mutation_scale=cfg["total_arrow_scale"],
-        color=_force_color("total"),
-        edgecolor=_force_color("total"),
+        color=_force_color("total", cfg["colors"]),
+        edgecolor=_force_color("total", cfg["colors"]),
         lw=cfg["total_arrow_lw"],
     )
     ax.add_patch(total_arrow)
@@ -450,6 +420,9 @@ def draw_info_panel(
     global_total: Tuple[float, float],
     d_force: Optional[Tuple[float, float]] = None,
     metrics: Optional[Dict[str, Any]] = None,
+    *,
+    viz_info: Mapping[str, Any],
+    viz_forces: Mapping[str, Any],
 ) -> None:
     """Render a textual summary of forces and optional metrics.
 
@@ -472,7 +445,7 @@ def draw_info_panel(
         Optional optimiser statistics provided by ``metrics_getter``.
     """
 
-    cfg = viz_config["info"]
+    cfg = viz_info
 
     rows: List[Tuple[str, str, int]] = []
     if metrics:
@@ -493,7 +466,7 @@ def draw_info_panel(
     rows.append(
         (
             f"{name_fmt} |F|={g_mag:+9.3e} angle={g_ang:+6.1f}°       ",
-            _force_color("total"),
+            _force_color("total", viz_forces["colors"]),
             cfg["row_main_fontsize"],
         )
     )
@@ -512,7 +485,7 @@ def draw_info_panel(
     rows.append(
         (
             f"{name_fmt} |F|={l_mag:+9.3e} angle={l_ang:+6.1f}°       ",
-            _force_color("total"),
+            _force_color("total", viz_forces["colors"]),
             cfg["row_main_fontsize"],
         )
     )
@@ -532,7 +505,13 @@ def draw_info_panel(
         row_txt = (
             f"{name_fmt} |F|={comp_mag:+9.3e} angle={comp_ang:+6.1f}° {pct_txt}"
         )
-        rows.append((row_txt, _force_color(name), cfg["row_component_fontsize"]))
+        rows.append(
+            (
+                row_txt,
+                _force_color(name, viz_forces["colors"]),
+                cfg["row_component_fontsize"],
+            )
+        )
 
     ax.clear()
     ax.set_xticks([])

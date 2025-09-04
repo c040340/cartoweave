@@ -8,6 +8,7 @@
 from __future__ import annotations
 from typing import Dict, Any
 import os
+from dataclasses import asdict
 import numpy as np
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
 from cartoweave.viz.metrics import collect_solver_metrics  # noqa: E402
@@ -18,6 +19,9 @@ use_compatible_backend()
 
 from cartoweave.data.random import get_scene
 from cartoweave.api import solve_scene_script
+from cartoweave.config_loader import load_configs
+from cartoweave.utils.dict_merge import deep_update
+from cartoweave.utils.logging import logger
 
 try:  # optional viewer
     from cartoweave.viz.view import interactive_view
@@ -25,28 +29,7 @@ except Exception:  # pragma: no cover - viewer not installed
     interactive_view = None
 
 CACHE_PATH = os.environ.get("CARTOWEAVE_EXAMPLE_CACHE", "examples/_scene_cache.npz")
-GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "1")))
-
-
-def _build_cfg() -> Dict[str, Any]:
-    """Return a tiny configuration dictionary for the example.
-
-    This mirrors the values previously obtained from the removed configuration
-    module but keeps the example self-contained.
-    """
-
-    return {
-        "ll.k.repulse": 150.0,
-        "pl.k.repulse": 200.0,
-        "ln.k.repulse": 180.0,
-        "boundary.k.wall": 80.0,
-        "anchor.k.spring": 10.0,
-        "viz.show": True,
-        "viz.field.kind": "heatmap",
-        "viz.field.cmap": "viridis",
-    }
-
-
+GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "0")))
 def build_random_plan(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
     """Return a trivial specification describing the example's two stages."""
 
@@ -93,7 +76,26 @@ def run_example_headless(scene: Dict[str, Any], plan, cfg: Dict[str, Any]):
 
 
 def main():
-    cfg = _build_cfg()
+    bundle = load_configs()
+    cfg = deep_update(asdict(bundle.core), {
+        "ll.k.repulse": 150.0,
+        "pl.k.repulse": 200.0,
+        "ln.k.repulse": 180.0,
+        "boundary.k.wall": 80.0,
+        "anchor.k.spring": 10.0,
+        "viz.show": True,
+        "viz.field.kind": "heatmap",
+        "viz.field.cmap": "viridis",
+    })
+    viz = deep_update(asdict(bundle.viz), {})
+    viz_eff = deep_update(viz, {})
+    logger.info(
+        "configs loaded config=%s viz=%s run=%s anchor_marker_size=%.1f",
+        "configs/config.yaml",
+        "configs/viz.yaml",
+        "configs/run.yaml",
+        float(viz_eff.get("layout", {}).get("anchor_marker_size", 0.0)),
+    )
     scene = get_scene(
         use_random=GENERATE_NEW, cache_path=CACHE_PATH, with_scene_script=True
     )
@@ -167,6 +169,7 @@ def main():
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
             actions=payload.get("steps"),
             boundaries=payload.get("boundaries"),
+            viz=viz_eff,
         )
 
 

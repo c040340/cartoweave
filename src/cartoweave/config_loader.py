@@ -377,9 +377,9 @@ def _merge(base: Dict[str, Any], override: Dict[str, Any], path: Tuple[str, ...]
 
 
 def load_configs(
-    config_path: str = "configs/config.yaml",
-    viz_path: str = "configs/viz.yaml",
-    run_path: str = "configs/run.yaml",
+    config_path: str = "../configs/config.yaml",
+    viz_path: str = "../configs/viz.yaml",
+    run_path: str = "../configs/run.yaml",
 ) -> ConfigBundle:
     """Load config.yaml and viz.yaml, then shallow-merge optional run.yaml."""
     with open(config_path, "r", encoding="utf-8") as f:

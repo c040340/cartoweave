@@ -16,6 +16,8 @@ Phase A diagnostics:
 
 from __future__ import annotations
 from typing import Dict, Any, Tuple, List
+import os
+from dataclasses import asdict
 import numpy as np
 from cartoweave.labels import anchor_xy, init_position
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
@@ -24,6 +26,9 @@ from cartoweave.viz.backend import use_compatible_backend
 use_compatible_backend()
 
 from cartoweave.api import solve_frame
+from cartoweave.config_loader import load_configs
+from cartoweave.utils.dict_merge import deep_update
+from cartoweave.utils.logging import logger
 
 try:
     # optional viz
@@ -77,15 +82,14 @@ def _make_scene() -> Dict[str, Any]:
         WH_max=np.maximum(WH, WH),  # placeholder
     )
 
-def _build_cfg() -> Dict[str, Any]:
-    """Return a minimal configuration dictionary for the example.
+def main():
+    bundle = load_configs(
+        config_path="configs/config.yaml",
+        viz_path="configs/viz.yaml",
+        run_path="configs/run.yaml",
+    )
 
-    The previous version depended on a layered configuration package.  To
-    keep the example lightweight and self-contained, we now construct the
-    few required parameters directly.
-    """
-
-    return {
+    cfg = deep_update(asdict(bundle.core), {
         "ll.k.repulse": 150.0,
         "pl.k.repulse": 200.0,
         "ln.k.repulse": 180.0,
@@ -95,12 +99,21 @@ def _build_cfg() -> Dict[str, Any]:
         "viz.field.kind": "heatmap",
         "viz.field.cmap": "viridis",
         "engine.max_iter_hint": 200,
-    }
+    })
 
+    viz = deep_update(asdict(bundle.viz), {})
+    viz_override = {"layout": {"anchor_marker_size": 8.0}} if os.getenv("DEMO_BIG_ANCHOR") else {}
+    viz_eff = deep_update(viz, viz_override)
 
-def main():
+    logger.info(
+        "configs loaded config=%s viz=%s run=%s anchor_marker_size=%.1f",
+        "configs/config.yaml",
+        "configs/viz.yaml",
+        "configs/run.yaml",
+        float(viz_eff.get("layout", {}).get("anchor_marker_size", 0.0)),
+    )
+
     scene = _make_scene()
-    cfg   = _build_cfg()
 
     P_opt, info = solve_frame(scene, cfg, mode="lbfgs")
     print("[minimal_fit] done. final positions shape:", P_opt.shape)
@@ -136,6 +149,7 @@ def main():
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
             actions=payload.get("steps"),
             boundaries=payload.get("boundaries"),
+            viz=viz_eff,
         )
 
 if __name__ == "__main__":
