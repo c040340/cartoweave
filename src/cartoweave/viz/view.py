@@ -274,7 +274,7 @@ def interactive_view(
         rows.append(
             (
                 f"{name_fmt} |F|={_fmt_force(l_mag)}   θ={_fmt_deg_aligned(l_ang)}       ",
-                THEME["label_text"],
+                THEME["global_text"],
                 LABEL_FS,
             )
         )
@@ -284,7 +284,6 @@ def interactive_view(
         extras = [k for k, v in comp_dict.items() if _as_vec2(v) is not None and k not in keys]
         keys.extend(extras)
         if keys:
-            rows.append(("components:", THEME["label_text"], LABEL_FS))
             for k in keys:
                 v = _as_vec2(comp_dict.get(k))
                 if v is None or idx >= len(v):
@@ -310,13 +309,15 @@ def interactive_view(
         for i, row in enumerate(rows):
             if len(row) == 4:
                 text, color, size, style = row
+
             else:
                 text, color, size = row
                 style = {}
+            delta_height = 0.06 if row[2] == COMP_FS else 0.06
             weight = "bold" if style.get("bold") else "normal"
             ax.text(
                 0.01,
-                0.99 - i * 0.065,
+                0.99 - i * delta_height,
                 text,
                 ha="left",
                 va="top",
