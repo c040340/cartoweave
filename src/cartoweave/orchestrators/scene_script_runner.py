@@ -235,7 +235,7 @@ def run_scene_script(
         for arr in pos:
             arr = np.asarray(arr, float)
             if arr.shape[0] == len(ids):
-                full = P_pre.copy()
+                full = np.full_like(P_pre, np.nan)
                 full[ids] = arr
                 pos_full.append(full)
             else:
@@ -245,7 +245,7 @@ def run_scene_script(
         for r in rec:
             P_snap = np.asarray(r.get("P"), float)
             if P_snap.shape[0] == len(ids):
-                full = P_pre.copy()
+                full = np.full_like(P_pre, np.nan)
                 full[ids] = P_snap
                 r["P"] = full
 
