@@ -1,3 +1,11 @@
+# NOTE:
+#     The original example invoked the L-BFGS solver directly without
+#     threading action metadata through the recording callbacks, leaving
+#     ``history.records`` empty of ``action_id``/``action_name`` tags and the UI
+#     unable to display the action bar.  This runner now forwards the recorder
+#     and patches history entries so each evaluation is associated with its
+#     originating action.
+
 """Minimal timeline runner with per-action recording.
 
 This helper is intentionally lightweight and only implements the features
@@ -46,7 +54,18 @@ def run_timeline(
     history_rec: List[Dict[str, Any]] = []
 
     for a_idx, action in enumerate(timeline):
-        info = lbfgs.run(scene, P_cur, cfg, record=None)
+        # Wrap the recorder so downstream solvers tag each evaluation with the
+        # current action metadata.  ``lbfgs.run`` ignores ``record=None`` so we
+        # explicitly forward the wrapper to ensure real-time callbacks are
+        # invoked when provided.
+        def _rec(P, E, comps, meta):
+            meta = dict(meta) if meta else {}
+            meta.setdefault("action_id", a_idx)
+            meta.setdefault("action_name", action.get("name", f"action_{a_idx}"))
+            if record:
+                record(P, E, comps, meta)
+
+        info = lbfgs.run(scene, P_cur, cfg, record=_rec)
         P_cur = info.get("P", P_cur)
 
         hist = info.get("history", {})
@@ -54,12 +73,12 @@ def run_timeline(
         eng = list(hist.get("energies", []))
         rec = list(hist.get("records", []))
 
+        # ``_rec`` only affects the live callback; solver history must be
+        # patched post-hoc so every record carries action information.
         for r in rec:
             meta = r.setdefault("meta", {})
             meta.setdefault("action_id", a_idx)
             meta.setdefault("action_name", action.get("name", f"action_{a_idx}"))
-            if record:
-                record(r.get("P"), r.get("E"), r.get("comps", {}), meta)
 
         if history_pos:
             if pos:

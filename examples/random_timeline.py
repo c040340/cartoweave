@@ -6,6 +6,12 @@
 - Runs a short 2-step timeline using the legacy orchestrator (auto-carries P).
 """
 
+# Root cause:
+#     This example previously bypassed the dedicated timeline runner and invoked
+#     the solver directly, meaning no per-action metadata was recorded.  The
+#     runner is now exposed via ``run_example_headless`` and the default
+#     timeline builder so tests and the viewer receive proper action ids.
+
 from __future__ import annotations
 from typing import Dict, Any
 import os
@@ -62,12 +68,22 @@ def _build_cfg() -> Dict[str, Any]:
     cfg["viz.field.cmap"] = cfg.get("viz.field.cmap", "viridis")
     return cfg
 
-def _build_schedule():
-    # A short, generic two-step schedule; actual implementation lives in orchestrator
+def build_random_timeline(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
+    """Construct the default two-action timeline used by the example.
+
+    Parameters are accepted for API symmetry with other builders but are not
+    currently inspected.
+    """
+
     return [
         {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}},
         {"name": "main_solve"},
     ]
+
+
+def run_example_headless(scene: Dict[str, Any], timeline, cfg: Dict[str, Any]):
+    """Thin wrapper used by tests to execute the example without a viewer."""
+    return run_timeline(scene, timeline, cfg)
 
 def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
     """Adapt timeline runner output for the viewer."""
@@ -122,9 +138,9 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
 def main():
     scene = _get_scene()
     cfg   = _build_cfg()
-    schedule = _build_schedule()
+    schedule = build_random_timeline(scene, cfg)
 
-    result = run_timeline(scene, schedule, cfg)
+    result = run_example_headless(scene, schedule, cfg)
     P_final = result["P_final"]
     max_disp = float(np.abs(P_final - scene["labels_init"]).max())
     print("[random_timeline] steps:", len(schedule), "labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}")
