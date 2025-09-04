@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Dict, Any, Literal, Optional
 from .schema import SPEC, spec_of, Mutability
 from .profiles.shapes import SHAPE_PROFILES, SIGMA_SCALE_KEYS
+from .profiles.calibration import CALIB_PROFILES
 
 Phase = Literal["load","action_begin","runtime"]
 
@@ -162,4 +163,69 @@ def apply_shape_profile(cfg: Dict[str, Any],
                 val = float(v)
         cfg[k] = val
         patched += 1
+    return patched
+
+
+def apply_calib_profile(cfg: Dict[str, Any], name: str, fill_only: bool = True) -> int:
+    """Merge a calibration profile into ``cfg``.
+
+    Parameters
+    ----------
+    cfg:
+        Configuration dictionary to be patched in-place.
+    name:
+        Name of the profile defined in ``CALIB_PROFILES``.
+    fill_only:
+        When ``True`` (default), only keys that are missing are written. Existing
+        values are preserved. When ``False``, profile values override existing
+        ones.
+
+    Returns
+    -------
+    int
+        Number of individual keys filled/overridden.
+    """
+    if not name:
+        raise KeyError("Calibration profile name is required")
+    prof = CALIB_PROFILES.get(name)
+    if prof is None:
+        raise KeyError(f"Unknown calibration profile: {name}")
+
+    patched = 0
+
+    def _patch_container(container_key: str, items: Dict[str, Any]) -> None:
+        nonlocal patched
+        container = cfg.get(container_key)
+        if not isinstance(container, dict):
+            if fill_only and container_key in cfg and not isinstance(cfg[container_key], dict):
+                return
+            container = {}
+            cfg[container_key] = container
+        for k, v in items.items():
+            if fill_only and k in container:
+                continue
+            container[k] = v
+            patched += 1
+
+    # target ratios
+    if "target_rel" in prof:
+        _patch_container("calib.k.target_rel", prof["target_rel"])
+
+    # trigger thresholds
+    if "trigger" in prof:
+        _patch_container("calib.trigger", prof["trigger"])
+
+    # quantiles and clamps share the same container
+    if "quantiles" in prof:
+        _patch_container("calib.k", prof["quantiles"])
+    if "limits" in prof:
+        _patch_container("calib.k", prof["limits"])
+
+    # scalar EMA parameter
+    if "ema_alpha" in prof:
+        key = "calib.k.ema_alpha"
+        if not (fill_only and key in cfg):
+            cfg[key] = float(prof["ema_alpha"])
+            patched += 1
+
     return patched
