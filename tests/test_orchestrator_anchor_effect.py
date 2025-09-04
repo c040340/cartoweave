@@ -1,5 +1,5 @@
 import numpy as np
-from cartoweave.orchestrators.timeline import run_timeline
+from cartoweave.orchestrators.solve_plan import run_solve_plan
 
 def dist_to_anchors(P, anchors):
     return float(np.linalg.norm(P - anchors))
@@ -25,11 +25,11 @@ def test_anchor_enables_and_reduces_distance():
         {"name": "with_anchor"},
     ]
     # 跑到第一阶段末
-    P1, info1 = run_timeline(scene, cfg, schedule[:1], mode="hybrid", carry_P=True)
+    P1, info1 = run_solve_plan(scene, cfg, schedule[:1], mode="hybrid", carry_P=True)
     d1 = dist_to_anchors(P1, scene["anchors"])
 
     # 跑完整两阶段
-    P2, info2 = run_timeline(scene, cfg, schedule, mode="hybrid", carry_P=True)
+    P2, info2 = run_solve_plan(scene, cfg, schedule, mode="hybrid", carry_P=True)
     d2 = dist_to_anchors(P2, scene["anchors"])
 
     assert d2 < d1, f"distance should decrease after enabling anchor: d1={d1}, d2={d2}"

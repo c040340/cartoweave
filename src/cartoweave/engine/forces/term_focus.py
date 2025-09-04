@@ -5,14 +5,24 @@ import numpy as np
 from . import register
 
 from cartoweave.utils.kernels import (
-    softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
+    softplus,
+    sigmoid,
+    softabs,
+    invdist_energy,
+    invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
+    softmin_weights,
 )
 
 from cartoweave.utils.geometry import (
-    project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+    project_point_to_segment,
+    poly_signed_area,
+    rect_half_extent_along_dir,
 )
+from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 @register("focus.attract")
 def term_focus_huber(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -59,17 +69,35 @@ def term_focus_huber(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         sigy = max(sigy, 1e-12)
 
     labels = scene.get("labels", [])
+    N = P.shape[0]
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.zeros((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
+
     F = np.zeros_like(P, float)
     E = 0.0
     info = []
+    skip_hidden = 0
+    skip_circle = 0
 
-    for i in range(P.shape[0]):
+    for i in range(N):
+        lab = labels[i] if i < len(labels) else {}
+        w, h = float(WH[i, 0]), float(WH[i, 1])
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            continue
+        if lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            continue
         if only_free:
-            kind = (labels[i].get("anchor_kind") if i < len(labels) else "none")
+            kind = lab.get("anchor_kind", "none")
             if kind and kind != "none":
                 continue
 
-        x, y = float(P[i,0]), float(P[i,1])
+        x, y = float(P[i, 0]), float(P[i, 1])
         rx = (x - Cx) / sigx
         ry = (y - Cy) / sigy
         Q = rx*rx + ry*ry
@@ -90,4 +118,7 @@ def term_focus_huber(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         E += E_i
         info.append((i, float(E_i), float(fx), float(fy)))
 
+    logger.debug(
+        "term_focus_huber: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle
+    )
     return float(E), F, {"focus_huber": info}

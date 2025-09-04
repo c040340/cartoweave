@@ -3,11 +3,17 @@ import numpy as np
 from . import register
 from cartoweave.utils.geometry import project_point_to_segment, rect_half_extent_along_dir
 from cartoweave.utils.kernels import (
-    softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS,
+    softplus,
+    sigmoid,
+    softabs,
+    invdist_energy,
+    invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
 )
 from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 @register("ln.rect")
 def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -23,6 +29,9 @@ def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if WH_raw is None:
         WH_raw = np.ones((N, 2))
     WH = as_nx2(WH_raw, N, "WH")
+    labels = scene.get("labels", [])
+    skip_hidden = 0
+    skip_circle = 0
     F    = np.zeros_like(P); E = 0.0
 
     k_out = float(cfg.get("ln.k.repulse", 0.0))
@@ -35,8 +44,17 @@ def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     g_eps    = float(cfg.get("ln.g_eps",    1e-6))
 
     for i in range(P.shape[0]):
-        cx, cy = float(P[i,0]), float(P[i,1])
-        w, h   = float(WH[i,0]), float(WH[i,1])
+        lab = labels[i] if i < len(labels) else {}
+        w, h = float(WH[i, 0]), float(WH[i, 1])
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            continue
+        if lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            continue
+        cx, cy = float(P[i, 0]), float(P[i, 1])
         for s in segs:
             ax, ay, bx, by = map(float, s)
             qx, qy, t, tx, ty = project_point_to_segment(cx, cy, ax, ay, bx, by)
@@ -80,4 +98,7 @@ def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
                 fy_in = - dE_dC_n * ny
                 F[i,0] += fx_in; F[i,1] += fy_in
 
+    logger.debug(
+        "term_line_label: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle
+    )
     return float(E), F, {"ln": int(segs.shape[0])}

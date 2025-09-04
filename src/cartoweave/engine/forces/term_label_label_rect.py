@@ -2,11 +2,17 @@ from __future__ import annotations
 import numpy as np
 from . import register
 from cartoweave.utils.kernels import (
-    softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS,
+    softplus,
+    sigmoid,
+    softabs,
+    invdist_energy,
+    invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
 )
 from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 @register("ll.rect")
 def term_ll_rect(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -18,6 +24,22 @@ def term_ll_rect(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if WH_raw is None:
         WH_raw = np.ones((N, 2))
     WH = as_nx2(WH_raw, N, "WH")
+    labels = scene.get("labels", [])
+    skip_hidden = 0
+    skip_circle = 0
+    skip_idx: set[int] = set()
+    for idx, lab in enumerate(labels):
+        if idx >= N:
+            break
+        w, h = float(WH[idx, 0]), float(WH[idx, 1])
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            skip_idx.add(idx)
+        elif lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            skip_idx.add(idx)
     F  = np.zeros_like(P)
     E  = 0.0
 
@@ -33,11 +55,15 @@ def term_ll_rect(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     g_eps    = float(cfg.get("ll.g_eps",    1e-6))
 
     for a in range(N):
-        xa, ya = float(P[a,0]), float(P[a,1])
-        wa, ha = float(WH[a,0]), float(WH[a,1])
-        for b in range(a+1, N):
-            xb, yb = float(P[b,0]), float(P[b,1])
-            wb, hb = float(WH[b,0]), float(WH[b,1])
+        if a in skip_idx:
+            continue
+        xa, ya = float(P[a, 0]), float(P[a, 1])
+        wa, ha = float(WH[a, 0]), float(WH[a, 1])
+        for b in range(a + 1, N):
+            if b in skip_idx:
+                continue
+            xb, yb = float(P[b, 0]), float(P[b, 1])
+            wb, hb = float(WH[b, 0]), float(WH[b, 1])
 
             dx, dy = xa - xb, ya - yb
             adx, ady = softabs(dx, eps_a), softabs(dy, eps_a)
@@ -86,4 +112,5 @@ def term_ll_rect(scene, P: np.ndarray, cfg, phase="pre_anchor"):
                 F[a,0] += fx_in; F[a,1] += fy_in
                 F[b,0] -= fx_in; F[b,1] -= fy_in
 
+    logger.debug("term_ll_rect: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle)
     return float(E), F, {"pairs": int(N*(N-1)//2)}

@@ -5,15 +5,24 @@ import numpy as np
 from . import register
 
 from cartoweave.utils.kernels import (
-    softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
+    softplus,
+    sigmoid,
+    softabs,
+    invdist_energy,
+    invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
+    softmin_weights,
 )
 
 from cartoweave.utils.geometry import (
-    project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+    project_point_to_segment,
+    poly_signed_area,
+    rect_half_extent_along_dir,
 )
 from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 @register("boundary.wall")
 def term_boundary(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -28,6 +37,7 @@ def term_boundary(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if WH_raw is None:
         WH_raw = np.zeros((N, 2))
     WH = as_nx2(WH_raw, N, "WH")
+    labels = scene.get("labels", [])
 
     k_wall   = float(cfg.get("boundary.k.wall", 240.0))
     power    = float(cfg.get("boundary.wall_power", 3.0))
@@ -47,6 +57,8 @@ def term_boundary(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     F = np.zeros_like(P, float)
     E = 0.0
     src = [[] for _ in range(N)]
+    skip_hidden = 0
+    skip_circle = 0
 
     def piece(s: float, ex: float, ey: float):
         c  = softplus(s,  beta_d) + eps_div
@@ -63,7 +75,16 @@ def term_boundary(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         return (E_out + E_in), fm * ex, fm * ey, fm
 
     for i in range(N):
-        w, h = float(WH[i,0]), float(WH[i,1])
+        w, h = float(WH[i, 0]), float(WH[i, 1])
+        lab = labels[i] if i < len(labels) else {}
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            continue
+        if lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            continue
         if w <= 0.0 and h <= 0.0:
             continue
         cx, cy = float(P[i,0]), float(P[i,1])
@@ -96,4 +117,7 @@ def term_boundary(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if topk and topk > 0:
         # already <=4 per label; keep as-is
         pass
+    logger.debug(
+        "term_boundary: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle
+    )
     return float(E), F, {"boundary": src}

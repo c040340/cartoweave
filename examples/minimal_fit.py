@@ -116,11 +116,7 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
     hist = info.get("history", {}) if isinstance(info, dict) else {}
     recs = hist.get("records") or hist.get("evals") or []
     frames: List[Dict[str, Any]] = []
-    action_segments: List[Dict[str, Any]] = []
-    last_aid = None
-    last_name = None
-    seg_start = 0
-    for i, r in enumerate(recs):
+    for r in recs:
         comps = {}
         for k, v in r.get("comps", {}).items():
             arr = np.asarray(v, float)
@@ -128,36 +124,45 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
                 comps[k] = arr
         frame: Dict[str, Any] = {"P": np.asarray(r.get("P"), float), "comps": comps}
         meta = r.get("meta") or {}
-        aid = meta.get("action_id")
-        aname = meta.get("action_name", f"action_{aid}") if aid is not None else None
-        if aid is not None and aid != last_aid:
-            if last_aid is not None:
-                action_segments.append({"id": last_aid, "name": last_name, "start": seg_start, "end": i})
-            last_aid = aid
-            last_name = aname
-            seg_start = i
         if isinstance(meta, dict):
             frame["meta"] = dict(meta)
         frames.append(frame)
-    if last_aid is not None:
-        action_segments.append({"id": last_aid, "name": last_name, "start": seg_start, "end": len(recs)})
 
-    boundaries = [seg["start"] for seg in action_segments]
+    raw_steps = hist.get("scene_steps", [])
+    steps: List[Dict[str, Any]] = []
+    for i, s in enumerate(raw_steps):
+        rec_start = int(s.get("rec_start", 0))
+        rec_end = int(s.get("rec_end", 0))
+        step = {
+            "id": i,
+            "name": s.get("name", f"step_{i}"),
+            "rec_start": rec_start,
+            "rec_end": rec_end,
+            "start": rec_start,
+            "end": rec_end,
+        }
+        for k, v in s.items():
+            if k not in step:
+                step[k] = v
+        steps.append(step)
+
+    boundaries = [s["rec_start"] for s in steps]
     if frames:
-        boundaries.append(len(frames))
+        last_end = steps[-1]["rec_end"] if steps else len(frames)
+        boundaries.append(last_end)
 
-    def _get_idx(aid: int) -> int:
-        for seg in action_segments:
-            if seg.get("id") == aid:
-                return int(seg.get("start", 0))
+    def _get_idx(sid: int) -> int:
+        for s in steps:
+            if s.get("id") == sid:
+                return int(s.get("rec_start", 0))
         return 0
 
     return {
         "frames": frames,
-        "action_segments": action_segments,
-        "actions": action_segments,  # compat alias
+        "steps": steps,
+        "actions": steps,
         "boundaries": boundaries,
-        "get_frame_index_for_action": _get_idx,
+        "get_frame_index_for_step": _get_idx,
         "selected_label": 0,
     }
 
@@ -193,7 +198,7 @@ def main():
             force_getter=_force,
             field_kind=cfg.get("viz.field.kind", "heatmap"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
-            actions=payload.get("actions"),
+            actions=payload.get("steps"),
             boundaries=payload.get("boundaries"),
         )
 

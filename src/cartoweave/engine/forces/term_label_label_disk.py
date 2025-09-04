@@ -5,15 +5,24 @@ import numpy as np
 from . import register
 
 from cartoweave.utils.kernels import (
-    softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
+    softplus,
+    sigmoid,
+    softabs,
+    invdist_energy,
+    invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
+    softmin_weights,
 )
 from cartoweave.utils.shape import as_nx2
 
 from cartoweave.utils.geometry import (
-    project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+    project_point_to_segment,
+    poly_signed_area,
+    rect_half_extent_along_dir,
 )
+from cartoweave.utils.logging import logger
 
 @register("ll.disk")
 def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -25,6 +34,22 @@ def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if WH_raw is None:
         WH_raw = np.ones((N, 2))
     WH = as_nx2(WH_raw, N, "WH")
+    labels = scene.get("labels", [])
+    skip_hidden = 0
+    skip_circle = 0
+    skip_idx: set[int] = set()
+    for idx, lab in enumerate(labels):
+        if idx >= N:
+            break
+        w, h = float(WH[idx, 0]), float(WH[idx, 1])
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            skip_idx.add(idx)
+        elif lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            skip_idx.add(idx)
 
     k_out  = float(cfg.get("ll.k.repulse", 900.0))
     p      = float(cfg.get("ll.edge_power", 2.0))
@@ -50,14 +75,18 @@ def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     src = [[] for _ in range(N)]
 
     for i in range(N):
-        wi, hi = float(WH[i,0]), float(WH[i,1])
-        xi, yi = float(P[i,0]), float(P[i,1])
+        if i in skip_idx:
+            continue
+        wi, hi = float(WH[i, 0]), float(WH[i, 1])
+        xi, yi = float(P[i, 0]), float(P[i, 1])
         if wi <= 0.0 and hi <= 0.0:
             continue
         ri = radius_from_wh(wi, hi)
-        for j in range(i+1, N):
-            wj, hj = float(WH[j,0]), float(WH[j,1])
-            xj, yj = float(P[j,0]), float(P[j,1])
+        for j in range(i + 1, N):
+            if j in skip_idx:
+                continue
+            wj, hj = float(WH[j, 0]), float(WH[j, 1])
+            xj, yj = float(P[j, 0]), float(P[j, 1])
             rj = radius_from_wh(wj, hj)
 
             dx, dy = xi - xj, yi - yj
@@ -82,4 +111,5 @@ def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             src[i].append((int(j), float(fx), float(fy), float(abs(fmag))))
             src[j].append((int(i), float(-fx), float(-fy), float(abs(fmag))))
 
+    logger.debug("term_ll_disk: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle)
     return float(E), F, {"ll.disk": src}

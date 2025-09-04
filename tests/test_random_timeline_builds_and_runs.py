@@ -17,30 +17,37 @@ def _tiny_scene():
 
 def test_random_timeline_example_builds_and_runs(monkeypatch):
     try:
-        from cartoweave.orchestrators.timeline_runner import run_timeline
+        from cartoweave.orchestrators.scene_script_runner import run_scene_script
     except Exception:
-        pytest.skip("timeline runner not available")
+        pytest.skip("scene_script runner not available")
 
     scene = _tiny_scene()
     try:
-        from examples.random_timeline import build_random_timeline, run_example_headless
+        from examples.random_solve_plan import build_solve_plan, run_example_headless
 
-        timeline = build_random_timeline(scene, cfg={})
-        assert isinstance(timeline, list) and len(timeline) >= 1
-        info = run_example_headless(scene, timeline, cfg={})
+        plan = build_solve_plan(scene, cfg={})
+        assert isinstance(plan, list) and len(plan) >= 1
+        info = run_example_headless(scene, plan, cfg={})
     except Exception:
-        timeline = [dict(name="warmup"), dict(name="main")]
-        info = run_timeline(scene, timeline, cfg={})
+        script = [
+            {"name": "s0", "op": "enter", "id": "l0"},
+            {"name": "s1", "op": "mode", "id": "l0", "mode": "circle"},
+        ]
+        scene["scene_script"] = script
+        plan = [dict(name="warmup"), dict(name="main")]
+        info = run_scene_script(scene, script, plan, cfg={})
 
     hist = info.get("history", {})
     recs = hist.get("records", [])
-    assert len(recs) > 0, "No per-evaluation records from timeline runner"
-    action_ids = {
-        r.get("meta", {}).get("action_id") for r in recs if isinstance(r.get("meta"), dict)
+    steps = hist.get("scene_steps", [])
+    assert len(recs) > 0, "No per-evaluation records from scene_script runner"
+    assert len(steps) > 0, "No scene_steps from scene_script runner"
+    step_ids = {
+        r.get("meta", {}).get("step_id") for r in recs if isinstance(r.get("meta"), dict)
     }
-    # Ensure at least one action id and preferably more than one
-    assert any(aid is not None for aid in action_ids), "No action_id threaded into meta"
-    assert len([aid for aid in action_ids if aid is not None]) >= 1
-    if len(timeline) >= 2:
-        # Expect at least two distinct ids when timeline has multiple actions
-        assert len({aid for aid in action_ids if aid is not None}) >= 2
+    # Ensure at least one step id and preferably more than one
+    assert any(sid is not None for sid in step_ids), "No step_id threaded into meta"
+    assert len([sid for sid in step_ids if sid is not None]) >= 1
+    if len(steps) >= 2:
+        # Expect at least two distinct ids when script has multiple steps
+        assert len({sid for sid in step_ids if sid is not None}) >= 2

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Dict, Any, Tuple
+import warnings
 import numpy as np
 
 from .types import SceneData
@@ -7,6 +8,7 @@ from .engine.solvers.lbfgs import solve_layout_lbfgs
 from .engine.solvers.semi_newton import solve_layout_semi_newton
 from .engine.solvers.hybrid import solve_layout_hybrid
 from .utils.logging import logger
+from .orchestrators.scene_script_runner import run_scene_script
 
 def solve_frame(
     scene: SceneData,
@@ -37,8 +39,8 @@ def solve_frame(
     logger.info("solve_frame done mode=%s nit=%s %s", mode, nit, msg)
     return P, info
 
-def solve_timeline(
-    actions: list[Dict[str, Any]],
+def solve_plan(
+    stages: list[Dict[str, Any]],
     scene: SceneData,
     cfg: Dict[str, Any] | None = None,
     mode: str = "hybrid",
@@ -47,9 +49,54 @@ def solve_timeline(
     """Run a sequence of actions (timeline). Returns (history, last_result).
     This is a placeholder orchestrator-level API; see orchestrators.timeline for details.
     """
-    from .orchestrators.timeline import run_timeline
+    from .orchestrators.solve_plan import run_solve_plan
 
     logger.info("solve_timeline start mode=%s", mode)
-    result = run_timeline(actions, scene, cfg or {}, mode=mode, cache_path=cache_path)
+    result = run_solve_plan(stages, scene, cfg or {}, mode=mode, cache_path=cache_path)
     logger.info("solve_timeline done mode=%s", mode)
     return result
+
+
+def solve_scene_script(
+    scene: SceneData,
+    scene_script: Dict[str, Any],
+    cfg: Dict[str, Any] | None = None,
+    solve_plan: Dict[str, Any] | list[Dict[str, Any]] | None = None,
+):
+    """Apply a scene script while executing a solve plan per step."""
+
+    if not isinstance(scene_script, dict):
+        raise TypeError("scene_script must be a dict with a 'steps' list")
+    steps = scene_script.get("steps")
+    if not isinstance(steps, list):
+        raise TypeError("scene_script['steps'] must be a list")
+
+    plan = solve_plan
+    if plan is None:
+        plan = {"stages": [{"name": "main"}]}
+
+    cfg = cfg or {}
+    return run_scene_script(scene, steps, plan, cfg)
+
+
+def solve_timeline(
+    scene: SceneData,
+    timeline: Dict[str, Any] | list[Dict[str, Any]],
+    cfg: Dict[str, Any] | None = None,
+    solve_plan: Dict[str, Any] | list[Dict[str, Any]] | None = None,
+):
+    """Deprecated wrapper for :func:`run_scene_script`.
+
+    This function mirrors the old ``solve_timeline`` API but merely forwards the
+    call to :func:`run_scene_script` while emitting a ``DeprecationWarning``.
+    """
+
+    warnings.warn(
+        "timeline_runner is deprecated, use scene_script_runner",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    cfg = cfg or {}
+    plan = solve_plan if solve_plan is not None else {"stages": [{"name": "main"}]}
+    steps = timeline.get("steps") if isinstance(timeline, dict) else timeline
+    return run_scene_script(scene, steps, plan, cfg)

@@ -7,14 +7,16 @@ def _tmp_cache(tmp_path, name="scene_cache.npz"):
     return str(tmp_path / name)
 
 def _compare_scene(a, b):
-    assert np.allclose(a["points"], b["points"])    
-    assert np.allclose(a["lines"], b["lines"])    
+    assert np.allclose(a["points"], b["points"])
+    assert np.allclose(a["lines"], b["lines"])
     assert len(a["areas"]) == len(b["areas"])
     for x, y in zip(a["areas"], b["areas"]):
         assert np.allclose(x["polygon"], y["polygon"])
     assert np.allclose(a["labels_init"], b["labels_init"])
     assert np.allclose(a["WH"], b["WH"])
     assert np.allclose(a["anchors"], b["anchors"])
+    if "scene_script" in a or "scene_script" in b:
+        assert a.get("scene_script") == b.get("scene_script")
 
 def test_generate_scene_minimum_shape():
     data = generate_scene(canvas_size=(640,480), n_points=5, n_lines=1, n_areas=1, seed=123)
@@ -35,9 +37,11 @@ def test_seed_reproducible():
 
 def test_cache_roundtrip(tmp_path):
     cache = _tmp_cache(tmp_path)
-    d1 = get_scene(use_random=True, cache_path=cache, canvas_size=(320,240), n_points=3, n_lines=1, n_areas=1, seed=7)
+    d0 = get_scene(use_random=True, cache_path=cache, canvas_size=(320,240), n_points=3, n_lines=1, n_areas=1, seed=7)
     assert os.path.exists(cache)
-    d2 = get_scene(use_random=False, cache_path=cache, canvas_size=(1,1), n_points=0, n_lines=0, n_areas=0)
+    d1 = get_scene(use_random=False, cache_path=cache)
+    d2 = get_scene(use_random=False, cache_path=cache)
+    _compare_scene(d0, d1)
     _compare_scene(d1, d2)
 
 

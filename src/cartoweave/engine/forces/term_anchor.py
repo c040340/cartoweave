@@ -4,11 +4,18 @@ import numpy as np
 from . import register
 
 from cartoweave.utils.kernels import (
-    softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
+    softplus,
+    sigmoid,
+    softabs,
+    invdist_energy,
+    invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
+    softmin_weights,
 )
 from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 @register("anchor.spring")
 def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
@@ -28,8 +35,15 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
     eps_n = float(cfg.get("eps.norm", EPS_NORM))
     N = P.shape[0]
     A = as_nx2(A, N, "anchors")
+    WH_raw = scene.get("WH")
+    if WH_raw is None:
+        WH_raw = np.zeros((N, 2))
+    WH = as_nx2(WH_raw, N, "WH")
+    labels = scene.get("labels", [])
     F = np.zeros_like(P)
     E = 0.0
+    skip_hidden = 0
+    skip_circle = 0
 
     # 兜底方向：来自 pre_anchor 阶段的外力合力
     ext_dir = scene.get("_ext_dir")
@@ -39,6 +53,17 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
         ext_dir = as_nx2(ext_dir, N, "ext_dir")
 
     for i in range(N):
+        lab = labels[i] if i < len(labels) else {}
+        w, h = float(WH[i, 0]), float(WH[i, 1])
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            continue
+        if lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            continue
+
         px, py = P[i]
         ax, ay = A[i]
         dx = px - ax
@@ -68,4 +93,5 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
         # 能量
         E += 0.5 * k * (r - r0) ** 2
 
+    logger.debug("term_anchor: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle)
     return float(E), F, {"n": int(N)}

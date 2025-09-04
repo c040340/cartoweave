@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import numpy as np
 
 
 def _tiny_scene():
@@ -49,21 +50,21 @@ def test_lbfgs_records_per_evaluation():
 
 
 @pytest.mark.optional
-def test_records_include_action_meta_if_timeline_is_used():
+def test_records_include_stage_meta_if_plan_is_used():
     try:
-        from cartoweave.orchestrators.timeline_runner import run_timeline
+        from cartoweave.orchestrators.solve_plan_runner import run_solve_plan
         from cartoweave.engine.solvers import lbfgs  # ensure it imports
     except Exception:
-        pytest.skip("timeline orchestrator not available")
+        pytest.skip("solve_plan orchestrator not available")
 
     scene = _tiny_scene()
-    timeline = [dict(name="warmup"), dict(name="main")]
-    got_action_ids = set()
+    plan = [dict(name="warmup"), dict(name="main")]
+    got_stage_ids = set()
 
     def rec(P, E, comps, meta):
-        if meta and "action_id" in meta:
-            got_action_ids.add(meta["action_id"])
+        if meta and "stage_id" in meta:
+            got_stage_ids.add(meta["stage_id"])
 
-    run_timeline(scene, timeline, cfg={}, record=rec)
-    assert got_action_ids == {0, 1}
+    run_solve_plan(scene, plan, cfg={}, record=rec)
+    assert got_stage_ids == {0, 1}
 

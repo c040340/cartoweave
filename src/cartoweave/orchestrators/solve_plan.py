@@ -1,4 +1,4 @@
-# src/cartoweave/orchestrators/timeline.py
+# src/cartoweave/orchestrators/solve_plan.py
 from __future__ import annotations
 from typing import Dict, Any, List, Callable, Optional
 import copy
@@ -8,10 +8,10 @@ from ..utils.logging import logger
 from cartoweave.config.layering import validate_cfg, snapshot
 from cartoweave.engine import calibration as calib
 
-Step = Dict[str, Any]
-Schedule = List[Step]
+Stage = Dict[str, Any]
+SolvePlan = List[Stage]
 
-def _apply_overrides(base: Dict[str, Any], step: Step) -> Dict[str, Any]:
+def _apply_overrides(base: Dict[str, Any], step: Stage) -> Dict[str, Any]:
     """返回一个新的 cfg：先复制 base，再按 step 的 scale/override 应用."""
     cfg = dict(base)  # 浅拷贝即可（值都是标量/ndarray）
     # 1) scale: { "ll.k.repulse": 0.5, "anchor.k.spring": 0.0, ... }
@@ -23,10 +23,10 @@ def _apply_overrides(base: Dict[str, Any], step: Step) -> Dict[str, Any]:
         cfg[k] = v
     return cfg
 
-def _legacy_run_timeline(
+def _legacy_run_solve_plan(
     scene: Dict[str, Any],
     cfg: Dict[str, Any],
-    schedule: Optional[Schedule] = None,
+    plan: Optional[SolvePlan] = None,
     *,
     mode: str = "hybrid",
     carry_P: bool = True,
@@ -48,20 +48,20 @@ def _legacy_run_timeline(
     if cfg_base.get("calib.shape.enable", False):
         calib.apply_shape_profile(cfg_base, logger)
 
-    if schedule is None:
-        schedule = [
+    if plan is None:
+        plan = [
             {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}},
             {"name": "main_solve"},
         ]
 
-    logger.info("timeline start %d steps mode=%s", len(schedule), mode)
-    timeline = []
+    logger.info("timeline start %d steps mode=%s", len(plan), mode)
+    solve_plan_meta = []
     P = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float).copy()
 
     k_state: Dict[str, float] = {}
     C_prev: float | None = None
 
-    for step in schedule:
+    for step in plan:
         step_name = step.get("name", "step")
         cfg_step = _apply_overrides(cfg_base, step)
         # Re-apply shape profile when the name changes between steps
@@ -90,7 +90,7 @@ def _legacy_run_timeline(
         P_step, info_step = solve_frame(sc, cfg_step, mode=mode)
 
         # 记录关键信息（可按需扩展）
-        timeline.append({
+        solve_plan_meta.append({
             "name": step_name,
             "n_labels": int(P_step.shape[0]),
             "stage_info": info_step,  # 里面含 stage1/2 L-BFGS 的迭代统计
@@ -101,11 +101,11 @@ def _legacy_run_timeline(
         logger.info("timeline step '%s' done", step_name)
 
     logger.info("timeline done")
-    return P, {"timeline": timeline}
+    return P, {"solve_plan": solve_plan_meta}
 
 
-def _run_timeline_new(
-    schedule: List[Dict[str, Any]],
+def _run_solve_plan_new(
+    plan: List[Dict[str, Any]],
     base_cfg: Dict[str, Any],
     solver_fn: Callable[[Dict[str, Any], Dict[str, Any]], tuple],
 ) -> List[tuple[np.ndarray, Dict[str, Any]]]:
@@ -118,7 +118,7 @@ def _run_timeline_new(
     C_prev: float | None = None
     results: List[tuple[np.ndarray, Dict[str, Any]]] = []
 
-    for step_idx, step in enumerate(schedule):
+    for step_idx, step in enumerate(plan):
         cfg_step = dict(cfg)
         cfg_step.update(step.get("overrides", {}))
 
@@ -159,9 +159,9 @@ def _run_timeline_new(
     return results
 
 
-def run_timeline(*args, **kwargs):
+def run_solve_plan(*args, **kwargs):
     """Dispatch to the new or legacy timeline orchestrator."""
     if args and isinstance(args[0], list):
-        schedule, base_cfg, solver_fn = args[0], args[1], args[2]
-        return _run_timeline_new(schedule, base_cfg, solver_fn)
-    return _legacy_run_timeline(*args, **kwargs)
+        plan, base_cfg, solver_fn = args[0], args[1], args[2]
+        return _run_solve_plan_new(plan, base_cfg, solver_fn)
+    return _legacy_run_solve_plan(*args, **kwargs)

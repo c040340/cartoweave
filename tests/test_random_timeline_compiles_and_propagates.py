@@ -17,31 +17,39 @@ def _tiny_scene():
 
 def test_random_timeline_builds_and_propagates(monkeypatch):
     try:
-        from examples.random_timeline import (
+        from cartoweave.orchestrators.scene_script_runner import run_scene_script
+    except Exception:
+        pytest.skip("scene_script runner not available")
+
+    scene = _tiny_scene()
+    try:
+        from examples.random_solve_plan import (
             build_random_schema,
-            compile_timeline,
+            compile_solve_plan,
             run_example_headless,
         )
-        scene = _tiny_scene()
+
         schema = build_random_schema(scene, cfg={})
-        timeline = compile_timeline(schema, cfg={})
-        assert isinstance(timeline, list) and len(timeline) > 0
-        info = run_example_headless(scene, timeline, cfg={})
+        plan = compile_solve_plan(schema, cfg={})
+        assert isinstance(plan, list) and len(plan) > 0
+        info = run_example_headless(scene, plan, cfg={})
     except Exception:
-        try:
-            from cartoweave.orchestrators.timeline_runner import run_timeline
-        except Exception:
-            pytest.skip("timeline runner not available")
-        scene = _tiny_scene()
-        timeline = [dict(name="warmup"), dict(name="main")]
-        info = run_timeline(scene, timeline, cfg={})
+        script = [
+            {"name": "s0", "op": "enter", "id": "l0"},
+            {"name": "s1", "op": "mode", "id": "l0", "mode": "circle"},
+        ]
+        scene["scene_script"] = script
+        plan = [dict(name="warmup"), dict(name="main")]
+        info = run_scene_script(scene, script, plan, cfg={})
 
     hist = info.get("history", {})
     recs = hist.get("records", [])
-    assert len(recs) > 0, "Timeline runner produced no per-eval records"
-    action_ids = {
-        r.get("meta", {}).get("action_id") for r in recs if isinstance(r.get("meta"), dict)
+    steps = hist.get("scene_steps", [])
+    assert len(recs) > 0, "scene_script runner produced no per-eval records"
+    assert len(steps) > 0, "No scene_steps from scene_script runner"
+    step_ids = {
+        r.get("meta", {}).get("step_id") for r in recs if isinstance(r.get("meta"), dict)
     }
-    assert any(aid is not None for aid in action_ids), "No action_id in records meta"
-    if len(timeline) >= 2:
-        assert len({aid for aid in action_ids if aid is not None}) >= 2
+    assert any(sid is not None for sid in step_ids), "No step_id in records meta"
+    if len(steps) >= 2:
+        assert len({sid for sid in step_ids if sid is not None}) >= 2

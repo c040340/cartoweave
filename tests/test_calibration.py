@@ -4,6 +4,7 @@ import pytest
 from cartoweave.engine.calibration import auto_calibrate_k, ema_update_k
 from cartoweave.config.presets import minimal_cfg
 from cartoweave.api import solve_frame
+import numpy as np
 
 
 def tiny_scene():

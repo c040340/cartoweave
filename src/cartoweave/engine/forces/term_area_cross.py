@@ -12,6 +12,7 @@ from cartoweave.utils.geometry import (
     project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
 )
 from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 def segment_intersects_rect(ax, ay, bx, by, cx, cy, w, h, pad=0.0) -> bool:
     # simple AABB overlap with rectangle expanded by pad
@@ -47,11 +48,21 @@ def term_area_cross(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     F = np.zeros_like(P, float)
     E = 0.0
     S = [[] for _ in range(P.shape[0])]
+    skip_hidden = 0
+    skip_circle = 0
 
     for i, lab in enumerate(labels):
+        w, h = float(WH[i, 0]), float(WH[i, 1])
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            continue
+        if lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            continue
         own_idx = int(lab.get("anchor_index", -1)) if lab.get("anchor_kind") == "area" else -1
 
-        w, h = float(WH[i,0]), float(WH[i,1])
         if w <= 0.0 and h <= 0.0:
             continue
         hx, hy = 0.5*w, 0.5*h
@@ -130,4 +141,7 @@ def term_area_cross(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             F[i,1] += fy_sum
             S[i].append((int(ai), float(fx_sum), float(fy_sum), float(best)))
 
+    logger.debug(
+        "term_area_cross: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle
+    )
     return float(E), F, {"area_cross": S}

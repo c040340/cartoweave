@@ -1,5 +1,5 @@
 import numpy as np
-from cartoweave.orchestrators.timeline import run_timeline
+from cartoweave.orchestrators.solve_plan import run_solve_plan
 
 def make_scene():
     return dict(
@@ -13,7 +13,7 @@ def make_scene():
         anchors=np.array([[180.,150.],[220.,150.]], float),
     )
 
-def test_timeline_runs_and_records():
+def test_solve_plan_runs_and_records():
     scene = make_scene()
     cfg = {
         "ll.geom": "rect", "ll.k.repulse": 150.0, "ll.k.inside": 50.0,
@@ -29,8 +29,8 @@ def test_timeline_runs_and_records():
         {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}},
         {"name": "main_solve"},
     ]
-    P_final, info = run_timeline(scene, cfg, schedule, mode="hybrid", carry_P=True)
+    P_final, info = run_solve_plan(scene, cfg, schedule, mode="hybrid", carry_P=True)
     assert P_final.shape == scene["labels_init"].shape
-    assert "timeline" in info and len(info["timeline"]) == 2
+    assert "solve_plan" in info and len(info["solve_plan"]) == 2
     # 最终解一般会有变化
     assert float(np.max(np.abs(P_final - scene["labels_init"]))) > 0.0

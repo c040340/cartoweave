@@ -4,13 +4,18 @@ import numpy as np
 from . import register
 
 from cartoweave.utils.kernels import (
-    EPS_DIST, EPS_NORM, EPS_ABS,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
 )
 
 from cartoweave.utils.geometry import (
-    project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+    project_point_to_segment,
+    poly_signed_area,
+    rect_half_extent_along_dir,
 )
 from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 from cartoweave.utils.numerics import (
     sigmoid_np, d_sigmoid_np, softabs_np, softmin_weights_np,
@@ -54,8 +59,19 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     F = np.zeros_like(P, float)
     E_total = 0.0
     S = [[] for _ in range(P.shape[0])]
+    skip_hidden = 0
+    skip_circle = 0
 
     for i, lab in enumerate(labels):
+        w, h = float(WH[i, 0]), float(WH[i, 1])
+        if lab.get("hidden"):
+            assert w <= 0.0 and h <= 0.0
+            skip_hidden += 1
+            continue
+        if lab.get("mode") == "circle":
+            assert abs(w - h) < 1e-9
+            skip_circle += 1
+            continue
         if lab.get("anchor_kind") != "area":
             continue
         ai = int(lab.get("anchor_index", -1))
@@ -70,7 +86,6 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             continue
 
         # label 尺寸/中心
-        w, h = float(WH[i,0]), float(WH[i,1])
         if w <= 0.0 and h <= 0.0:
             continue
         hx, hy = 0.5*w, 0.5*h
@@ -169,4 +184,7 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             float(wgt[k_min])
         ))
 
+    logger.debug(
+        "term_area_embed: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle
+    )
     return float(E_total), F, {"area_embed": S}

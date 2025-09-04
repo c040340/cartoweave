@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from cartoweave.orchestrators.timeline import run_timeline
+from cartoweave.orchestrators.solve_plan import run_solve_plan
 
 
 def dummy_solver(scene, cfg):
@@ -9,20 +9,20 @@ def dummy_solver(scene, cfg):
     return np.zeros((len(scene.get("labels", [])), 2)), {"used_cfg": dict(cfg)}
 
 
-def test_timeline_no_calibration_keeps_cfg():
+def test_solve_plan_no_calibration_keeps_cfg():
     base_cfg = {
         "ll.k.repulse": 1.0,
         "calib.k.enable": False,
         "calib.shape.enable": False,
     }
     schedule = [{"scene": {"labels": [1, 2]}}]
-    results = run_timeline(schedule, base_cfg, dummy_solver)
+    results = run_solve_plan(schedule, base_cfg, dummy_solver)
     assert isinstance(results, list)
     # no recalibration → ll.k.repulse unchanged
     assert results[0][1]["used_cfg"]["ll.k.repulse"] == 1.0
 
 
-def test_timeline_with_calibration(monkeypatch):
+def test_solve_plan_with_calibration(monkeypatch):
     from cartoweave.engine import calibration
 
     # Patch auto_calibrate_k to deterministic result
@@ -41,7 +41,7 @@ def test_timeline_with_calibration(monkeypatch):
         "calib.k.ema_alpha": 1.0,
     }
     schedule = [{"scene": {"labels": [1, 2]}}]
-    results = run_timeline(schedule, base_cfg, dummy_solver)
+    results = run_solve_plan(schedule, base_cfg, dummy_solver)
     cfg_used = results[0][1]["used_cfg"]
     # ll.k.repulse must have been updated to 2.0 by calibration
     assert abs(cfg_used["ll.k.repulse"] - 2.0) < 1e-9

@@ -1,6 +1,6 @@
 # src/cartoweave/data/random.py
 from __future__ import annotations
-from typing import Dict, Any, List, Tuple, Optional, Callable
+from typing import Dict, Any, List, Tuple, Optional
 import os, time, math, string, random
 import numpy as np
 
@@ -229,7 +229,7 @@ def generate_scene(
     return scene
 
 
-def make_timeline(
+def make_scene_script(
     points: List[Dict[str, Any]],
     lines: List[Dict[str, Any]],
     areas: List[Dict[str, Any]],
@@ -268,12 +268,12 @@ def make_timeline(
     tgt_extra = max(2, int(N * 1.0)) if n_extra is None else int(n_extra)
     extra_done = 0
 
-    actions: List[Dict[str, Any]] = []
+    steps: List[Dict[str, Any]] = []
     max_steps = 10 * (N + tgt_extra) + 50
-    steps = 0
+    step_count = 0
 
-    while steps < max_steps and (len(appeared) < N or extra_done < tgt_extra):
-        steps += 1
+    while step_count < max_steps and (len(appeared) < N or extra_done < tgt_extra):
+        step_count += 1
         not_appeared = [eid for eid in ids_all if eid not in appeared]
         have_active = len(active_modes) > 0
 
@@ -297,7 +297,7 @@ def make_timeline(
             m0 = base_modes.get(eid, rng.choice(allowed_modes(eid)))
             active_modes[eid] = m0
             appeared.add(eid)
-            actions.append({"op": "appear", "id": eid, "mode": str(m0)})
+            steps.append({"op": "appear", "id": eid, "mode": str(m0)})
 
         elif op == "change":
             if not have_active:
@@ -307,52 +307,70 @@ def make_timeline(
             modes = [m for m in allowed_modes(eid) if m != old] or [old]
             new_mode = str(rng.choice(modes))
             active_modes[eid] = new_mode
-            actions.append({"op": "change", "id": eid, "mode": new_mode})
+            steps.append({"op": "change", "id": eid, "mode": new_mode})
             extra_done += 1
 
         elif op == "hide":
             eid = rng.choice(list(active_modes.keys()))
             del active_modes[eid]
-            actions.append({"op": "hide", "id": eid})
+            steps.append({"op": "hide", "id": eid})
 
     for eid in ids_all:
         if eid not in appeared:
             m0 = base_modes.get(eid, rng.choice(allowed_modes(eid)))
             active_modes[eid] = m0
             appeared.add(eid)
-            actions.append({"op": "appear", "id": eid, "mode": str(m0)})
+            steps.append({"op": "appear", "id": eid, "mode": str(m0)})
 
-    for k, a in enumerate(actions):
-        a["aid"] = int(k)
-    return actions
+    for k, a in enumerate(steps):
+        a["step_id"] = int(k)
+    return steps
 
 def get_scene(
     use_random: bool = True,
     cache_path: Optional[str] = None,
-    *,
-    with_timeline: bool = False,
-    auto_make_timeline_if_missing: bool = False,
-    make_timeline_fn: Optional[Callable[[Dict[str, Any]], List[dict]]] = None,
-    timeline_kwargs: Optional[Dict[str, Any]] = None,
+    with_scene_script: bool = True,
     **gen_kwargs
 ) -> Dict[str, Any]:
+    """Generate or load a scene together with its scene script.
+
+    ``use_random`` controls whether a new random scene is generated.  When set
+    to ``False`` the function attempts to load a previously cached scene and its
+    accompanying ``scene_script``.  If the cache is missing, a new scene and
+    script are generated and written to ``cache_path``.  When
+    ``with_scene_script`` is ``False`` any cached script is omitted from the
+    returned data and no new script is generated.
     """
-    行为与旧工程一致：
-    - use_random=True  : 重新生成（可带 seed）→ （可选）生成 timeline → 写缓存 → 返回
-    - use_random=False : 读缓存；若无则先生成并写缓存；（可选）缺失 timeline 时补齐并回写
-    当 ``make_timeline_fn`` 为 ``None`` 且 ``with_timeline`` 为 ``True`` 时，默认使
-    用 :func:`make_timeline`。
-    """
+
     if cache_path is None:
         cache_path = _default_cache_path()
 
-    _apply_seed(gen_kwargs.get("seed", None))
+    seed = gen_kwargs.get("seed", None)
+    _apply_seed(seed)
 
+    def _ensure_script(data: Dict[str, Any]) -> bool:
+        if not with_scene_script:
+            data.pop("scene_script", None)
+            return False
+        if "scene_script" in data and isinstance(data["scene_script"], list):
+            return False
+
+        n_pts = data.get("points", np.zeros((0, 2))).shape[0]
+        n_lines = data.get("lines", np.zeros((0, 4))).shape[0]
+        n_areas = len(data.get("areas", []))
+
+        pts = [{"id": f"p{i}"} for i in range(n_pts)]
+        lns = [{"id": f"l{i}"} for i in range(n_lines)]
+        ars = [{"id": f"a{i}"} for i in range(n_areas)]
+        modes = {lbl["id"]: "single" for lbl in data.get("labels", [])}
+
+        data["scene_script"] = make_scene_script(
+            pts, lns, ars, modes, seed=seed
+        )
+        return True
     if use_random:
         data = generate_scene(**gen_kwargs)
-        if with_timeline and callable(make_timeline_fn):
-            tl = make_timeline_fn(dict(data), **(timeline_kwargs or {}))
-            data["timeline"] = tl
+        _ensure_script(data)
         save_scene(data, cache_path)
         return data
 
@@ -360,11 +378,10 @@ def get_scene(
         data = load_scene(cache_path)
     except FileNotFoundError:
         data = generate_scene(**gen_kwargs)
+        _ensure_script(data)
         save_scene(data, cache_path)
+        return data
 
-    if with_timeline and ("timeline" not in data or not isinstance(data["timeline"], list) or len(data["timeline"]) == 0):
-        if auto_make_timeline_if_missing and callable(make_timeline_fn):
-            tl = make_timeline_fn(dict(data), **(timeline_kwargs or {}))
-            data["timeline"] = tl
-            save_scene(data, cache_path)
+    if _ensure_script(data):
+        save_scene(data, cache_path)
     return data

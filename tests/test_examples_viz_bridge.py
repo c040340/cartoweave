@@ -1,7 +1,7 @@
 # Phase A diagnostics (for context):
-# - random_timeline example previously read ``info['timeline']`` and exposed no
+# - random_solve_plan example previously read ``info['scene_script']`` and exposed no
 #   ``history['records']``; iteration slider could not show frames.
-# - solver records lacked ``action_id`` tags, so action bar segmentation failed.
+# - solver records lacked ``step_id`` tags, so action bar segmentation failed.
 # - examples ignored solver histories entirely, showing only final positions.
 
 import numpy as np
@@ -20,7 +20,7 @@ def _tiny_scene():
         frame_size=(640, 360),
         labels_init=np.array([[100.0, 120.0], [220.0, 180.0]], float),
         WH=np.array([[80.0, 28.0], [80.0, 28.0]], float),
-        labels=[{"anchor_kind": "none"}, {"anchor_kind": "none"}],
+        labels=[{"anchor_kind": "none", "id": "l0"}, {"anchor_kind": "none", "id": "l1"}],
         points=[],
         lines=[],
         areas=[],
@@ -49,23 +49,24 @@ def test_minimal_fit_viz_bridge_smoke(monkeypatch):
     any_term = next(iter(f0["comps"].values()))
     assert isinstance(any_term, np.ndarray) and any_term.shape == (2, 2)
 
-    if "meta" in f0 and isinstance(f0["meta"], dict) and "action_id" in f0["meta"]:
-        assert isinstance(f0["meta"]["action_id"], int)
+    if "meta" in f0 and isinstance(f0["meta"], dict) and "stage_id" in f0["meta"]:
+        assert isinstance(f0["meta"]["stage_id"], int)
 
 
-def test_random_timeline_viz_bridge_smoke(monkeypatch):
+def test_random_solve_plan_viz_bridge_smoke(monkeypatch):
     try:
-        from cartoweave.orchestrators.timeline_runner import run_timeline
-        from examples.random_timeline import build_viz_payload
+        from cartoweave.api import solve_scene_script
+        from examples.random_solve_plan import build_viz_payload, build_solve_plan
     except Exception:
-        pytest.skip("timeline example not available")
+        pytest.skip("solve_plan example not available")
 
-    tl = [dict(name="warmup"), dict(name="main")]
-    info = run_timeline(_tiny_scene(), tl, cfg={})
+    scene = _tiny_scene()
+    script = {"steps": [{"name": "enter", "op": "enter", "id": "l0"}]}
+    plan = {"stages": build_solve_plan(scene, cfg={})}
+    info = solve_scene_script(scene, script, {"boundary.k.wall": 1.0}, solve_plan=plan)
     payload = build_viz_payload(info)
 
     assert "frames" in payload and len(payload["frames"]) > 0
-    assert any(
-        isinstance(f.get("meta"), dict) and "action_id" in f["meta"]
-        for f in payload["frames"]
-    ), "No action_id found in frames meta"
+    assert "steps" in payload and len(payload["steps"]) == 1
+    first = payload["steps"][0]
+    assert first.get("rec_start") == 0 and first.get("rec_end") == len(payload["frames"])

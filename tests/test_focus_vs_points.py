@@ -1,5 +1,5 @@
 import numpy as np
-from cartoweave.orchestrators.timeline import run_timeline
+from cartoweave.orchestrators.solve_plan import run_solve_plan
 
 def base_cfg():
     return {
@@ -32,8 +32,8 @@ def test_focus_does_not_depend_on_points_when_pl_zero():
     scene_with_pts = make_scene(points=np.array([[350.,300.],[500.,500.]], float))
     scene_no_pts   = make_scene(points=np.zeros((0,2), float))
 
-    P1, _ = run_timeline(scene_with_pts, cfg, [{"name":"main"}], mode="hybrid")
-    P2, _ = run_timeline(scene_no_pts,   cfg, [{"name":"main"}], mode="hybrid")
+    P1, _ = run_solve_plan(scene_with_pts, cfg, [{"name":"main"}], mode="hybrid")
+    P2, _ = run_solve_plan(scene_no_pts,   cfg, [{"name":"main"}], mode="hybrid")
 
     assert np.allclose(P1, P2), f"Focus must be independent of points when pl.*=0"
 
@@ -45,8 +45,8 @@ def test_points_affect_when_pl_enabled():
     scene_with_pts = make_scene(points=np.array([[330.,300.]], float))   # 点靠得近
     scene_no_pts   = make_scene(points=np.zeros((0,2), float))
 
-    P1, _ = run_timeline(scene_with_pts, cfg, [{"name":"main"}], mode="hybrid")
-    P2, _ = run_timeline(scene_no_pts,   cfg, [{"name":"main"}], mode="hybrid")
+    P1, _ = run_solve_plan(scene_with_pts, cfg, [{"name":"main"}], mode="hybrid")
+    P2, _ = run_solve_plan(scene_no_pts,   cfg, [{"name":"main"}], mode="hybrid")
 
     diff = float(np.linalg.norm(P1 - P2))
     assert diff > 1e-3, "When pl.* > 0, points should change the solution"
