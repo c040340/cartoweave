@@ -65,6 +65,43 @@ def test_run_scene_script_records_segmented():
     assert all("step_id" in r.get("meta", {}) for r in recs)
 
 
+def test_run_scene_script_restores_full_arrays():
+    scene = {
+        "frame_size": (100.0, 100.0),
+        "labels_init": np.array([[0.0, 0.0], [10.0, 10.0]], float),
+        "labels": [
+            {
+                "id": "l0",
+                "visible": False,
+                "mode": "single",
+                "modes": {"single": {"w": 10.0, "h": 10.0}},
+            },
+            {
+                "id": "l1",
+                "visible": False,
+                "mode": "single",
+                "modes": {"single": {"w": 10.0, "h": 10.0}},
+            },
+        ],
+        "WH": np.array([[10.0, 10.0], [10.0, 10.0]], float),
+        "points": [],
+        "lines": [],
+        "areas": [],
+    }
+    scene_script = [
+        {"name": "enter0", "op": "enter", "id": "l0"},
+        {"name": "enter1", "op": "enter", "id": "l1"},
+        {"name": "hide1", "op": "disappear", "id": "l1"},
+    ]
+    plan = {"stages": [{"name": "stage0"}]}
+    cfg = {"boundary.k.wall": 1.0}
+    info = run_scene_script(scene, scene_script, plan, cfg)
+
+    assert scene["WH"].shape[0] == len(scene["labels"]) == 2
+    assert scene["labels_init"].shape[0] == len(scene["labels"]) == 2
+    assert info.get("P_final").shape[0] == len(scene["labels"])
+
+
 def test_solve_scene_script_api_type_error():
     scene = _scene()
     with pytest.raises(TypeError):

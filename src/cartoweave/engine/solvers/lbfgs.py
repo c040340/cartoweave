@@ -13,8 +13,17 @@ def solve_layout_lbfgs(
     record: Callable[[np.ndarray, float, Dict[str, np.ndarray], Dict[str, Any]], None]
     | None = None,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    labels_init = scene.get("labels_init")
-    N = 0 if labels_init is None else labels_init.shape[0]
+    labels_init = np.asarray(scene.get("labels_init"), float)
+    assert labels_init.ndim == 2 and labels_init.shape[1] == 2, (
+        f"P must be (N,2), got {labels_init.shape}"
+    )
+    WH = np.asarray(scene.get("WH", np.zeros((labels_init.shape[0], 2))), float)
+    active = scene.get("_active_ids_solver")
+    active_len = labels_init.shape[0] if active is None else len(active)
+    assert labels_init.shape[0] == WH.shape[0] == active_len, (
+        f"Solver shape mismatch: P={labels_init.shape}, WH={WH.shape}, active={active_len}"
+    )
+    N = labels_init.shape[0]
     logger.info("L-BFGS start n_labels=%d", N)
     if N == 0:
         logger.info("L-BFGS early exit: no labels")

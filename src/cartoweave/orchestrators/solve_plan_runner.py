@@ -96,7 +96,7 @@ def run_solve_plan(
 
         stages_meta.append({"name": stage_name})
 
-        scene.pop("_current_stage_name", None)
+        scene["_current_stage_name"] = None
 
     history = {"positions": history_pos, "energies": history_E, "records": history_rec}
     return {"stages": stages_meta, "P_final": P_cur, "history": history}

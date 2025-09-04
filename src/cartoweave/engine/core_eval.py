@@ -50,8 +50,8 @@ def energy_and_grad_fullP(
         E_total += float(E_add)
         if F_add is not None:
             if F_add.shape != P.shape:
-                step_name = getattr(scene, "_current_step_name", None) or scene.get("_current_step_name")
-                stage_name = getattr(scene, "_current_stage_name", None) or scene.get("_current_stage_name")
+                step_name = scene.get("_current_step_name")
+                stage_name = scene.get("_current_stage_name")
                 raise ValueError(
                     f"[TERM SHAPE MISMATCH] term={name} F_add={F_add.shape} P={P.shape} "
                     f"step={step_name} stage={stage_name}"
@@ -73,8 +73,8 @@ def energy_and_grad_fullP(
         E_total += float(E_add)
         if F_add is not None:
             if F_add.shape != P.shape:
-                step_name = getattr(scene, "_current_step_name", None) or scene.get("_current_step_name")
-                stage_name = getattr(scene, "_current_stage_name", None) or scene.get("_current_stage_name")
+                step_name = scene.get("_current_step_name")
+                stage_name = scene.get("_current_stage_name")
                 raise ValueError(
                     f"[TERM SHAPE MISMATCH] term={name} F_add={F_add.shape} P={P.shape} "
                     f"step={step_name} stage={stage_name}"

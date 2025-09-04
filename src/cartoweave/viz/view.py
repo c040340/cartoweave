@@ -110,6 +110,7 @@ def interactive_view(
     source_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     metrics_getter: Optional[Callable[[int], Dict[str, Any]]] = None,
     field_getter: Optional[Callable[[int], Any]] = None,
+    active_getter: Optional[Callable[[int], Sequence[int]]] = None,
     field_kind: str = "3d",
     field_cmap: str = "viridis",
     boundaries: Optional[Sequence[int]] = None,
@@ -436,19 +437,31 @@ def interactive_view(
         return np.sum(total, axis=0)
 
     def _update(step: int) -> None:
-        nonlocal patches
-        forces = _get_forces(step)
+        nonlocal patches, selected
+        forces_raw = _get_forces(step)
         src = _get_sources(step)
         pts = src.get("points", points)
         lns = src.get("lines", lines)
         ars = src.get("areas", areas)
         anchors = _compute_anchors(labels, points=pts, lines=lns, areas=ars, sources=src)
 
+        active_ids = list(active_getter(step)) if active_getter else list(range(N))
+        pos_step = traj[step][active_ids]
+        labs = [labels[i] for i in active_ids]
+        wh_step = rect_wh[active_ids]
+        if active_ids == list(range(N)):
+            forces = forces_raw
+        else:
+            forces = {k: np.asarray(v, float)[active_ids] for k, v in forces_raw.items()}
+
+        if selected >= len(active_ids):
+            selected = 0
+
         patches = draw_layout(
             ax_layout,
-            traj[step],
-            labels,
-            rect_wh,
+            pos_step,
+            labs,
+            wh_step,
             frame_w=W,
             frame_h=H,
             points=pts,
@@ -456,7 +469,7 @@ def interactive_view(
             areas=ars,
             anchors=anchors,
         )
-        label_id = _label_name(labels[selected], selected)
+        label_id = _label_name(labs[selected], selected)
         label_total = draw_force_panel(ax_force, forces, selected, title=label_id)
 
         vec_all = _sum_all_forces(forces)

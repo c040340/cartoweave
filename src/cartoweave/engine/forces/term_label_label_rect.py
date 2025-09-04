@@ -24,16 +24,15 @@ def term_ll_rect(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
 
     labels_all = scene.get("labels", [])
-    active_ids = scene.get("_active_ids", list(range(N)))
-    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
+    active_ids = scene.get("_active_ids_solver", list(range(N)))
+    assert len(active_ids) == N, f"_active_ids_solver misaligned: {len(active_ids)} vs P {P.shape}"
     labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
     modes = [lab.get("mode") for lab in labels]
     mask = np.array([m != "circle" for m in modes], dtype=bool)
     idxs = np.nonzero(mask)[0]
-    skip_circle = int(np.count_nonzero(~mask))
 
-    F  = np.zeros_like(P)
-    E  = 0.0
+    F = np.zeros_like(P)
+    E = 0.0
 
     k_out = float(cfg.get("ll.k.repulse", 0.0))
     k_in  = float(cfg.get("ll.k.inside",  0.0))
@@ -102,6 +101,5 @@ def term_ll_rect(scene, P: np.ndarray, cfg, phase="pre_anchor"):
                 F[a,0] += fx_in; F[a,1] += fy_in
                 F[b,0] -= fx_in; F[b,1] -= fy_in
 
-    logger.debug("term_ll_rect: skip_circle=%d", skip_circle)
     M = len(idxs)
-    return float(E), F, {"pairs": int(M*(M-1)//2)}
+    return float(E), F, {"pairs": int(M * (M - 1) // 2)}

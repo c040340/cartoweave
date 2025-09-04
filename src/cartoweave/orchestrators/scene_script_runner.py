@@ -76,6 +76,24 @@ def apply_step_to_scene(scene: Dict[str, Any], step: Dict[str, Any]) -> None:
         label["visible"] = False
 
 
+def _build_active_views_for_solver(scene: Dict[str, Any]) -> List[int]:
+    """Slice per-label arrays to the solver's active subset.
+
+    The scene is expected to provide ``*_all`` arrays from which the active
+    views are derived.  Sliced arrays are written back without the suffix so
+    downstream solvers operate only on the subset.  The list of active
+    indices is returned unchanged for convenience.
+    """
+
+    ids = scene.get("_active_ids_solver", [])
+    scene["labels_init"] = np.asarray(scene["labels_init_all"], float)[ids]
+    scene["WH"] = np.asarray(scene["WH_all"], float)[ids]
+    if "anchors_all" in scene and scene["anchors_all"] is not None:
+        scene["anchors"] = np.asarray(scene["anchors_all"], float)[ids]
+    # Additional per-label arrays used by terms can be sliced here as needed.
+    return ids
+
+
 def run_scene_script(
     scene: Dict[str, Any],
     scene_script: List[Dict[str, Any]],
@@ -140,48 +158,68 @@ def run_scene_script(
     for step_idx, step in enumerate(steps):
         rec_start = len(history_rec)
 
-        step_name = step.get("name", f"step_{step_idx}")
-        scene["_current_step_name"] = step_name
-
         # Restore full arrays so ``apply_step_to_scene`` can operate on them.
         scene["labels"] = labels_all
+        scene["labels_init_all"] = P_all
+        scene["WH_all"] = WH_all
         scene["WH"] = WH_all
         if anchors_all is not None:
+            scene["anchors_all"] = anchors_all
             scene["anchors"] = anchors_all
-        scene["labels_init"] = P_all
 
         apply_step_to_scene(scene, step)
 
-        # Determine active labels (visible only). Circle labels are retained and
-        # skipped inside individual terms as needed.
-        _active_ids = [
-            i for i, lab in enumerate(labels_all) if lab.get("visible", True)
+        active_ids_solver = [
+            i
+            for i, l in enumerate(scene["labels"])
+            if l.get("visible", False) and l.get("mode") != "circle"
         ]
+        active_ids_viz = [
+            i for i, l in enumerate(scene["labels"]) if l.get("visible", False)
+        ]
+        scene["_active_ids_solver"] = active_ids_solver
+        scene["_active_ids_viz"] = active_ids_viz
+        scene["_current_step_name"] = step.get("name")
 
-        scene["_active_ids"] = _active_ids
+        if step_idx == 0:
+            for lab in scene["labels"]:
+                lab["visible"] = lab.get("visible", False) and False
+            apply_step_to_scene(scene, step)
+            active_ids_solver = [
+                i
+                for i, l in enumerate(scene["labels"])
+                if l.get("visible", False) and l.get("mode") != "circle"
+            ]
+            active_ids_viz = [
+                i for i, l in enumerate(scene["labels"]) if l.get("visible", False)
+            ]
+            scene["_active_ids_solver"] = active_ids_solver
+            scene["_active_ids_viz"] = active_ids_viz
 
-        # Slice per-label arrays for the solver. ``labels`` remains the full
-        # list so force terms can reference original indices via
-        # ``scene['_active_ids']``.
-        for k, v in list(scene.items()):
-            if k.endswith("_all") and isinstance(v, np.ndarray):
-                scene[k[:-4]] = np.asarray(v, float)[_active_ids]
+        ids = _build_active_views_for_solver(scene)
+
+        active_ids = [
+            i for i, l in enumerate(scene["labels"]) if l.get("visible") and l.get("mode") != "circle"
+        ]
+        scene["_active_ids"] = active_ids
+        print(
+            f"[runner] step={step.get('name')} active_labels={len(active_ids)} ids={active_ids[:8]}..."
+        )
+        assert len(active_ids) == scene["labels_init"].shape[0], (
+            f"Active mismatch before solve: {len(active_ids)} vs P {scene['labels_init'].shape}"
+        )
 
         scene["_log_label_stats"] = True
         P_active = scene.get("labels_init", np.zeros((0, 2), float))
-
-        # Keep a full-scene snapshot so per-iteration records can be expanded to
-        # a consistent shape even when the active subset changes.
         P_pre = P_all.copy()
 
         info = run_solve_plan(scene, stages, cfg)
 
         P_active = np.asarray(info.get("P_final", P_active), float)
-
-        # Update the full position array with the solved subset.
-        if P_all.shape[0] >= len(_active_ids) and len(_active_ids) > 0:
-            P_all[_active_ids] = P_active
+        if P_all.shape[0] >= len(ids) and len(ids) > 0:
+            P_all[ids] = P_active
         scene["labels_init"] = P_active
+        scene["labels_init_all"] = P_all
 
         hist = info.get("history", {})
         pos = list(hist.get("positions", []))
@@ -193,14 +231,12 @@ def run_scene_script(
             eng = eng[1:]
             rec = rec[1:]
 
-        # Expand per-step history to full label count so trajectories can be
-        # stacked across steps.
         pos_full = []
         for arr in pos:
             arr = np.asarray(arr, float)
-            if arr.shape[0] == len(_active_ids):
+            if arr.shape[0] == len(ids):
                 full = P_pre.copy()
-                full[_active_ids] = arr
+                full[ids] = arr
                 pos_full.append(full)
             else:
                 pos_full.append(arr)
@@ -208,10 +244,24 @@ def run_scene_script(
 
         for r in rec:
             P_snap = np.asarray(r.get("P"), float)
-            if P_snap.shape[0] == len(_active_ids):
+            if P_snap.shape[0] == len(ids):
                 full = P_pre.copy()
-                full[_active_ids] = P_snap
+                full[ids] = P_snap
                 r["P"] = full
+
+            comps = r.get("comps")
+            if isinstance(comps, dict):
+                comps_full: Dict[str, np.ndarray] = {}
+                for k, arr in comps.items():
+                    arr_np = np.asarray(arr, float)
+                    if arr_np.shape[0] == len(ids):
+                        full = np.zeros((P_pre.shape[0], 2), float)
+                        full[ids] = arr_np
+                        comps_full[k] = full
+                    else:
+                        comps_full[k] = arr_np
+                r["comps"] = comps_full
+
             meta = r.setdefault("meta", {})
             meta.setdefault("step_id", step_idx)
             meta.setdefault("step_name", step.get("name", f"step_{step_idx}"))
@@ -221,17 +271,26 @@ def run_scene_script(
         history_rec.extend(rec)
 
         rec_end = len(history_rec)
-        entry = {
-            "name": step.get("name", f"step_{step_idx}"),
-            "rec_start": rec_start,
-            "rec_end": rec_end,
-        }
-        op = _canon(step.get("op"))
-        if op:
-            entry[op] = {k: v for k, v in step.items() if k not in {"name", "op"}}
-        history_steps.append(entry)
+        history_steps.append(
+            {
+                "name": step.get("name", f"step_{step_idx}"),
+                "rec_start": rec_start,
+                "rec_end": rec_end,
+                "active_ids_solver": list(active_ids_solver),
+                "active_ids_viz": list(active_ids_viz),
+            }
+        )
 
-        scene.pop("_current_step_name", None)
+        scene["_current_step_name"] = None
+
+    scene["labels"] = labels_all
+    scene["labels_init"] = P_all
+    scene["labels_init_all"] = P_all
+    scene["WH"] = WH_all
+    scene["WH_all"] = WH_all
+    if anchors_all is not None:
+        scene["anchors"] = anchors_all
+        scene["anchors_all"] = anchors_all
 
     history = {
         "positions": history_pos,
@@ -245,5 +304,5 @@ def run_scene_script(
         for i, st in enumerate(stages)
     ]
 
-    return {"stages": stages_meta, "P_final": P_active, "history": history}
+    return {"stages": stages_meta, "P_final": P_all, "history": history}
 

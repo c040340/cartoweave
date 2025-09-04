@@ -17,6 +17,7 @@ Phase A diagnostics:
 from __future__ import annotations
 from typing import Dict, Any, Tuple, List
 import numpy as np
+from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
 
 from cartoweave.viz.backend import use_compatible_backend
 use_compatible_backend()
@@ -110,62 +111,6 @@ def _build_cfg() -> Dict[str, Any]:
     return cfg
 
 
-def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert solver ``info`` into a viewer-friendly payload."""
-
-    hist = info.get("history", {}) if isinstance(info, dict) else {}
-    recs = hist.get("records") or hist.get("evals") or []
-    frames: List[Dict[str, Any]] = []
-    for r in recs:
-        comps = {}
-        for k, v in r.get("comps", {}).items():
-            arr = np.asarray(v, float)
-            if arr.ndim == 2 and arr.shape[1] == 2:
-                comps[k] = arr
-        frame: Dict[str, Any] = {"P": np.asarray(r.get("P"), float), "comps": comps}
-        meta = r.get("meta") or {}
-        if isinstance(meta, dict):
-            frame["meta"] = dict(meta)
-        frames.append(frame)
-
-    raw_steps = hist.get("scene_steps", [])
-    steps: List[Dict[str, Any]] = []
-    for i, s in enumerate(raw_steps):
-        rec_start = int(s.get("rec_start", 0))
-        rec_end = int(s.get("rec_end", 0))
-        step = {
-            "id": i,
-            "name": s.get("name", f"step_{i}"),
-            "rec_start": rec_start,
-            "rec_end": rec_end,
-            "start": rec_start,
-            "end": rec_end,
-        }
-        for k, v in s.items():
-            if k not in step:
-                step[k] = v
-        steps.append(step)
-
-    boundaries = [s["rec_start"] for s in steps]
-    if frames:
-        last_end = steps[-1]["rec_end"] if steps else len(frames)
-        boundaries.append(last_end)
-
-    def _get_idx(sid: int) -> int:
-        for s in steps:
-            if s.get("id") == sid:
-                return int(s.get("rec_start", 0))
-        return 0
-
-    return {
-        "frames": frames,
-        "steps": steps,
-        "actions": steps,
-        "boundaries": boundaries,
-        "get_frame_index_for_step": _get_idx,
-        "selected_label": 0,
-    }
-
 def main():
     scene = _make_scene()
     cfg   = _build_cfg()
@@ -186,6 +131,9 @@ def main():
         def _force(idx=None):
             return frames[idx]["comps"] if frames else {}
 
+        def _active(idx=None):
+            return frames[idx].get("active_ids_viz", list(range(len(scene["labels"])))) if frames else list(range(len(scene["labels"])))
+
         interactive_view(
             traj=traj,
             labels=scene["labels"],
@@ -196,6 +144,7 @@ def main():
             W=scene["frame_size"][0],
             H=scene["frame_size"][1],
             force_getter=_force,
+            active_getter=_active,
             field_kind=cfg.get("viz.field.kind", "heatmap"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
             actions=payload.get("steps"),
