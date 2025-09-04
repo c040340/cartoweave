@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+import numpy as np
+
 from typing import Dict, Any, Literal, Optional
 from .schema import SPEC, spec_of, Mutability
 from .profiles.shapes import SHAPE_PROFILES, SIGMA_SCALE_KEYS
@@ -10,6 +13,24 @@ Phase = Literal["load","action_begin","runtime"]
 class ConfigValidationError(ValueError): ...
 class ConfigMutabilityError(ValueError): ...
 class ConfigTypeRangeError(ValueError): ...
+
+
+def _values_equal(a, b) -> bool:
+    """Safe equality that works for numpy arrays and scalars."""
+    # 同一个对象
+    if a is b:
+        return True
+    # numpy array
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        try:
+            return np.array_equal(a, b)
+        except Exception:
+            return False
+    # 其他类型：尽量用 ==
+    try:
+        return a == b
+    except Exception:
+        return False
 
 
 def _type_ok(v: Any, t: type) -> bool:
@@ -70,7 +91,7 @@ def validate_cfg(cfg: Dict[str, Any], phase: Phase) -> None:
                     raise ConfigMutabilityError(f"[frozen/new] {k} cannot be introduced in phase={phase}")
                 continue
             prev = ref[k]
-            if cur == prev:
+            if _values_equal(cur, prev):
                 continue
             si = spec_of(k)
             if not si:
