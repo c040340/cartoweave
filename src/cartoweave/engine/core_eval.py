@@ -6,6 +6,7 @@ from cartoweave.utils.checks import merge_sources, check_force_grad_consistency
 from cartoweave.utils.logging import logger
 
 from .forces import REGISTRY, enabled_terms, reset_registry
+from ..utils.shape import as_nx2
 
 
 def energy_and_grad_fullP(
@@ -107,88 +108,169 @@ def energy_and_grad_fullP(
     return float(E_total), g, {"sources": sources_merged}
 
 
-def scalar_potential_field(
-    scene: Dict[str, Any],
-    P: np.ndarray,
-    cfg: Dict[str, Any],
-    *,
-    label_index: int = 0,
-    resolution: int | tuple[int, int] | None = None,
-) -> np.ndarray:
-    """Evaluate a scalar potential field for one label on a grid.
+import numpy as np
 
-    This helper computes the total energy of the scene while probing the
-    position of a single label over a regular grid.  The other labels remain
-    fixed.  The result is an array ``(ny, nx)`` where ``ny``/``nx`` correspond to
-    the number of samples in the vertical and horizontal directions
-    respectively.
-
-    Parameters
-    ----------
-    scene:
-        Scene description as used by :func:`energy_and_grad_fullP`.
-    P:
-        Current label positions ``(N, 2)``.
-    cfg:
-        Configuration dictionary.
-    label_index:
-        Index of the label to probe.  Defaults to ``0``.
-    resolution:
-        Either an integer specifying the horizontal number of samples or a
-        tuple ``(ny, nx)`` with individual resolutions.  When given as an
-        integer, the vertical resolution is derived from the frame's aspect
-        ratio to preserve square pixels.  If ``None`` (the default), the value
-        of ``cfg["viz.field.resolution"]`` is used when present, otherwise
-        ``100``.
+def scalar_potential_field(scene: dict,
+                           P: np.ndarray,
+                           cfg: dict,
+                           *,
+                           label_index: int = 0,
+                           resolution: int | None = None,
+                           mode: str = "grad_norm"  # "energy" | "grad_norm"
+                           ) -> np.ndarray:
     """
+    Build a scalar field over the frame by probing the given label's position
+    across a grid and evaluating either total energy ("energy") or the gradient
+    magnitude at that label ("grad_norm"). Returned array has shape (ny, nx).
 
+    Key fix (2025-09-05):
+      - Per-label arrays (e.g., WH) must be validated/broadcast against L (#labels),
+        NOT against M (#grid samples). This function enforces L for WH, etc.
+
+    Args
+    ----
+    scene : dict
+        Scene dictionary containing frame_size, geometry sources, per-label params, etc.
+        Must include (or allow default) "WH" for label rectangles (shape (L,2) or (2,)).
+    P : (L,2) float ndarray
+        Current label centers.
+    cfg : dict
+        Global/solver config. May contain viz.field.resolution or similar.
+    label_index : int
+        Which label to probe over the grid.
+    resolution : int | None
+        If None, choose a reasonable ny based on frame height, keeping aspect ratio.
+        If int, used as ny directly (nx is scaled by aspect).
+    mode : {"energy","grad_norm"}
+        - "grad_norm": compute ||∂E/∂P_i|| for the probed label (default,直观显示“陡峭/平坦”)
+        - "energy"   : compute total E at that probe position
+
+    Returns
+    -------
+    field : (ny, nx) float ndarray
+        Scalar field suitable for heatmap/contour rendering. NaN-free.
+    """
+    # ------ sanitize inputs ------
     P = np.asarray(P, dtype=float)
     if P.ndim != 2 or P.shape[1] != 2:
-        raise ValueError("P must be of shape (N,2)")
+        raise ValueError(f"P must be (L,2); got shape={P.shape}")
 
-    from .config_utils import lock_viz_field
+    L = int(P.shape[0])                         # number of labels
+    if L == 0:
+        return np.zeros((1, 1), dtype=float)
 
-    W, H = scene.get("frame_size", (1.0, 1.0))
+    # clamp label index
+    li = int(max(0, min(label_index, L - 1)))
 
-    if resolution is None:
-        lock_viz_field(cfg, scene)
-        nx = int(cfg["viz.field.nx"])
-        ny = int(cfg["viz.field.ny"])
+    # ------ frame size & grid resolution ------
+    # frame_size could be (W,H) or stored under scene["frame_size"] etc.
+    fs = scene.get("frame_size", None)
+    if isinstance(fs, (list, tuple)) and len(fs) == 2:
+        W, H = int(fs[0]), int(fs[1])
     else:
-        if isinstance(resolution, int):
-            nx = int(resolution)
-            lock_viz_field(cfg, scene, nx=nx)
-            ny = int(cfg["viz.field.ny"])
-        else:
-            ny, nx = map(int, resolution)
-            cfg["viz.field.aspect"] = (float(W), float(H))
-            cfg["viz.field.nx"] = int(nx)
-            cfg["viz.field.ny"] = int(ny)
+        # try cfg fallback
+        fs2 = cfg.get("frame_size", (1920, 1080))
+        W, H = int(fs2[0]), int(fs2[1])
 
-    xs = np.linspace(0.0, float(W), nx)
-    ys = np.linspace(0.0, float(H), ny)
+    W = max(int(W), 4)
+    H = max(int(H), 4)
 
-    # Build a grid of probe positions for the selected label.  We evaluate the
-    # energy/forces for all points in one batch using a "shadow" copy of the
-    # scene.  This avoids mutating the original scene and prevents accidental
-    # in-place writes when the scene only provides single-label (1,2) arrays.
-    grid = np.stack(np.meshgrid(xs, ys), axis=-1).reshape(-1, 2)
-    M = grid.shape[0]
+    # decide grid resolution (ny rows, nx cols) keeping aspect
+    if resolution is None:
+        # default ny ~ min( max(80, H/12), 220 ) as a reasonable balance
+        ny = int(max(80, min(220, round(H / 12))))
+    else:
+        ny = int(max(8, resolution))
 
-    # Shadow scene with per-label quantities expanded to ``M`` rows.  Any
-    # per-label 2D arrays must follow the grid length to avoid shape clashes.
-    from cartoweave.utils.shape import as_nx2
+    nx = max(8, int(round(ny * (W / float(H)))))  # keep aspect ratio
 
+    # ------ per-label arrays: enforce L (NOT M) ------
+    # WH (label rectangle sizes), allow (2,) or (1,2) to broadcast to (L,2)
+    WH_raw = scene.get("WH", (10.0, 5.0))
+    WH = as_nx2(WH_raw, L, "WH")  # <<<<<< KEY FIX: validate against L
+
+    # If you have other per-label tensors that this function needs, validate them here with L.
+    # For example (uncomment/adjust if your project uses them in the eval path):
+    # labels_init_raw = scene.get("labels_init", P)
+    # labels_init = as_nx2(labels_init_raw, L, "labels_init")
+
+    # ------ build probing grid in pixel coords ------
+    ys = np.linspace(0.5, H - 0.5, ny, dtype=float)  # center of pixels
+    xs = np.linspace(0.5, W - 0.5, nx, dtype=float)
+
+    field = np.zeros((ny, nx), dtype=float)
+
+    # ------ evaluation scratch ------
+    # We keep a shallow copy of scene to patch label-wise arrays if needed.
     sc = dict(scene)
-    sc["labels_init"] = grid
-    sc["WH"] = as_nx2(scene.get("WH", (10.0, 5.0)), M, "WH")
-    sc["anchors"] = as_nx2(scene.get("anchors", (0.0, 0.0)), M, "anchors")
+    sc["WH"] = WH  # ensure L-consistent in the evaluator path
 
-    # Evaluate forces/energy on the grid.  ``energy_and_grad_fullP`` returns the
-    # total energy and per-point gradient; we use the gradient norm as a scalar
-    # field which matches the expected output shape and dtype.
-    _, G, _ = energy_and_grad_fullP(sc, grid, cfg)
-    field = (G[:, 0] ** 2 + G[:, 1] ** 2) ** 0.5
-    field = field.reshape(ny, nx)
+    # Pre-allocate a working copy of P to reduce reallocations
+    P_work = np.array(P, dtype=float, copy=True)
+
+    # ------ evaluation scratch ------
+    sc = dict(scene)
+    sc["WH"] = WH  # 已按 L 校验
+
+    # [patch-yx-2025-09-05] make active_ids consistent with P during field probing
+    L = int(P.shape[0])
+    all_active = list(range(L))
+    # 覆盖任何旧的/步态相关的 active 集，确保长度与 P 匹配
+    sc["_active_ids_solver"] = all_active
+    # 有些实现还会读取这个键（如果存在）
+    sc["_active_ids"] = all_active
+
+    # ------ choose evaluator ------
+    use_grad_norm = (mode == "grad_norm")
+    # Expect energy_and_grad_fullP(scene, P, cfg) -> (E, G, *rest)
+    # where G has shape (L,2). Adjust name if your evaluator differs.
+
+    for j, y in enumerate(ys):
+        # set row-wise once to avoid attribute lookups in inner loop
+        for i, x in enumerate(xs):
+            # move only the probed label to (x,y)
+            P_work[li, 0] = x
+            P_work[li, 1] = y
+
+            try:
+                out = energy_and_grad_fullP(sc, P_work, cfg)
+            except TypeError:
+                # Some implementations return fixed arity; handle safely
+                E, G = out[0], out[1] if isinstance(out, (list, tuple)) else (float(out), None)
+            else:
+                # Normal case
+                if isinstance(out, (list, tuple)):
+                    if len(out) >= 2:
+                        E, G = out[0], out[1]
+                    else:
+                        E, G = out[0], None
+                else:
+                    E, G = float(out), None
+
+            if use_grad_norm and (G is not None):
+                gxy = np.asarray(G, dtype=float)
+                if gxy.shape == (L, 2) and np.all(np.isfinite(gxy[li])):
+                    val = float(np.hypot(gxy[li, 0], gxy[li, 1]))
+                else:
+                    # fallback if gradient missing/bad
+                    val = float(E) if np.isfinite(E) else 0.0
+            else:
+                # energy mode or missing gradient
+                val = float(E) if np.isfinite(E) else 0.0
+
+            field[j, i] = val
+
+    # ------ sanitize numeric issues ------
+    field = np.nan_to_num(field, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Optional dynamic range conditioning (keeps colormap useful)
+    vmin = field.min()
+    vmax = field.max()
+    if np.isfinite(vmin) and np.isfinite(vmax) and vmax > vmin:
+        # mild compression to avoid single spikes dominating
+        # (you can tweak/remove as you prefer)
+        q_hi = np.quantile(field, 0.995)
+        field = np.minimum(field, q_hi)
 
     return field
+

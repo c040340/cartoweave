@@ -29,7 +29,11 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
         return 0.0, np.zeros_like(P), {}
 
     k = float(cfg.get("anchor.k.spring", 10.0))
-    r0_points = float(cfg.get("anchor.r0.points", 0.0))   # 你也可以按 label 类型用不同 r0
+    # [patch-yx-2025-09-05] fallback rest_offset_px from physics.quick.point_spring
+    q = cfg.get("physics", {}).get("quick", {})
+    r0_points = float(cfg.get("anchor.r0.points", q.get("point_spring", {}).get("rest_offset_px", 0.0)))  # [patch-yx-2025-09-05]
+    r0_lines = float(cfg.get("anchor.r0.lines", q.get("line_spring", {}).get("rest_offset_px", 0.0)))  # [patch-yx-2025-09-05]
+    r0_areas = float(cfg.get("anchor.r0.areas", q.get("area_spring", {}).get("rest_offset_px", 0.0)))  # [patch-yx-2025-09-05]
     alpha = float(cfg.get("anchor.spring.alpha", 1.0))    # 弹簧形状参数（占位，可不用）
 
     eps_n = float(cfg.get("eps.norm", EPS_NORM))

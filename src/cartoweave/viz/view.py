@@ -573,8 +573,26 @@ def interactive_view(
                     poly = poly.get("polygon")
                 ars_list.append(_assert_vec2(poly, "area"))
 
-        anchors = _compute_anchors(
-            labs, points=pts_arr, lines=lns_list, areas=ars_list, sources=src
+        # [patch-yx-2025-09-05] build full geometry for anchor computation
+        pts_full_raw = src_full.get("points", points) if isinstance(src_full, dict) else points  # [patch-yx-2025-09-05]
+        pts_full = _assert_vec2(pts_full_raw, "points") if pts_full_raw is not None else np.zeros((0, 2), float)  # [patch-yx-2025-09-05]
+        lns_full_raw = src_full.get("lines", lines) if isinstance(src_full, dict) else lines  # [patch-yx-2025-09-05]
+        lns_full = None  # [patch-yx-2025-09-05]
+        if lns_full_raw is not None:  # [patch-yx-2025-09-05]
+            iterable = lns_full_raw if isinstance(lns_full_raw, (list, tuple)) else lns_full_raw  # [patch-yx-2025-09-05]
+            lns_full = [_assert_vec2(pl, "line") for pl in iterable]  # [patch-yx-2025-09-05]
+        ars_full_raw = src_full.get("areas", areas) if isinstance(src_full, dict) else areas  # [patch-yx-2025-09-05]
+        ars_full = None  # [patch-yx-2025-09-05]
+        if ars_full_raw is not None:  # [patch-yx-2025-09-05]
+            iterable = ars_full_raw if isinstance(ars_full_raw, (list, tuple)) else ars_full_raw  # [patch-yx-2025-09-05]
+            ars_full = []  # [patch-yx-2025-09-05]
+            for poly in iterable:  # [patch-yx-2025-09-05]
+                if isinstance(poly, dict):  # [patch-yx-2025-09-05]
+                    poly = poly.get("polygon")  # [patch-yx-2025-09-05]
+                ars_full.append(_assert_vec2(poly, "area"))  # [patch-yx-2025-09-05]
+
+        anchors = _compute_anchors(  # [patch-yx-2025-09-05]
+            labs, points=pts_full, lines=lns_full, areas=ars_full, sources=src_full  # [patch-yx-2025-09-05]
         )
 
         if selected >= len(active_ids):

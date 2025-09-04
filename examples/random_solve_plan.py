@@ -12,7 +12,6 @@ from dataclasses import asdict
 import numpy as np
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
 from cartoweave.viz.metrics import collect_solver_metrics  # noqa: E402
-
 from cartoweave.viz.backend import use_compatible_backend
 
 use_compatible_backend()
@@ -22,6 +21,7 @@ from cartoweave.api import solve_scene_script
 from cartoweave.config_loader import load_configs
 from cartoweave.utils.dict_merge import deep_update
 from cartoweave.utils.logging import logger
+from cartoweave.engine.core_eval import scalar_potential_field
 
 try:  # optional viewer
     from cartoweave.viz.view import interactive_view
@@ -84,7 +84,7 @@ def main():
         "boundary.k.wall": 80.0,
         "anchor.k.spring": 10.0,
         "viz.show": True,
-        "viz.field.kind": "heatmap",
+        "viz.field.kind": "none",
         "viz.field.cmap": "viridis",
     })
     viz = deep_update(asdict(bundle.viz), {})
@@ -153,6 +153,45 @@ def main():
                 cfg,
             )
 
+        def _field(idx: int):
+            """Return a real scalar potential field for the current step.
+
+            Strategy:
+            - Use the label with the largest net force magnitude at this step
+              as the probe target for the field.
+            - Fallback to label_index=0 if forces are missing.
+            """
+            if not frames:
+                return None
+
+            i = int(max(0, min(idx, len(frames) - 1)))
+            frm = frames[i]
+            P_now = np.asarray(frm.get("P"), float)
+
+            # 计算每个 label 的合力向量（忽略 NaN）
+            comps = frm.get("comps", {}) or {}
+            Fsum = None
+            for v in comps.values():
+                arr = np.asarray(v, float) if v is not None else None
+                if isinstance(arr, np.ndarray) and arr.shape == P_now.shape:
+                    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+                    Fsum = arr if Fsum is None else (Fsum + arr)
+
+            if Fsum is None:
+                label_index = 0
+            else:
+                mags = np.hypot(Fsum[:, 0], Fsum[:, 1])
+                if mags.size == 0 or not np.isfinite(mags).any():
+                    label_index = 0
+                else:
+                    label_index = int(np.nanargmax(mags))
+
+            # 使用真实势场（内部会根据 cfg/viz 分辨率锁定网格）
+            field = scalar_potential_field(scene, P_now, cfg, label_index=label_index, resolution=None)
+            # 数值清理，避免渲染警告
+            field = np.nan_to_num(field, nan=0.0, posinf=0.0, neginf=0.0)
+            return field
+
         interactive_view(
             traj=traj,
             labels=scene["labels"],
@@ -165,7 +204,8 @@ def main():
             force_getter=_force,
             metrics_getter=_metrics,
             active_getter=_active,
-            field_kind=cfg.get("viz.field.kind", "heatmap"),
+            field_getter=_field,
+            field_kind=cfg.get("viz.field.kind", "3d"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
             actions=payload.get("steps"),
             boundaries=payload.get("boundaries"),
