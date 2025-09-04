@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Dict, Any, Literal, Optional
 from .schema import SPEC, spec_of, Mutability
+from .profiles.shapes import SHAPE_PROFILES, SIGMA_SCALE_KEYS
 
 Phase = Literal["load","action_begin","runtime"]
 
@@ -116,3 +117,49 @@ def load_base_cfg() -> Dict[str, Any]:
     # Store the post-load snapshot (baseline for future mutability checks).
     snapshot(cfg, "_snapshot_load")
     return cfg
+
+
+def _resolve_shape_profile(name: str) -> Dict[str, Any]:
+    """Return a merged profile dict with inheritance resolved (child overrides base)."""
+    if name not in SHAPE_PROFILES:
+        raise KeyError(f"Unknown shape profile: {name}")
+    prof = SHAPE_PROFILES[name]
+    fixed: Dict[str, Any] = dict(prof.get("fixed", {}))
+    parent = prof.get("extends")
+    if parent:
+        base = _resolve_shape_profile(parent)
+        merged = dict(base.get("fixed", {}))
+        merged.update(fixed)
+        return {"fixed": merged}
+    return {"fixed": fixed}
+
+
+def apply_shape_profile(cfg: Dict[str, Any],
+                        name: Optional[str],
+                        enable: bool = False,
+                        sigma_scale: float = 1.0) -> int:
+    """
+    Apply a frozen-only shape profile onto cfg.
+    Only overrides keys that already exist in cfg and are frozen in SPEC.
+    Returns the number of keys patched.
+    """
+    if not enable or not name:
+        return 0
+    resolved = _resolve_shape_profile(str(name))
+    fixed: Dict[str, Any] = resolved.get("fixed", {})
+    patched = 0
+    for k, v in fixed.items():
+        if k not in cfg:
+            continue
+        si = spec_of(k)
+        if not si or si.get("mutable") != "frozen":
+            continue
+        val = float(v)
+        if k in SIGMA_SCALE_KEYS:
+            try:
+                val = float(v) * float(sigma_scale)
+            except Exception:
+                val = float(v)
+        cfg[k] = val
+        patched += 1
+    return patched
