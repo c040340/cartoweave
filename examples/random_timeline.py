@@ -11,6 +11,13 @@
 #     the solver directly, meaning no per-action metadata was recorded.  The
 #     runner is now exposed via ``run_example_headless`` and the default
 #     timeline builder so tests and the viewer receive proper action ids.
+# Repository search (Phase A diagnostics):
+#   candidate builders:
+#       examples/random_timeline.py::build_random_timeline
+#       src/cartoweave/orchestrators/timeline.py::_legacy_run_timeline
+#   orchestration entrypoints:
+#       src/cartoweave/orchestrators/timeline_runner.py::run_timeline
+#       src/cartoweave/orchestrators/timeline.py::run_timeline
 
 from __future__ import annotations
 from typing import Dict, Any
@@ -68,6 +75,21 @@ def _build_cfg() -> Dict[str, Any]:
     cfg["viz.field.cmap"] = cfg.get("viz.field.cmap", "viridis")
     return cfg
 
+
+def build_random_schema(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
+    """Return a trivial schema describing the example's two actions."""
+
+    return {"actions": build_random_timeline(scene, cfg)}
+
+
+def compile_timeline(schema: Dict[str, Any], cfg: Dict[str, Any] | None = None):
+    """Compile a schema into a concrete timeline (list of actions)."""
+
+    timeline = list(schema.get("actions", [])) if isinstance(schema, dict) else []
+    if not timeline:
+        raise ValueError("empty content timeline in random_timeline example")
+    return timeline
+
 def build_random_timeline(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
     """Construct the default two-action timeline used by the example.
 
@@ -83,6 +105,8 @@ def build_random_timeline(scene: Dict[str, Any] | None = None, cfg: Dict[str, An
 
 def run_example_headless(scene: Dict[str, Any], timeline, cfg: Dict[str, Any]):
     """Thin wrapper used by tests to execute the example without a viewer."""
+    if not timeline:
+        raise ValueError("empty content timeline in random_timeline example")
     return run_timeline(scene, timeline, cfg)
 
 def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
@@ -138,12 +162,13 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
 def main():
     scene = _get_scene()
     cfg   = _build_cfg()
-    schedule = build_random_timeline(scene, cfg)
+    schema = build_random_schema(scene, cfg)
+    timeline = compile_timeline(schema, cfg)
 
-    result = run_example_headless(scene, schedule, cfg)
+    result = run_example_headless(scene, timeline, cfg)
     P_final = result["P_final"]
     max_disp = float(np.abs(P_final - scene["labels_init"]).max())
-    print("[random_timeline] steps:", len(schedule), "labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}")
+    print("[random_timeline] steps:", len(timeline), "labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}")
 
     payload = build_viz_payload(result)
 

@@ -46,6 +46,8 @@ def run_timeline(
     """
 
     cfg = cfg or {}
+    if not timeline:
+        raise ValueError("run_timeline received empty timeline")
     P_cur = np.asarray(scene.get("labels_init", np.zeros((0, 2), float)), float)
     actions_meta: List[Dict[str, Any]] = []
 
