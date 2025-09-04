@@ -210,7 +210,7 @@ def draw_layout(
 
     pts = _as_vec2(points)
     if pts is not None:
-        ax.scatter(pts[:, 0], pts[:, 1], c=colors["point"], s=18, zorder=1)
+        ax.scatter(pts[:, 0], pts[:, 1], c=colors["points"], s=18, zorder=1)
 
     if isinstance(lines, (list, tuple)):
         for pl in lines:
@@ -219,7 +219,7 @@ def draw_layout(
                 ax.plot(
                     arr[:, 0],
                     arr[:, 1],
-                    color=colors["line"],
+                    color=colors["lines"],
                     lw=cfg["line_width"],
                     zorder=0,
                 )
@@ -231,8 +231,8 @@ def draw_layout(
                 path = Path(arr, closed=True)
                 patch = PathPatch(
                     path,
-                    facecolor=to_rgba(colors["area"], alpha=cfg["area_face_alpha"]),
-                    edgecolor=colors["area"],
+                    facecolor=to_rgba(colors["areas"], alpha=cfg["area_face_alpha"]),
+                    edgecolor=colors["areas"],
                     lw=cfg["area_edge_width"],
                 )
                 ax.add_patch(patch)
@@ -296,22 +296,15 @@ def draw_layout(
                 zorder=6,
             )
 
-        if anchors is not None and i < len(anchors):
+        if ~np.isnan(anchors[i]).all() and i < len(anchors):
             ax.plot(
                 [anchors[i, 0], x],
                 [anchors[i, 1], y],
                 color=colors["anchor_line"],
                 lw=cfg["line_width"],
             )
-            circ = Circle(
-                (anchors[i, 0], anchors[i, 1]),
-                radius=cfg.get("anchor_marker_size", 4.0),
-                facecolor=colors["anchor_marker_face"],
-                edgecolor=colors["anchor_marker_edge"],
-                lw=cfg["line_width"],
-                zorder=4,
-            )
-            ax.add_patch(circ)
+            ax.scatter(anchors[i, 0], anchors[i, 1], marker='x', s=(cfg.get("anchor_marker_size", 4.0) * 2) ** 2,
+                       c=colors["anchor_marker_edge"], lw=cfg["line_width"], zorder=4)
 
     return patches
 

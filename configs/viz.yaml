@@ -15,26 +15,36 @@ layout:
   label_edge_width: 1.0
   label_fontsize: 10
   anchor_marker_size: 4.0
+  colors:
+    points: '#00D1FF'
+    lines: '#FFC04D'
+    areas: '#3DFA9A'
+    label_fill: '#F2F2F2'
+    label_edge: "#2F3175"
+    anchor_line: '#D9D9D9'
+    anchor_marker_face: '#F2F2F2'
+    anchor_marker_edge: '#2F3175'
 
 axes: { show_ticks: false, show_spines: true }
 
 theme: dark
-colors:
-  points: "#66CCFF"
-  lines: "#FFAA00"
-  areas: "#66FF99"
-  labels: "#FFFFFF"
-  anchor_line: "#FFFFFF"
-  anchor_marker_face: "#FFFFFF"
-  anchor_marker_edge: "#000000"
 alpha:  { area_fill: 0.15, label_rect: 0.25 }
 zorder: { points: 10, lines: 9, areas: 5, labels: 20 }
 
 forces:
   colors:
-    ll.rect: "#1f77b4"
-    boundary.wall: "#ff7f0e"
-    anchor.spring: "#2ca02c"
+    ll.rect: '#1f77b4'
+    boundary.wall: '#ff7f0e'
+    anchor.spring: '#2ca02c'
+    focus: '#d62728'
+    label_point: '#9467bd'
+    label_line: '#8c564b'
+    label_area: '#e377c2'
+    area.softout: '#17becf'
+    area.cross: '#bcbd22'
+    points: '#1f9ed4'
+    lines: '#f39c12'
+    areas: '#27ae60'
   component_arrow_scale: 10.0
   component_arrow_lw: 1.0
   component_fontsize: 8

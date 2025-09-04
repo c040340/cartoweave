@@ -300,6 +300,7 @@ class CoreConfig:
 
 @dataclass(frozen=True)
 class VizLayout:
+    colors: Dict[str, str]
     grid: List[int]
     aspect_mode: str
     line_width: float
@@ -341,7 +342,6 @@ class VizConfig:
     layout: VizLayout
     axes: Dict[str, bool]
     theme: str
-    colors: Dict[str, str]
     alpha: Dict[str, float]
     zorder: Dict[str, int]
     forces: VizForces

@@ -20,9 +20,9 @@ VIZ_DEFAULTS: Dict[str, Any] = {
     },
     "layout": {
         "colors": {
-            "point": "#000000",
-            "line": "#000000",
-            "area": "#000000",
+            "points": "#000000",
+            "lines": "#000000",
+            "areas": "#000000",
             "label_fill": "#FFFFFF",
             "label_edge": "#000000",
             "anchor_line": "#000000",
