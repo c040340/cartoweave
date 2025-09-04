@@ -86,3 +86,33 @@ def snapshot(cfg: Dict[str, Any], name: str) -> None:
     if name not in ("_snapshot_load","_snapshot_action"):
         raise ValueError("snapshot name must be _snapshot_load or _snapshot_action")
     cfg[name] = {k: v for k, v in cfg.items() if not k.startswith("_")}
+
+
+def _deep_merge(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Return a new dict = a ⊕ b (b has precedence). Does not mutate inputs.
+    Nested dicts are merged recursively.
+    """
+    out: Dict[str, Any] = dict(a)
+    for k, v in b.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def load_base_cfg() -> Dict[str, Any]:
+    """
+    Load and merge minimal presets: base + scene_defaults.
+    Validate at 'load' phase and snapshot baseline for later diffs.
+    """
+    from .presets.base import base_defaults
+    from .presets.scene_defaults import scene_defaults
+
+    cfg = _deep_merge(base_defaults(), scene_defaults())
+    # Type/range validation only; unknown keys are allowed.
+    validate_cfg(cfg, phase="load")
+    # Store the post-load snapshot (baseline for future mutability checks).
+    snapshot(cfg, "_snapshot_load")
+    return cfg
