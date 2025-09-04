@@ -1,30 +1,19 @@
 # src/cartoweave/engine/forces/term_area_embed.py
 from __future__ import annotations
-import math
 import numpy as np
 from . import register
 
 from cartoweave.utils.kernels import (
-    softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
+    EPS_DIST, EPS_NORM, EPS_ABS,
 )
 
 from cartoweave.utils.geometry import (
     project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
 )
 
-def softmin_weights(vals, beta: float):
-    # weights ~ exp(-beta * |v|)
-    b = max(beta, 1e-9)
-    v = np.asarray(vals, float)
-    s = np.exp(-b * np.abs(v - v.min()))
-    s_sum = float(s.sum()) + 1e-12
-    return (s / s_sum)
-
-def rect_half_extent_along_dir(w: float, h: float, nx: float, ny: float, eps_abs: float) -> float:
-    # r_n = hx*|nx| + hy*|ny|  with soft abs
-    return 0.5*w*softabs(nx, eps_abs) + 0.5*h*softabs(ny, eps_abs)
+from cartoweave.utils.numerics import (
+    sigmoid_np, d_sigmoid_np, softabs_np, softmin_weights_np,
+)
 
 @register("area.embed")
 def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -55,6 +44,7 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     gate_slack= float(cfg.get("area.tan.gate.slack", 1.0))
     beta_edge = float(cfg.get("area.embed.beta_edge", 6.0))  # softmin 温度（稍大些更稳）
     eps_abs   = float(cfg.get("eps.abs", EPS_ABS))
+    eps_div   = 1e-9
 
     F = np.zeros_like(P, float)
     E_total = 0.0
@@ -114,16 +104,12 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             tparam[k]  = t
 
         # softmin 权重：w = softmax(-β * softabs(s))
-        v = np.sqrt(s_list*s_list + eps_abs*eps_abs)   # softabs(s)
-        z = -beta_edge * v
-        z = z - z.max()  # 数稳
-        e = np.exp(z)
-        Z = e.sum() + 1e-12
-        wgt = e / Z                         # shape (nE,)
+        sabs = softabs_np(s_list, eps_abs)
+        wgt = softmin_weights_np(sabs, beta_edge)
         # dw/dv = (-β) * (diag(w) - w w^T)
         J = (-beta_edge) * (np.diag(wgt) - np.outer(wgt, wgt))  # (nE,nE)
         # dv/ds = s / softabs(s)
-        dv_ds = s_list / (v + 1e-12)                           # (nE,)
+        dv_ds = s_list / np.maximum(sabs, eps_div)              # (nE,)
 
         # 每条边的能量（配对）
         s_star = (2.0*ratio_in - 1.0) * rn_list                # (nE,)
@@ -131,8 +117,11 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         E_perp = 0.5 * k_embed * (ds*ds)                       # (nE,)
 
         # 切向 gated
-        inv_eta = 1.0 / max(gate_eta, 1e-9)
-        g = 1.0 / (1.0 + np.exp(-( (rn_list + gate_slack) - np.sqrt(s_list*s_list + eps_abs*eps_abs) ) * inv_eta))  # (nE,)
+        inv_eta = 1.0 / max(gate_eta, eps_div)
+        x = ((rn_list + gate_slack) - sabs) * inv_eta
+        g = sigmoid_np(x)
+        if not (np.isfinite(g).all() and np.isfinite(wgt).all()):
+            raise FloatingPointError("area_embed: non-finite gate/weights")
         E_tan = 0.5 * k_tan * g * (u_list*u_list)              # (nE,)
 
         # 总能量：按权重加权
@@ -147,7 +136,7 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
 
         # ∂E_tan_k/∂C = 0.5*k_tan*(u_k^2)*∂g/∂C + k_tan*g*u_k*∂u_k/∂C
         # g = σ(((r_n+slack) - softabs(s))/η)
-        gprime = g * (1.0 - g) * (-inv_eta) * dv_ds            # (nE,)
+        gprime = d_sigmoid_np(x) * (-inv_eta) * dv_ds          # (nE,)
         dEtan_dC = (0.5 * k_tan * (u_list*u_list) * gprime)[:,None] * n_list \
                  + (k_tan * g * u_list)[:,None] * t_list       # (nE,2)
 
@@ -168,7 +157,7 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         F[i,1] += -grad[1]
 
         # 记录（任选最“近”边）
-        k_min = int(np.argmin(v))
+        k_min = int(np.argmin(sabs))
         S[i].append((
             int(ai), float(-grad[0]), float(-grad[1]),
             float(E), k_min, float(s_list[k_min]), float(u_list[k_min]),

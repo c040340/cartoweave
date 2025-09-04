@@ -6,13 +6,14 @@ from . import register
 
 from cartoweave.utils.kernels import (
     softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
+    EPS_DIST, EPS_NORM, EPS_ABS,
 )
 
 from cartoweave.utils.geometry import (
     project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
 )
+
+from cartoweave.utils.numerics import softmin_weights_np
 
 @register("area.softout")
 def term_area_softout(scene, P: np.ndarray, cfg, phase="pre_anchor"):
@@ -76,8 +77,7 @@ def term_area_softout(scene, P: np.ndarray, cfg, phase="pre_anchor"):
                 continue
 
             v = np.asarray(m_list, float)
-            wts = np.exp(-max(beta,1e-9) * (v - v.min()))
-            wts = wts / (wts.sum() + 1e-12)
+            wts = softmin_weights_np(v, beta)
             m_eff = float((wts * v).sum())
             nx_eff = float((wts * np.asarray([n[0] for n in n_list])).sum())
             ny_eff = float((wts * np.asarray([n[1] for n in n_list])).sum())
@@ -88,13 +88,15 @@ def term_area_softout(scene, P: np.ndarray, cfg, phase="pre_anchor"):
 
             if m_eff >= 0.0:
                 r_in = softplus(m_eff, alpha_sp)
-                s_in = 1.0 / (1.0 + math.exp(-alpha_sp * m_eff))
-                decay_in = math.exp(-lambda_in * m_eff)
+                s_in = sigmoid(alpha_sp * m_eff)
+                t_in = max(min(lambda_in * m_eff, 80.0), -80.0)
+                decay_in = math.exp(-t_in)
                 fmag = k_push * r_in * s_in * (decay_in ** 2)
                 E += 0.5 * k_push * (r_in * decay_in) * (r_in * decay_in)
                 mag = r_in * decay_in
             else:
-                decay_out = math.exp(lambda_out * m_eff)
+                t_out = max(min(lambda_out * m_eff, 80.0), -80.0)
+                decay_out = math.exp(t_out)
                 fmag = k_push * (gamma_out ** 2) * lambda_out * (decay_out ** 2)
                 E += 0.5 * k_push * (gamma_out * decay_out) * (gamma_out * decay_out)
                 mag = gamma_out * decay_out

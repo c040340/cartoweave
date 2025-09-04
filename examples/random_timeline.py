@@ -15,6 +15,8 @@ import time
 import os
 
 import matplotlib
+from cartoweave.utils.logging import configure_logging
+configure_logging(True, 4)
 
 # Use an interactive backend when a display is available.  This keeps the
 # example functional in headless environments (e.g. automated tests) where

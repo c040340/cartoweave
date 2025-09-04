@@ -6,8 +6,7 @@ from . import register
 
 from cartoweave.utils.kernels import (
     softplus, sigmoid, softabs,
-    invdist_energy, invdist_force_mag,
-    EPS_DIST, EPS_NORM, EPS_ABS, softmin_weights,
+    EPS_DIST, EPS_NORM, EPS_ABS,
 )
 from cartoweave.utils.geometry import (
     project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
@@ -79,10 +78,11 @@ def term_area_cross(scene, P: np.ndarray, cfg, phase="pre_anchor"):
                 s  = nx_in*dx + ny_in*dy
                 u  = tx*dx + ty*dy
                 abs_u = softabs(u, eps_abs)
+                abs_s = softabs(s, eps_abs)
                 r_n = hx*softabs(nx_in, eps_abs) + hy*softabs(ny_in, eps_abs)
 
                 # depth & gating
-                p = softplus((r_n + min_gap) - softabs(s, eps_abs), alpha_sp)
+                p = softplus((r_n + min_gap) - abs_s, alpha_sp)
                 u_cap = cap_scale * max(hx, hy)
                 g = sigmoid(-(abs_u - u_cap) / max(eta_tan, 1e-9))
 
@@ -106,8 +106,8 @@ def term_area_cross(scene, P: np.ndarray, cfg, phase="pre_anchor"):
                 gprime = g * (1.0 - g) * (-1.0 / max(eta_tan, 1e-9)) * coeff_u
                 dgx, dgy = gprime * tx, gprime * ty
 
-                coeff_s = s / max(softabs(s, eps_abs), 1e-9)
-                sig_az  = 1.0 / (1.0 + math.exp(-alpha_sp*((r_n + min_gap) - softabs(s, eps_abs))))
+                coeff_s = s / max(abs_s, 1e-9)
+                sig_az  = sigmoid(alpha_sp * ((r_n + min_gap) - abs_s))
                 dpx, dpy = sig_az * (-coeff_s) * nx_in, sig_az * (-coeff_s) * ny_in
 
                 dx_dc_x = p * dgx + g * dpx
