@@ -45,6 +45,11 @@ SPEC: Dict[str, SpecItem] = {
     "calib.trigger.tau_off":{"type": float, "range": (0.0, 1.0), "mutable": "action", "group":"trigger"},
     "calib.trigger.delta":  {"type": float, "range": (0.0, 1.0), "mutable": "action", "group":"trigger"},
 
+    # ---- visualization (runtime) ----
+    "viz.field.aspect": {"type": tuple, "mutable": "runtime", "group": "viz"},
+    "viz.field.nx": {"type": int, "mutable": "runtime", "group": "viz"},
+    "viz.field.ny": {"type": int, "mutable": "runtime", "group": "viz"},
+
     # ---- runtime example ----
     "logging.level":        {"type": str, "choices": ("DEBUG","INFO","WARNING","ERROR"), "mutable": "runtime", "group":"logging"},
 }

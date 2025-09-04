@@ -56,6 +56,8 @@ def run_solve_plan(
     history_rec: List[Dict[str, Any]] = []
 
     for stage_idx, stage in enumerate(solve_plan):
+        stage_name = stage.get("name", f"stage_{stage_idx}")
+        scene["_current_stage_name"] = stage_name
         # Wrap the recorder so downstream solvers tag each evaluation with the
         # current stage metadata.  ``lbfgs.run`` ignores ``record=None`` so we
         # explicitly forward the wrapper to ensure real-time callbacks are
@@ -63,7 +65,7 @@ def run_solve_plan(
         def _rec(P, E, comps, meta):
             meta = dict(meta) if meta else {}
             meta.setdefault("stage_id", stage_idx)
-            meta.setdefault("stage_name", stage.get("name", f"stage_{stage_idx}"))
+            meta.setdefault("stage_name", stage_name)
             if record:
                 record(P, E, comps, meta)
 
@@ -80,7 +82,7 @@ def run_solve_plan(
         for r in rec:
             meta = r.setdefault("meta", {})
             meta.setdefault("stage_id", stage_idx)
-            meta.setdefault("stage_name", stage.get("name", f"stage_{stage_idx}"))
+            meta.setdefault("stage_name", stage_name)
 
         if history_pos:
             if pos:
@@ -92,7 +94,9 @@ def run_solve_plan(
         history_E.extend(eng)
         history_rec.extend(rec)
 
-        stages_meta.append({"name": stage.get("name", f"stage_{stage_idx}")})
+        stages_meta.append({"name": stage_name})
+
+        scene.pop("_current_stage_name", None)
 
     history = {"positions": history_pos, "energies": history_E, "records": history_rec}
     return {"stages": stages_meta, "P_final": P_cur, "history": history}

@@ -226,6 +226,12 @@ def auto_calibrate_k(scene: Dict[str, Any], P0: np.ndarray, cfg: Dict[str, Any])
 
         # Hysteresis band --------------------------------------------------
         if (1.0 - hyster) <= ratio <= (1.0 + hyster):
+            # When no explicit base term is available we still propagate the
+            # current ``k`` so callers can observe a value.
+            if base_term not in mags and "boundary.wall" not in mags:
+                for kname in TERM2K.get(term, []):
+                    if kname in cfg:
+                        k_hat[kname] = float(cfg[kname])
             continue
 
         s = float(max(clamp_min, min(clamp_max, ratio)))

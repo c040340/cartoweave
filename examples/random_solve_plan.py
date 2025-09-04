@@ -28,7 +28,7 @@ except Exception:  # pragma: no cover - viewer not installed
     interactive_view = None
 
 CACHE_PATH = os.environ.get("CARTOWEAVE_EXAMPLE_CACHE", "examples/_scene_cache.npz")
-GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "0")))
+GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "1")))
 
 
 def _build_cfg() -> Dict[str, Any]:
@@ -87,7 +87,9 @@ def run_example_headless(scene: Dict[str, Any], plan, cfg: Dict[str, Any]):
     """Thin wrapper used by tests to execute the example without a viewer."""
     if not plan:
         raise ValueError("empty solve_plan content in random_solve_plan example")
-    script = {"steps": [{"name": "step0"}]}
+    script = scene.get("scene_script") or {"steps": [{"name": "step0"}]}
+    if isinstance(script, list):
+        script = {"steps": script}
     return solve_scene_script(scene, script, cfg, solve_plan=plan)
 
 
@@ -150,20 +152,18 @@ def main():
     scene = get_scene(
         use_random=GENERATE_NEW, cache_path=CACHE_PATH, with_scene_script=True
     )
-    scene_script = {"steps": scene.get("scene_script", [])}
-    plan = build_solve_plan(cfg=cfg)
+    scene_script = scene.get("scene_script") or {"steps": [{"name": "step0"}]}
+    if isinstance(scene_script, list):
+        scene_script = {"steps": scene_script}
+    plan = build_solve_plan(cfg)
 
     info = solve_scene_script(scene, scene_script, cfg, solve_plan=plan)
+    print(
+        f"[example] steps={len(scene_script['steps'])} frame={scene['frame_size']}"
+    )
     P_final = info.get("P_final", scene.get("labels_init"))
     max_disp = float(np.abs(P_final - scene["labels_init"]).max())
-    print(
-        "[random_solve_plan] steps:",
-        len(scene_script["steps"]),
-        "labels:",
-        P_final.shape[0],
-        "max_disp:",
-        f"{max_disp:.2f}",
-    )
+    print("[random_solve_plan] labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}")
 
     payload = build_viz_payload(info)
 
@@ -172,11 +172,13 @@ def main():
         areas_draw = [a.get("polygon") for a in scene.get("areas", [])]
 
         frames = payload["frames"]
-        traj = (
-            np.stack([f["P"] for f in frames])
-            if frames
-            else np.stack([scene["labels_init"], P_final])
-        )
+        if frames:
+            try:
+                traj = np.stack([f["P"] for f in frames])
+            except ValueError:
+                traj = np.stack([scene["labels_init"], P_final])
+        else:
+            traj = np.stack([scene["labels_init"], P_final])
 
         def _force(idx=None):
             return frames[idx]["comps"] if frames else {}

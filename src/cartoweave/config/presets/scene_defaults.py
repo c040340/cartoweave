@@ -7,8 +7,8 @@ def scene_defaults() -> Dict[str, Any]:
     These are intentionally conservative and engine-neutral.
     """
     return {
-        "scene.width_px": 1920,
-        "scene.height_px": 1080,
+        "scene.width_px": 1080,
+        "scene.height_px": 1920,
         "scene.dpi": 96,
         "scene.margin_px": 8,
     }

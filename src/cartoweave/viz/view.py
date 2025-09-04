@@ -490,7 +490,7 @@ def interactive_view(
                 break
 
     def _on_slider(val):
-        step = int(val)
+        step = int(max(0, min(val, T - 1)))
         _update(step)
         slider.valtext.set_text(f"{step + 1}/{T}")
 
@@ -504,6 +504,8 @@ def interactive_view(
         idx = int(val)
         lo = boundaries[idx]
         hi = boundaries[idx + 1] - 1
+        hi = min(hi, T - 1)
+        lo = max(0, min(lo, hi))
         slider.valmin = lo
         slider.valmax = hi
         slider.ax.set_xlim(lo, hi)

@@ -39,13 +39,18 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if phase != "pre_anchor" or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {}
 
-    labels = scene.get("labels", [])
+    labels_all = scene.get("labels", [])
     areas  = scene.get("areas", [])
     N = P.shape[0]
-    WH_raw = scene.get("WH")
-    if WH_raw is None:
-        WH_raw = np.zeros((N, 2))
-    WH = as_nx2(WH_raw, N, "WH")
+    WH = np.asarray(scene.get("WH"), float)
+    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
+    active_ids = scene.get("_active_ids", list(range(N)))
+    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
+    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    modes = [lab.get("mode") for lab in labels]
+    mask = np.array([m != "circle" for m in modes], dtype=bool)
+    idxs = np.nonzero(mask)[0]
+    skip_circle = int(np.count_nonzero(~mask))
 
     k_embed   = float(cfg.get("area.k.embed", 200.0))
     k_tan     = float(cfg.get("area.k.tan",   30.0))
@@ -59,19 +64,10 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     F = np.zeros_like(P, float)
     E_total = 0.0
     S = [[] for _ in range(P.shape[0])]
-    skip_hidden = 0
-    skip_circle = 0
 
-    for i, lab in enumerate(labels):
+    for i in idxs:
+        lab = labels[i]
         w, h = float(WH[i, 0]), float(WH[i, 1])
-        if lab.get("hidden"):
-            assert w <= 0.0 and h <= 0.0
-            skip_hidden += 1
-            continue
-        if lab.get("mode") == "circle":
-            assert abs(w - h) < 1e-9
-            skip_circle += 1
-            continue
         if lab.get("anchor_kind") != "area":
             continue
         ai = int(lab.get("anchor_index", -1))
@@ -184,7 +180,5 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             float(wgt[k_min])
         ))
 
-    logger.debug(
-        "term_area_embed: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle
-    )
+    logger.debug("term_area_embed: skip_circle=%d", skip_circle)
     return float(E_total), F, {"area_embed": S}

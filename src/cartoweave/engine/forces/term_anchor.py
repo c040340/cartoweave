@@ -34,35 +34,32 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
 
     eps_n = float(cfg.get("eps.norm", EPS_NORM))
     N = P.shape[0]
-    A = as_nx2(A, N, "anchors")
-    WH_raw = scene.get("WH")
-    if WH_raw is None:
-        WH_raw = np.zeros((N, 2))
-    WH = as_nx2(WH_raw, N, "WH")
-    labels = scene.get("labels", [])
+    A = np.asarray(A, float)
+    assert A.shape[0] == N, f"anchors misaligned: {A.shape} vs P {P.shape}"
+    WH = np.asarray(scene.get("WH"), float)
+    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
+    labels_all = scene.get("labels", [])
+    active_ids = scene.get("_active_ids", list(range(N)))
+    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
+    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    modes = [lab.get("mode") for lab in labels]
+    mask = np.array([m != "circle" for m in modes], dtype=bool)
+    idxs = np.nonzero(mask)[0]
+    skip_circle = int(np.count_nonzero(~mask))
     F = np.zeros_like(P)
     E = 0.0
-    skip_hidden = 0
-    skip_circle = 0
 
     # 兜底方向：来自 pre_anchor 阶段的外力合力
     ext_dir = scene.get("_ext_dir")
     if ext_dir is None:
         ext_dir = np.zeros((N, 2))
     else:
-        ext_dir = as_nx2(ext_dir, N, "ext_dir")
+        ext_dir = np.asarray(ext_dir, float)
+        assert ext_dir.shape[0] == N, f"ext_dir misaligned: {ext_dir.shape} vs P {P.shape}"
 
-    for i in range(N):
-        lab = labels[i] if i < len(labels) else {}
+    for i in idxs:
+        lab = labels[i]
         w, h = float(WH[i, 0]), float(WH[i, 1])
-        if lab.get("hidden"):
-            assert w <= 0.0 and h <= 0.0
-            skip_hidden += 1
-            continue
-        if lab.get("mode") == "circle":
-            assert abs(w - h) < 1e-9
-            skip_circle += 1
-            continue
 
         px, py = P[i]
         ax, ay = A[i]
@@ -93,5 +90,5 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
         # 能量
         E += 0.5 * k * (r - r0) ** 2
 
-    logger.debug("term_anchor: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle)
+    logger.debug("term_anchor: skip_circle=%d", skip_circle)
     return float(E), F, {"n": int(N)}

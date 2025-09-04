@@ -18,7 +18,7 @@ def test_solve_no_labels():
     """
     scene = dict(
         frame=0,
-        frame_size=(1920, 1080),
+        frame_size=(1080, 1920),
         points=np.zeros((0, 2)),
         lines=np.zeros((0, 4)),
         areas=np.zeros((0, 6)),

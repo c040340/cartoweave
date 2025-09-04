@@ -4,12 +4,22 @@ from typing import Dict, Callable, Any, List
 
 # 所有 term 的注册表；每个 term 文件里用 @register("name") 装饰器登记
 REGISTRY: Dict[str, Callable] = {}
+_REGISTRY_BASE: Dict[str, Callable] = {}
 
 def register(name: str):
     def deco(fn):
         REGISTRY[name] = fn
+        # Preserve the original entry so tests mucking with ``REGISTRY`` can be
+        # reset to a known-good state.
+        _REGISTRY_BASE.setdefault(name, fn)
         return fn
     return deco
+
+
+def reset_registry() -> None:
+    """Restore :data:`REGISTRY` to the original registered terms."""
+    REGISTRY.clear()
+    REGISTRY.update(_REGISTRY_BASE)
 
 def enabled_terms(cfg: Dict[str, Any], phase: str) -> List[str]:
     """

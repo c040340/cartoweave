@@ -80,26 +80,16 @@ def _format_pct(pct: float) -> str:
     return sign + integer + s[5:] + "%"
 
 
-def grid_to_axes(field: Any, width: float, height: float) -> List[float]:
+def grid_extent(width: float, height: float) -> Tuple[float, float, float, float]:
     """Return ``imshow``/``pcolormesh`` extents for a grid.
 
-    Parameters
-    ----------
-    field:
-        2-D array-like object representing the grid values.  Only the shape is
-        inspected; the data itself is not modified.
-    width, height:
-        Dimensions of the scene that the grid corresponds to.
+    The returned tuple follows Matplotlib's ``extent`` order for
+    ``origin='upper'``: ``(xmin, xmax, ymax, ymin)``.  Using a dedicated helper
+    keeps the conversion in one place and avoids subtle axis flip bugs when
+    different panels compute extents independently.
     """
 
-    arr = np.asarray(field, dtype=float)
-    if arr.ndim != 2:
-        raise ValueError("field must be a 2-D array")
-    # ``imshow`` expects extents as ``[xmin, xmax, ymax, ymin]`` for ``origin='upper'``.
-    # Use the full scene width/height so that pixel centres align with scene
-    # coordinates.  Keeping this logic in one place prevents subtle axis flip
-    # bugs when different panels compute extents independently.
-    return [0.0, float(width), float(height), 0.0]
+    return (0.0, float(width), float(height), 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -499,7 +489,7 @@ def draw_field_panel(
         z_aspect = min(z_span, xy_scale)
         ax.set_box_aspect((float(width), float(height), z_aspect))
     else:
-        extent = grid_to_axes(arr, width, height)
+        extent = grid_extent(width, height)
         ax.imshow(arr, origin="upper", cmap=cmap, extent=extent, aspect="auto")
         ax.set_xlim(0, float(width))
         ax.set_ylim(float(height), 0)

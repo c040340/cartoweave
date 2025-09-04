@@ -23,15 +23,18 @@ def term_point_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         return 0.0, np.zeros_like(P), {}
 
     N = P.shape[0]
-    WH_raw = scene.get("WH")
-    if WH_raw is None:
-        WH_raw = np.ones((N, 2))
-    WH = as_nx2(WH_raw, N, "WH")
+    WH = np.asarray(scene.get("WH"), float)
+    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
     pts = np.asarray(pts, float).reshape(-1,2)
     N, M = P.shape[0], pts.shape[0]
-    labels = scene.get("labels", [])
-    skip_hidden = 0
-    skip_circle = 0
+    labels_all = scene.get("labels", [])
+    active_ids = scene.get("_active_ids", list(range(N)))
+    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
+    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    modes = [lab.get("mode") for lab in labels]
+    mask = np.array([m != "circle" for m in modes], dtype=bool)
+    idxs = np.nonzero(mask)[0]
+    skip_circle = int(np.count_nonzero(~mask))
     F = np.zeros_like(P); E = 0.0
 
     k_out = float(cfg.get("pl.k.repulse", 0.0))
@@ -44,17 +47,9 @@ def term_point_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     beta_in  = float(cfg.get("pl.beta.in",  6.0))
     g_eps    = float(cfg.get("pl.g_eps",    1e-6))
 
-    for i in range(N):
-        lab = labels[i] if i < len(labels) else {}
+    for i in idxs:
+        lab = labels[i]
         w, h = float(WH[i, 0]), float(WH[i, 1])
-        if lab.get("hidden"):
-            assert w <= 0.0 and h <= 0.0
-            skip_hidden += 1
-            continue
-        if lab.get("mode") == "circle":
-            assert abs(w - h) < 1e-9
-            skip_circle += 1
-            continue
         cx, cy = float(P[i, 0]), float(P[i, 1])
         for j in range(M):
             x, y = float(pts[j,0]), float(pts[j,1])
@@ -86,7 +81,5 @@ def term_point_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
                 fy_in = - k_in * vin * (-sigmoid(-beta_in * sy)) * (dy / (ady + 1e-12))
                 F[i,0] += fx_in; F[i,1] += fy_in
 
-    logger.debug(
-        "term_point_label: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle
-    )
+    logger.debug("term_point_label: skip_circle=%d", skip_circle)
     return float(E), F, {"pl": int(N*M)}

@@ -30,26 +30,17 @@ def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         return 0.0, np.zeros_like(P), {}
 
     N = P.shape[0]
-    WH_raw = scene.get("WH")
-    if WH_raw is None:
-        WH_raw = np.ones((N, 2))
-    WH = as_nx2(WH_raw, N, "WH")
-    labels = scene.get("labels", [])
-    skip_hidden = 0
-    skip_circle = 0
-    skip_idx: set[int] = set()
-    for idx, lab in enumerate(labels):
-        if idx >= N:
-            break
-        w, h = float(WH[idx, 0]), float(WH[idx, 1])
-        if lab.get("hidden"):
-            assert w <= 0.0 and h <= 0.0
-            skip_hidden += 1
-            skip_idx.add(idx)
-        elif lab.get("mode") == "circle":
-            assert abs(w - h) < 1e-9
-            skip_circle += 1
-            skip_idx.add(idx)
+    WH = np.asarray(scene.get("WH"), float)
+    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
+
+    labels_all = scene.get("labels", [])
+    active_ids = scene.get("_active_ids", list(range(N)))
+    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
+    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    modes = [lab.get("mode") for lab in labels]
+    mask = np.array([m != "circle" for m in modes], dtype=bool)
+    idxs = np.nonzero(mask)[0]
+    skip_circle = int(np.count_nonzero(~mask))
 
     k_out  = float(cfg.get("ll.k.repulse", 900.0))
     p      = float(cfg.get("ll.edge_power", 2.0))
@@ -74,17 +65,15 @@ def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     E = 0.0
     src = [[] for _ in range(N)]
 
-    for i in range(N):
-        if i in skip_idx:
-            continue
+    for ii in range(len(idxs)):
+        i = idxs[ii]
         wi, hi = float(WH[i, 0]), float(WH[i, 1])
         xi, yi = float(P[i, 0]), float(P[i, 1])
         if wi <= 0.0 and hi <= 0.0:
             continue
         ri = radius_from_wh(wi, hi)
-        for j in range(i + 1, N):
-            if j in skip_idx:
-                continue
+        for jj in range(ii + 1, len(idxs)):
+            j = idxs[jj]
             wj, hj = float(WH[j, 0]), float(WH[j, 1])
             xj, yj = float(P[j, 0]), float(P[j, 1])
             rj = radius_from_wh(wj, hj)
@@ -111,5 +100,5 @@ def term_ll_disk(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             src[i].append((int(j), float(fx), float(fy), float(abs(fmag))))
             src[j].append((int(i), float(-fx), float(-fy), float(abs(fmag))))
 
-    logger.debug("term_ll_disk: skip_hidden=%d skip_circle=%d", skip_hidden, skip_circle)
+    logger.debug("term_ll_disk: skip_circle=%d", skip_circle)
     return float(E), F, {"ll.disk": src}

@@ -1,6 +1,6 @@
 # src/cartoweave/config/utils.py
 from __future__ import annotations
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import numpy as np
 
 # ---------------------------
@@ -43,6 +43,7 @@ _ALLOWED_KEYS = {
     "source.topk",
     # visualization
     "viz.show", "viz.field.kind", "viz.field.cmap", "viz.field.resolution",
+    "viz.field.aspect", "viz.field.nx", "viz.field.ny",
 }
 
 _ALLOWED_KEYS.update({
@@ -317,7 +318,23 @@ def viz(
     """
     return {
         "viz.show": bool(show),
-        "viz.field.kind": str(field_kind),
+       "viz.field.kind": str(field_kind),
         "viz.field.cmap": str(field_cmap),
         "viz.field.resolution": int(field_resolution),
     }
+
+
+def lock_viz_field(
+    cfg: Dict[str, Any],
+    scene: Dict[str, Any],
+    nx: Optional[int] = None,
+) -> None:
+    """Derive visual field aspect and resolution from the scene."""
+
+    W, H = scene.get("frame_size", (1.0, 1.0))
+    if nx is None:
+        nx = int(cfg.get("viz.field.nx", cfg.get("viz.field.resolution", 100)))
+    ny = max(1, int(round(nx * float(H) / float(W))))
+    cfg["viz.field.aspect"] = (float(W), float(H))
+    cfg["viz.field.nx"] = int(nx)
+    cfg["viz.field.ny"] = int(ny)

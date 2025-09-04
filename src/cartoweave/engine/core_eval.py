@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Dict, Any, Tuple, Callable
 import numpy as np
 from cartoweave.utils.checks import merge_sources, check_force_grad_consistency
+from cartoweave.utils.logging import logger
 
-from .forces import REGISTRY, enabled_terms
+from .forces import REGISTRY, enabled_terms, reset_registry
 
 
 def energy_and_grad_fullP(
@@ -19,22 +20,42 @@ def energy_and_grad_fullP(
     - 评估顺序：先非 anchor → 汇总外力方向 → anchor。anchor 会读取 scene["_ext_dir"] 做 r≈0 兜底。
       （顺序与旧工程相同）
     """
+    reset_registry()
     P = np.asarray(P, dtype=float)
+    assert P.ndim == 2 and P.shape[1] == 2, f"P must be (N,2), got {P.shape}"
     g = np.zeros_like(P)
     comps: Dict[str, np.ndarray] = {}
     sources_merged: Dict[str, Any] = {}
     E_total = 0.0
 
-    # 选择启用的力项（名称与注册表一致）
-    names = tuple(enabled_terms(cfg, phase="pre_anchor")) + tuple(enabled_terms(cfg, phase="anchor"))
+    labels_all = scene.get("labels", [])
+    active_ids = scene.get("_active_ids", list(range(len(labels_all))))
+    modes = [labels_all[i].get("mode") for i in active_ids if i < len(labels_all)]
+    circle_count = sum(m == "circle" for m in modes)
+    if scene.pop("_log_label_stats", False):
+        logger.debug(
+            "enabled_terms: active=%d circles=%d", len(active_ids), circle_count
+        )
+
+    pre_terms = list(enabled_terms(cfg, phase="pre_anchor"))
+    if "ll.rect" in pre_terms and circle_count == len(active_ids) and len(active_ids) > 0:
+        pre_terms.remove("ll.rect")
+    anchor_terms = list(enabled_terms(cfg, phase="anchor"))
 
     # (1) 先算所有“非 anchor”项，累计 E 与 g，同时累计外力合力 Fsum_ext
     Fsum_ext = np.zeros_like(P)
-    for name in enabled_terms(cfg, phase="pre_anchor"):
+    for name in pre_terms:
         term = REGISTRY[name]
         E_add, F_add, source = term(scene, P, cfg, phase="pre_anchor")
         E_total += float(E_add)
         if F_add is not None:
+            if F_add.shape != P.shape:
+                step_name = getattr(scene, "_current_step_name", None) or scene.get("_current_step_name")
+                stage_name = getattr(scene, "_current_stage_name", None) or scene.get("_current_stage_name")
+                raise ValueError(
+                    f"[TERM SHAPE MISMATCH] term={name} F_add={F_add.shape} P={P.shape} "
+                    f"step={step_name} stage={stage_name}"
+                )
             g -= F_add  # F = -∇E  →  ∇E 累加为 -F
             comps[name] = F_add
             Fsum_ext += F_add
@@ -46,11 +67,18 @@ def energy_and_grad_fullP(
     scene["_ext_dir"] = Fsum_ext.copy()
 
     # (3) 再算 anchor 项（最后阶段）
-    for name in enabled_terms(cfg, phase="anchor"):
+    for name in anchor_terms:
         term = REGISTRY[name]
         E_add, F_add, source = term(scene, P, cfg, phase="anchor")
         E_total += float(E_add)
         if F_add is not None:
+            if F_add.shape != P.shape:
+                step_name = getattr(scene, "_current_step_name", None) or scene.get("_current_step_name")
+                stage_name = getattr(scene, "_current_stage_name", None) or scene.get("_current_stage_name")
+                raise ValueError(
+                    f"[TERM SHAPE MISMATCH] term={name} F_add={F_add.shape} P={P.shape} "
+                    f"step={step_name} stage={stage_name}"
+                )
             g -= F_add
             comps[name] = F_add
         if source:
@@ -118,16 +146,24 @@ def scalar_potential_field(
     if P.ndim != 2 or P.shape[1] != 2:
         raise ValueError("P must be of shape (N,2)")
 
+    from cartoweave.config.utils import lock_viz_field
+
     W, H = scene.get("frame_size", (1.0, 1.0))
 
     if resolution is None:
-        resolution = cfg.get("viz.field.resolution", 100)
-
-    if isinstance(resolution, int):
-        nx = int(resolution)
-        ny = max(1, int(round(nx * float(H) / float(W))))
+        lock_viz_field(cfg, scene)
+        nx = int(cfg["viz.field.nx"])
+        ny = int(cfg["viz.field.ny"])
     else:
-        ny, nx = map(int, resolution)
+        if isinstance(resolution, int):
+            nx = int(resolution)
+            lock_viz_field(cfg, scene, nx=nx)
+            ny = int(cfg["viz.field.ny"])
+        else:
+            ny, nx = map(int, resolution)
+            cfg["viz.field.aspect"] = (float(W), float(H))
+            cfg["viz.field.nx"] = int(nx)
+            cfg["viz.field.ny"] = int(ny)
 
     xs = np.linspace(0.0, float(W), nx)
     ys = np.linspace(0.0, float(H), ny)
