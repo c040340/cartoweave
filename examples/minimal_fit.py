@@ -17,6 +17,7 @@ Phase A diagnostics:
 from __future__ import annotations
 from typing import Dict, Any, Tuple, List
 import numpy as np
+from cartoweave.labels import anchor_xy, init_position
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
 
 from cartoweave.viz.backend import use_compatible_backend
@@ -44,25 +45,23 @@ def _make_scene() -> Dict[str, Any]:
                                     [520.0, 360.0],
                                     [380.0, 360.0]], float)}]    # one rectangle
 
-    # Labels (3) with initial positions and sizes
-    P0 = np.array([[180.0, 110.0],
-                   [460.0, 110.0],
-                   [420.0, 310.0]], dtype=float)
-    WH = np.array([[60.0, 24.0],
-                   [60.0, 24.0],
-                   [60.0, 24.0]], dtype=float)
-
     labels = [
         {"anchor_kind": "point", "anchor_index": 0},
         {"anchor_kind": "line",  "anchor_index": 0},
         {"anchor_kind": "area",  "anchor_index": 0},
     ]
 
-    anchors = np.vstack([
-        points[0],
-        lines[0].mean(axis=0),
-        areas[0]["polygon"].mean(axis=0),
-    ])
+    data_geo = {"points": points, "lines": lines, "areas": [areas[0]["polygon"]]}
+    anchors_list: List[np.ndarray] = []
+    init_list: List[np.ndarray] = []
+    for lab in labels:
+        qx, qy, meta = anchor_xy(lab["anchor_kind"], lab["anchor_index"], data_geo, frame_size, with_meta=True)
+        anc = np.array([qx, qy], float)
+        anchors_list.append(anc)
+        init_list.append(init_position(lab["anchor_kind"], anc, frame_size, meta=meta))
+    anchors = np.vstack(anchors_list)
+    P0 = np.vstack(init_list)
+    WH = np.array([[60.0, 24.0]] * len(labels), float)
 
     return dict(
         frame=0,

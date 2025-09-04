@@ -15,6 +15,11 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
     hist = info.get("history", {}) if isinstance(info, dict) else {}
     recs = hist.get("records") or hist.get("evals") or []
     steps_raw = hist.get("scene_steps", [])
+    scene = info.get("scene", {}) if isinstance(info, dict) else {}
+    pts_all = np.asarray(scene.get("points", np.zeros((0, 2))), float).reshape(-1, 2)
+    lns_all = scene.get("lines", [])
+    ars_all = scene.get("areas", [])
+    labels_all = scene.get("labels", [])
 
     frames: List[Dict[str, Any]] = []
     for t, r in enumerate(recs):
@@ -38,7 +43,7 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
         pts_val = src.get("points")
         if pts_val is None:
             pts_val = src.get("points_xy")
-        pts = np.asarray(pts_val, float).reshape(-1, 2) if pts_val is not None else np.zeros((0, 2), float)
+        pts = np.asarray(pts_val, float).reshape(-1, 2) if pts_val is not None else None
 
         lns_raw = src.get("lines")
         if lns_raw is None:
@@ -48,6 +53,8 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
             arr = np.asarray(seg, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
                 lns.append(arr)
+        if not lns_raw:
+            lns = None
 
         ars_raw = src.get("areas")
         if ars_raw is None:
@@ -57,6 +64,38 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
             arr = np.asarray(poly, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
                 ars.append(arr)
+        if not ars_raw:
+            ars = None
+
+        act_viz = list(steps_raw[step_idx].get("active_ids_viz", [])) if steps_raw else list(range(len(labels_all)))
+        if pts is None:
+            pts_sel = []
+            for i in act_viz:
+                lab = labels_all[i] if i < len(labels_all) else {}
+                if lab.get("anchor_kind") == "point":
+                    ai = lab.get("anchor_index")
+                    if isinstance(ai, int) and 0 <= ai < len(pts_all):
+                        pts_sel.append(pts_all[ai])
+            pts = np.asarray(pts_sel, float)
+        if lns is None:
+            lns = []
+            for i in act_viz:
+                lab = labels_all[i] if i < len(labels_all) else {}
+                if lab.get("anchor_kind") == "line":
+                    ai = lab.get("anchor_index")
+                    if isinstance(ai, int) and 0 <= ai < len(lns_all):
+                        lns.append(np.asarray(lns_all[ai], float))
+        if ars is None:
+            ars = []
+            for i in act_viz:
+                lab = labels_all[i] if i < len(labels_all) else {}
+                if lab.get("anchor_kind") == "area":
+                    ai = lab.get("anchor_index")
+                    if isinstance(ai, int) and 0 <= ai < len(ars_all):
+                        poly = ars_all[ai]
+                        if isinstance(poly, dict):
+                            poly = poly.get("polygon")
+                        ars.append(np.asarray(poly, float))
 
         frame = {
             "P": np.asarray(r.get("P"), float),

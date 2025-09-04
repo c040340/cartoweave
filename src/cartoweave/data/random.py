@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional
 import os, time, math, string, random
 import numpy as np
+from ..labels import anchor_xy, init_position
 
 Array = np.ndarray
 
@@ -183,35 +184,36 @@ def generate_scene(
     WH: List[np.ndarray] = []
     labels_meta: List[Dict[str, Any]] = []
 
+    data_geo = {"points": pts_xy, "lines": lines, "areas": [a["polygon"] for a in areas]}
+
     def _rand_label_spec() -> float:
         spec = _label_specs_for_len(int(np.random.randint(6, 25)))
         return float(spec["single"]["w"])
 
     # point labels
-    for i, (x, y) in enumerate(pts_xy):
-        anc = np.array([x, y], float)
+    for i in range(len(pts_xy)):
+        qx, qy = anchor_xy("point", i, data_geo, (W, H))
+        anc = np.array([qx, qy], float)
         anchors.append(anc)
-        offset = np.random.uniform(-20.0, 20.0, size=2)
-        labels_init.append(anc + offset)
+        labels_init.append(init_position("point", anc, (W, H)))
         WH.append(np.array([_rand_label_spec(), 24.0], float))
         labels_meta.append({"id": f"p{i}", "anchor_kind": "point", "anchor_index": i})
 
     # line labels
-    for i, seg in enumerate(lines):
-        anc = np.array([(seg[0] + seg[2]) * 0.5, (seg[1] + seg[3]) * 0.5], float)
+    for i in range(len(lines)):
+        qx, qy, meta = anchor_xy("line", i, data_geo, (W, H), with_meta=True)
+        anc = np.array([qx, qy], float)
         anchors.append(anc)
-        offset = np.random.uniform(-20.0, 20.0, size=2)
-        labels_init.append(anc + offset)
+        labels_init.append(init_position("line", anc, (W, H), meta=meta))
         WH.append(np.array([_rand_label_spec(), 24.0], float))
         labels_meta.append({"id": f"l{i}", "anchor_kind": "line", "anchor_index": i})
 
     # area labels
     for i, ar in enumerate(areas):
-        poly = np.asarray(ar["polygon"], float)
-        anc = poly.mean(axis=0)
+        qx, qy, meta = anchor_xy("area", i, data_geo, (W, H), with_meta=True)
+        anc = np.array([qx, qy], float)
         anchors.append(anc)
-        offset = np.random.uniform(-20.0, 20.0, size=2)
-        labels_init.append(anc + offset)
+        labels_init.append(init_position("area", anc, (W, H), meta=meta))
         WH.append(np.array([_rand_label_spec(), 24.0], float))
         labels_meta.append({"id": f"a{i}", "anchor_kind": "area", "anchor_index": i})
 

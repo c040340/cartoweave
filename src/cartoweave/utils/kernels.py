@@ -6,6 +6,7 @@ import numpy as np
 EPS_NORM = 1e-9    # 单位向量防 0
 EPS_DIST = 1e-6    # 距离防 0
 EPS_ABS  = 1e-3    # softabs 平滑
+EPS_AREA = 1e-9    # 多边形面积防 0
 
 def safe_hypot(x: float, y: float, eps: float = EPS_NORM) -> float:
     return math.hypot(x, y) + eps

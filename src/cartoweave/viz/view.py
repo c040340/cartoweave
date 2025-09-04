@@ -27,6 +27,7 @@ from .panels import (
 from ..config.viz import viz_config
 from ..config.presets import VIZ_FORCE_CONFIG
 from cartoweave.utils.logging import logger
+from ..labels import anchor_xy
 
 
 def _as_vec2(a: Any) -> Optional[np.ndarray]:
@@ -68,19 +69,14 @@ def _compute_anchors(
             return arr
 
     pts = _as_vec2(points)
+    data_geo = {"points": pts, "lines": lines, "areas": areas}
     anchors = []
     for lab in labels:
-        kind = str(lab.get("anchor_kind", "")).lower()
+        kind = str(lab.get("anchor_kind", ""))
         idx = lab.get("anchor_index")
-
-        if kind == "point" and pts is not None and isinstance(idx, int) and 0 <= idx < len(pts):
-            anchors.append(pts[idx])
-        elif kind == "line" and isinstance(lines, (list, tuple)) and isinstance(idx, int) and 0 <= idx < len(lines):
-            arr = _as_vec2(lines[idx])
-            anchors.append(arr.mean(axis=0) if arr is not None else (np.nan, np.nan))
-        elif kind == "area" and isinstance(areas, (list, tuple)) and isinstance(idx, int) and 0 <= idx < len(areas):
-            arr = _as_vec2(areas[idx])
-            anchors.append(arr.mean(axis=0) if arr is not None else (np.nan, np.nan))
+        if isinstance(idx, int) and kind:
+            qx, qy = anchor_xy(kind, idx, data_geo, (0.0, 0.0))
+            anchors.append((qx, qy))
         else:
             anchors.append((np.nan, np.nan))
 
@@ -234,7 +230,7 @@ def interactive_view(
         g_mag, g_ang = global_tot
         rows.append(
             (
-                f"{'ALL'.ljust(6)} |F|={_fmt_force(g_mag)} angle={_fmt_deg_aligned(g_ang)}       ",
+                f"{'ALL'.ljust(6)} |F|={_fmt_force(g_mag)}   θ={_fmt_deg_aligned(g_ang)}       ",
                 THEME["global_text"],
                 GLOBAL_FS,
             )
@@ -253,7 +249,7 @@ def interactive_view(
         name_fmt = label_name[:6].ljust(6)
         rows.append(
             (
-                f"{name_fmt} |F|={_fmt_force(l_mag)} angle={_fmt_deg_aligned(l_ang)}       ",
+                f"{name_fmt} |F|={_fmt_force(l_mag)}   θ={_fmt_deg_aligned(l_ang)}       ",
                 THEME["label_text"],
                 LABEL_FS,
             )
@@ -276,7 +272,7 @@ def interactive_view(
                 name_fmt = k[:12].ljust(12)
                 rows.append(
                     (
-                        f"  {name_fmt} |F|={_fmt_force(mag)} angle={_fmt_deg_aligned(ang)} {_fmt_pct_aligned(pct)}",
+                        f"  {name_fmt} |F|={_fmt_force(mag)}   θ={_fmt_deg_aligned(ang)} {_fmt_pct_aligned(pct)}",
                         THEME["force_colors"].get(k, "#555555"),
                         COMP_FS,
                     )
