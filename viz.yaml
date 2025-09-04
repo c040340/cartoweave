@@ -1,0 +1,31 @@
+enable: true
+export_stride: 1
+figure_size: [22, 10]
+dpi: 120
+
+panels: { main: true, force: true, timeline: true, info: true }
+layers: { points: true, lines: true, areas: true, labels: true }
+
+layout:
+  grid: [1, 3]
+  aspect_mode: fit            # fit | fill | square
+
+axes: { show_ticks: false, show_spines: true }
+
+theme: dark
+colors: { points: "#66CCFF", lines: "#FFAA00", areas: "#66FF99", labels: "#FFFFFF" }
+alpha:  { area_fill: 0.15, label_rect: 0.25 }
+zorder: { points: 10, lines: 9, areas: 5, labels: 20 }
+
+force_vectors: { show: true, density: auto, scale: 1.0, max_arrows: 400 }
+force_breakdown: { topk: 8, show_total: true }
+surface3d: { show: false, resolution: 128, clamp_z: [-5, 5] }
+
+timeline: { show_iters: true, show_actions: true, scrubber: true }
+picker: { tolerance_px: 25, draggable_labels: true }
+
+export:
+  out_dir: "outputs/viz"
+  video: { enable: false, fps: 24, codec: "h264" }
+
+numerics: { eps_label_overlap: 1e-6 }

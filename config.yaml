@@ -1,0 +1,144 @@
+experiment:
+  regen_data: true
+  seed: 42
+  num_points: 8
+  num_lines: 3
+  num_areas: 2
+  num_actions: 6
+
+solver:
+  quick:
+    mode: lbfgsb              # lbfgsb | simple | hybrid (future)
+    max_iters: 400
+    init:
+      strategy: from_anchor   # from_anchor | random_grid | last_cache
+      perturb_px: 2.0
+      clamp_to_frame: true
+
+  tuning:
+    # ---------- Stopping (projected gradient) ----------
+    stopping:
+      gtol_ref_kind: p75      # p50 | p75 | max | l2 | ...
+      gtol_abs: 1e-2
+      gtol_rel: 2e-3
+      gtol_cap: null
+
+    # ---------- L-BFGS-B internals ----------
+    lbfgsb:
+      restarts: 6             # == old lbfgsb_restarts
+      m: 10                   # == old lbfgs_m
+      factr: 9e30
+      maxiter: 800
+      maxfun: 20000
+      maxls: -1               # <=0 means auto (_auto_maxls)
+      disp: false
+
+    # ---------- Warmup (conservative PG steps) ----------
+    warmup:
+      steps: 3
+      pixel_equiv: 5.0
+      step_cap: 20.0
+
+    # ---------- Retry (noise + patience) ----------
+    retry:
+      enable: true
+      keep_best: true
+      noise_px: 1.0
+      noise_ratio: 1.6
+      noise_seed: 0
+
+    # ---------- Low-cost anti-jump guards ----------
+    step_control:
+      max_step_px: 30.0
+      frac_of_rect: 0.25
+      backtrack_trials: 3
+
+    prox:
+      enable: true
+      mu: 1.0e-3
+      decay: 0.5
+      on_events_only: true
+
+    acceptance:
+      monotone: true
+      try_pg_cooldown: 1
+
+    cooldown_pg_steps: 1
+
+    robust_forces:
+      enable: false
+      terms:
+        - { name: boundary, cap_p95_mult: 3.0 }
+        # - { name: area_cross, cap_p95_mult: 3.0 }
+
+    # ---------- Optional helpers ----------
+    watchdog:
+      enable: false
+      window: 8
+      rel_F_drop: 1e-4
+      min_switch_iters: 20
+      perturb_px: 1.0
+
+physics:
+  # A-layer (semantic knobs; zero-force “rest”)
+  quick:
+    point_spring:
+      rest_mode: at_point_center   # at_point_center | offset_edge | anchor_param
+      rest_offset_px: 0
+    line_spring:
+      rest_mode: at_anchor_projection
+      edge_follow_span_pct: 30
+
+  # B-layer (tuning; switches + focus + per-term constants)
+  tuning:
+    enabled:
+      label_label_repulsion: true
+      boundary: true
+      point_spring: true
+      line_spring: true
+      area_softout: true
+      area_cross: true
+      anchor: true
+      focus: true
+
+    focus:
+      shape: ellipse
+      center_norm: [0.5, 0.5]
+      axes_px: [320, 200]
+      angle_deg: 0
+      falloff: { beta: 4.0, decay: 1.0 }
+
+    point_spring: { k: 120.0, rest_length_px: 0.0, tangent_damping: 0.0 }
+    line_spring:  { k: 90.0,  normal_spring_k: 60.0, tangent_damping: 0.2 }
+    label_label_repulsion: { k_rr: 8.0, softmin_beta: 6.0, distance_model: "invdist" }
+    boundary: { k_boundary: 10.0, inverse_square_eps: 1e-3, outside_penalty: 2.0 }
+    area_softout: { k: 6.0, width_px: 12.0, decay: 1.0 }
+    area_cross:   { k: 10.0, width_px: 6.0, decay: 1.0 }
+    anchor: { k_anchor_spring: 40.0, falloff: 1.0, clip: 3.0 }
+
+  # Scaling / dimensional balance
+  scaling:
+    enable_autocal: true
+    base_term: focus
+    length_ref_px: 100.0
+    energy_ref: 1.0
+    sigma_scale: 1.0
+    k_multipliers:
+      boundary: 1.0
+      label_label_repulsion: 1.0
+      anchor: 1.0
+
+numerics:
+  eps_div: 1e-9
+  eps_sqrt: 1e-12
+  clamp_limits: [ -1e6, 1e6 ]
+  finite_check: "warn"
+
+logging_debug:
+  level: "info"
+  debug_solver: false
+  debug_check: false
+  emit_grad_check: false
+  emit_topk_forces: true
+  dump_active_ids: false
+  profile_timers: true

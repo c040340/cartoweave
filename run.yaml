@@ -1,0 +1,8 @@
+# This file is optional. If present, it shallow-overrides config.yaml & viz.yaml at runtime.
+# Example:
+solver:
+  tuning:
+    stopping:
+      gtol_abs: 5e-3
+viz:
+  enable: true
