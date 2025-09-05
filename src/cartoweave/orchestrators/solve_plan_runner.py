@@ -21,6 +21,7 @@ from typing import Callable, Dict, Any, List
 import numpy as np
 
 from cartoweave.engine.solvers import lbfgs
+from .solve_plan import _debug_enabled, _log_config_stats
 
 
 def run_solve_plan(
@@ -46,6 +47,8 @@ def run_solve_plan(
     """
 
     cfg = cfg or {}
+    if _debug_enabled(cfg):
+        _log_config_stats(cfg)
     if not solve_plan:
         raise ValueError("run_solve_plan received empty solve_plan")
     P_cur = np.asarray(scene.get("labels_init", np.zeros((0, 2), float)), float)

@@ -15,9 +15,8 @@ Phase A diagnostics:
 """
 
 from __future__ import annotations
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, List
 import os
-from dataclasses import asdict
 import numpy as np
 from cartoweave.labels import anchor_xy, init_position
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
@@ -25,10 +24,10 @@ from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
 from cartoweave.viz.backend import use_compatible_backend
 use_compatible_backend()
 
-from cartoweave.api import solve_frame
-from cartoweave.config.loader import load_configs, print_effective_config
-from cartoweave.utils.dict_merge import deep_update
-from cartoweave.utils.logging import logger
+from cartoweave.api import solve_frame  # noqa: E402
+from cartoweave.config.loader import load_configs, print_effective_config  # noqa: E402
+from cartoweave.utils.dict_merge import deep_update  # noqa: E402
+from cartoweave.utils.logging import logger  # noqa: E402
 
 try:
     # optional viz
@@ -84,18 +83,21 @@ def _make_scene() -> Dict[str, Any]:
 
 def main():
     bundle = load_configs()
-    print_effective_config()
+    print_effective_config(bundle)
 
+    bundle_dict = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
     cfg = deep_update(
-        bundle["solver"],
+        bundle_dict,
         {
-            "tuning": {
-                "term_weights": {
-                    "ll.k.repulse": 150.0,
-                    "pl.k.repulse": 200.0,
-                    "ln.k.repulse": 180.0,
-                    "boundary.k.wall": 80.0,
-                    "anchor.k.spring": 10.0,
+            "solver": {
+                "tuning": {
+                    "terms": {
+                        "label_label_repulse": {"weight": 150.0},
+                        "point_label_repulse": {"weight": 200.0},
+                        "line_label_repulse": {"weight": 180.0},
+                        "boundary_wall": {"weight": 80.0},
+                    },
+                    "anchor": {"k_spring": 10.0},
                 }
             },
             "viz": {"show": False, "field": {"kind": "heatmap", "cmap": "viridis"}},
@@ -103,7 +105,7 @@ def main():
         },
     )
 
-    viz = deep_update(bundle["viz"], {})
+    viz = deep_update(bundle_dict["viz"], {})
     viz_override = {"layout": {"anchor_marker_size": 8.0}} if os.getenv("DEMO_BIG_ANCHOR") else {}
     viz_eff = deep_update(viz, viz_override)
 
@@ -123,7 +125,7 @@ def main():
     payload = build_viz_payload(info)
 
     # Optional interactive viewer
-    if interactive_view and cfg.get("viz.show", False):
+    if interactive_view and cfg.get("viz", {}).get("show", False):
         lines_draw = [seg for seg in scene["lines"]]
         areas_draw = [a["polygon"] for a in scene["areas"]]
 

@@ -1,8 +1,8 @@
 public:
-  mode: "lbfgsb"         # solver mode: "lbfgsb" / "semi-newton" / "hybrid"
-  use_autocal: false      # enable auto calibration
-  use_warmup: false       # run warmup steps
-  use_retry: false        # retry failed solves
-  use_topk_sources: false # limit to top-k sources
-  profile: "basic"       # preset tuning profile
-  force_level: "medium"  # force logging level
+  mode: lbfgsb                  # allowed: lbfgsb|simple|hybrid|newton
+  use_autocal: false
+  use_warmup: true
+  use_retry: false
+  use_topk_sources: false
+  profile: basic                # also accepts: balanced|stable|cinematic
+  force_level: medium

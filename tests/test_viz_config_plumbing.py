@@ -3,7 +3,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import numpy as np
-from dataclasses import asdict
 from pathlib import Path
 from cartoweave.config.loader import load_configs
 from cartoweave.viz.panels import draw_layout
@@ -15,7 +14,7 @@ def test_anchor_marker_size_from_yaml(tmp_path):
     viz_path = tmp_path / "viz.yaml"
     viz_path.write_text(orig.replace("anchor_marker_size: 4.0", "anchor_marker_size: 11.0"))
     bundle = load_configs(viz_path=str(viz_path))
-    viz = merge_defaults(bundle["viz"])
+    viz = merge_defaults(bundle.viz.model_dump(exclude_unset=False, exclude_defaults=False))
     fig, ax = plt.subplots()
     draw_layout(
         ax,

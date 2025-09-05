@@ -8,7 +8,6 @@
 from __future__ import annotations
 from typing import Dict, Any
 import os
-from dataclasses import asdict
 import numpy as np
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
 from cartoweave.viz.metrics import collect_solver_metrics  # noqa: E402
@@ -16,12 +15,16 @@ from cartoweave.viz.backend import use_compatible_backend
 
 use_compatible_backend()
 
-from cartoweave.data.random import get_scene
-from cartoweave.api import solve_scene_script
-from cartoweave.config.loader import load_configs, print_effective_config
-from cartoweave.utils.dict_merge import deep_update
-from cartoweave.utils.logging import logger
-from cartoweave.engine.core_eval import scalar_potential_field
+from cartoweave.data.random import get_scene  # noqa: E402
+from cartoweave.api import solve_scene_script  # noqa: E402
+from cartoweave.config.loader import load_configs, print_effective_config  # noqa: E402
+try:  # noqa: E402
+    from cartoweave.config.schema import ConfigBundle  # type: ignore
+except ImportError:  # noqa: E402
+    from cartoweave.config.schema import RootConfig as ConfigBundle  # type: ignore
+from cartoweave.utils.dict_merge import deep_update  # noqa: E402
+from cartoweave.utils.logging import logger  # noqa: E402
+from cartoweave.engine.core_eval import scalar_potential_field  # noqa: E402
 
 try:  # optional viewer
     from cartoweave.viz.view import interactive_view
@@ -58,6 +61,9 @@ def run_example_headless(scene: Dict[str, Any], plan, cfg: Dict[str, Any]):
     """Thin wrapper used by tests to execute the example without a viewer."""
     if not plan:
         raise ValueError("empty solve_plan content in random_solve_plan example")
+    if not cfg:
+        bundle = load_configs()
+        cfg = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
     script = scene.get("scene_script")
     if not script:
         label_id = None
@@ -77,29 +83,32 @@ def run_example_headless(scene: Dict[str, Any], plan, cfg: Dict[str, Any]):
 
 def main():
     bundle = load_configs(
-        internals_path = "../configs/solver.internals.yaml",
-        tuning_path = "../configs/solver.tuning.yaml",
-        public_path = "../configs/solver.public.yaml",
-        viz_path = "../configs/viz.yaml",
-        deprecations_path = "../configs/deprecations.yaml",
+        internals_path="../configs/solver.internals.yaml",
+        tuning_path="../configs/solver.tuning.yaml",
+        public_path="../configs/solver.public.yaml",
+        viz_path="../configs/viz.yaml",
     )
-    print_effective_config()
+    bundle_dict = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
     cfg = deep_update(
-        bundle["solver"],
+        bundle_dict,
         {
-            "tuning": {
-                "term_weights": {
-                    "ll.k.repulse": 150.0,
-                    "pl.k.repulse": 200.0,
-                    "ln.k.repulse": 180.0,
-                    "boundary.k.wall": 80.0,
-                    "anchor.k.spring": 10.0,
+            "solver": {
+                "tuning": {
+                    "terms": {
+                        "label_label_repulse": {"weight": 150.0},
+                        "point_label_repulse": {"weight": 200.0},
+                        "line_label_repulse": {"weight": 180.0},
+                        "boundary_wall": {"weight": 80.0},
+                    },
+                    "anchor": {"k_spring": 10.0},
                 }
             },
             "viz": {"show": True, "field": {"kind": "none", "cmap": "viridis"}},
         },
     )
-    viz = deep_update(bundle["viz"], {})
+    bundle = ConfigBundle(**cfg)
+    print_effective_config(bundle)
+    viz = deep_update(bundle_dict["viz"], {})
     viz_eff = deep_update(viz, {})
     logger.info(
         "configs loaded config=%s viz=%s run=%s anchor_marker_size=%.1f",
@@ -126,7 +135,7 @@ def main():
 
     payload = build_viz_payload(info)
 
-    if interactive_view and cfg.get("viz.show", False):
+    if interactive_view and cfg.get("viz", {}).get("show", False):
         lines_draw = [seg for seg in scene.get("lines", [])]
         areas_draw = [a.get("polygon") for a in scene.get("areas", [])]
 

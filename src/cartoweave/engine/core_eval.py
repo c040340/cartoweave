@@ -1,6 +1,7 @@
 # src/cartoweave/engine/core_eval.py
 from __future__ import annotations
 from typing import Dict, Any, Tuple, Callable
+import os
 import numpy as np
 from cartoweave.utils.checks import merge_sources, check_force_grad_consistency
 from cartoweave.utils.logging import logger
@@ -28,6 +29,20 @@ def energy_and_grad_fullP(
     comps: Dict[str, np.ndarray] = {}
     sources_merged: Dict[str, Any] = {}
     E_total = 0.0
+
+    debug_forces = (
+        os.environ.get("CFG_DEBUG_FORCES", "") not in {"", "0", "false", "False"}
+        or bool(
+            cfg.get("solver", {})
+            .get("tuning", {})
+            .get("debug", {})
+            .get("force_stats")
+        )
+    )
+    term_norms: Dict[str, float] | None = None
+    ext_norm = 0.0
+    if debug_forces and not cfg.get("_force_stats_logged"):
+        term_norms = {}
 
     clamp_max = (
         cfg.get("solver", {})
@@ -71,12 +86,16 @@ def energy_and_grad_fullP(
             g -= F_add  # F = -∇E  →  ∇E 累加为 -F
             comps[name] = F_add
             Fsum_ext += F_add
+            if term_norms is not None:
+                term_norms[name] = float(np.linalg.norm(F_add))
         if source:
             merge_sources(sources_merged, source)
 
     # (2) 把“外力合力方向”传给 anchor（仅在 r≈0 时会用到）
     # 与旧工程一致：通过 data/scene["_ext_dir"] 提供兜底方向。:contentReference[oaicite:1]{index=1}
     scene["_ext_dir"] = Fsum_ext.copy()
+    if term_norms is not None:
+        ext_norm = float(np.linalg.norm(Fsum_ext))
 
     # (3) 再算 anchor 项（最后阶段）
     for name in anchor_terms:
@@ -95,11 +114,21 @@ def energy_and_grad_fullP(
                 np.clip(F_add, -clamp_max, clamp_max, out=F_add)
             g -= F_add
             comps[name] = F_add
+            if term_norms is not None:
+                term_norms[name] = float(np.linalg.norm(F_add))
         if source:
             merge_sources(sources_merged, source)
 
     # 清理临时键（与旧工程一致）:contentReference[oaicite:2]{index=2}
     scene.pop("_ext_dir", None)
+
+    if term_norms is not None:
+        cfg["_force_stats_logged"] = True
+        top_terms = sorted(term_norms.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        top_str = ", ".join(f"{k}={v:.3g}" for k, v in top_terms)
+        logger.info(f"[forces] ext_norm={ext_norm}, top_terms: {top_str}")
+        if ext_norm < 1e-12:
+            logger.info("[forces] resultant is ~0 (check threshold/weights/presets)")
 
     # debug 一致性检查（可选）
     if bool(cfg.get("debug.check", False)):
@@ -107,8 +136,8 @@ def energy_and_grad_fullP(
         for V in comps.values():
             if isinstance(V, np.ndarray):
                 Fsum += V
-        err = check_force_grad_consistency(Fsum, g)
-        # 这里不做日志依赖，调用方可按需要打印 err
+        check_force_grad_consistency(Fsum, g)
+        # 这里不做日志依赖，调用方可按需要打印结果
 
     # 记录钩子：保留每帧 P/E/分力分解/sources（与旧工程的 record 协议一致）:contentReference[oaicite:3]{index=3}
     if record is not None:
@@ -119,9 +148,6 @@ def energy_and_grad_fullP(
         record(P.copy(), float(E_total), comps_copy, meta)
 
     return float(E_total), g, {"sources": sources_merged}
-
-
-import numpy as np
 
 def scalar_potential_field(scene: dict,
                            P: np.ndarray,

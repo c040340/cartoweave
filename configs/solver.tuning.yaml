@@ -1,32 +1,36 @@
 tuning:
-  merge:               # merging coincident labels
-    mode: "sum"         # sum | softmax | logsumexp | weighted
-    temperature: 1.0
-  normalize:           # resultant force normalization
-    kind: "l2"         # l1 | l2 | max | topk_norm
-  threshold:           # convergence thresholds
-    abs: 1e-3
-    rel: 0.0            # [0,1]
-  topk:
-    enable: false      # restrict to top-k sources
-    k: 8                # >=1
-    min_share: 0.0     # [0,1]
-  lbfgsb:
-    m: 10            # L-BFGS history size
-    maxiter: 100     # iteration cap
-  stopping:
-    gtol: 1e-3       # gradient tolerance
-  clamp:
-    optimize_force_max: 1e6  # soft clamp on force magnitude
+  merge:        { mode: sum, temperature: 1.0 }
+  normalize:    { kind: l2 }
+
+  # Do not prune small forces at the optimizer layer initially.
+  threshold:    { abs: null, rel: null }
+
+  topk:         { enable: false, k: 4, min_share: 0.0 }
+
+  lbfgsb:       { m: 10, maxiter: 300 }
+  stopping:     { gtol: 1.0e-4 }
+
+  anti_jump:    { step_cap_px: 30.0 }     # unified name
+  clamp:        { optimize_force_max: 1.0e6 }
+
+  anchor:
+    k_spring: 6.0
+
+  terms:
+    boundary_wall:           { weight: 2.0 }
+    boundary_in:             { weight: 0.5 }
+    area_cross:              { weight: 1.2 }
+    area_embed:              { weight: 0.8 }
+    focus:                   { weight: 0.5 }   # effective only if data provides focus.center
+
+    label_label_repulse:     { weight: 0.4 }
+    line_label_repulse:      { weight: 0.3 }
+    point_label_repulse:     { weight: 0.3 }
+
+    label_label_inside:      { weight: 0.2 }
+    line_label_inside:       { weight: 0.2 }
+    point_label_inside:      { weight: 0.2 }
+
   warmup:
-    steps: 0         # conservative PG steps
-  retry:
-    enable: false    # retry with noise on failure
-  anti_jump:
-    max_step_px: 30.0  # step cap to prevent jumps
-  term_weights:
-    ll.k.repulse: 1.0
-    pl.k.repulse: 1.0
-    ln.k.repulse: 1.0
-    boundary.k.wall: 1.0
-    anchor.k.spring: 1.0
+    steps: 1
+    # step_cap_px: 3.0   # uncomment if your orchestrator consumes it for warmup stages

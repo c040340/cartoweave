@@ -1,6 +1,5 @@
 # Deprecated configuration keys mapped to new locations
 # anchor term settings
-anchor.k.spring: solver.tuning.anchor.k_spring
 anchor.sample_step_len: solver.tuning.anchor.sample_step_len
 anchor.clip: solver.tuning.anchor.clip
 anchor.pad_line: solver.tuning.anchor.pad_line
@@ -12,7 +11,6 @@ area.width_px.cross: solver.tuning.terms.area_cross.width_px
 area.width_px.softout: solver.tuning.terms.area_softout.width_px
 
 # boundary terms
-boundary.k.wall: solver.tuning.terms.boundary_wall.weight
 boundary.inverse_square_eps: solver.tuning.terms.boundary_wall.inverse_square_eps
 boundary.outside_penalty: solver.tuning.terms.boundary_wall.outside_penalty
 
