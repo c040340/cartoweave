@@ -1,9 +1,9 @@
 show: true
 panels:
-  layout: false
+  layout: true
   forces: true
   info: true
-  field: true
+  field: false
 field:
   mode: surface3d  # "heatmap" | "surface3d"
   resolution: 40  # grid size per axis; used for both heatmap and 3D
