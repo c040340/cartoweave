@@ -6,3 +6,19 @@ public:
   use_topk_sources: false
   profile: basic                # also accepts: balanced|stable|cinematic
   force_level: medium
+  data:
+    random:
+      frame: { width: 1080, height: 1920 }
+      counts: { n_points: 8, n_lines: 3, n_areas: 2 }
+      route_gen:
+        mean_length_scale: 0.25
+        min_vertex_spacing_scale: 0.01
+        min_edge_margin_scale: 0.02
+        lower_bound_scale: 0.02
+        upper_bound_scale: 0.60
+      area_gen:
+        mean_area_scale: 0.05
+        min_vertex_spacing_scale: 0.01
+        min_edge_margin_scale: 0.02
+        lower_bound_scale: 0.01
+        upper_bound_scale: 0.50

@@ -4,8 +4,7 @@ from cartoweave.orchestrators.scene_script_runner import (
     apply_step_to_scene,
     run_scene_script,
 )
-from cartoweave.api import solve_scene_script, solve_timeline
-from cartoweave.orchestrators.timeline_runner import run_timeline
+from cartoweave.api import solve_scene_script
 
 
 def _scene():
@@ -113,27 +112,5 @@ def test_solve_scene_script_api_runs():
     script = {"steps": [{"name": "enter", "op": "enter", "id": "l0"}]}
     plan = {"stages": [{"name": "stage0"}]}
     info = solve_scene_script(scene, script, {"boundary.k.wall": 1.0}, solve_plan=plan)
-    hist = info.get("history", {})
-    assert len(hist.get("records", [])) > 0
-
-
-def test_solve_timeline_deprecated_warns_and_runs():
-    scene = _scene()
-    timeline = {"steps": [{"name": "enter", "op": "enter", "id": "l0"}]}
-    plan = {"stages": [{"name": "stage0"}]}
-    cfg = {"boundary.k.wall": 1.0}
-    with pytest.warns(DeprecationWarning, match="timeline_runner is deprecated"):
-        info = solve_timeline(scene, timeline, cfg, solve_plan=plan)
-    hist = info.get("history", {})
-    assert len(hist.get("records", [])) > 0
-
-
-def test_timeline_runner_deprecated_warns_and_runs():
-    scene = _scene()
-    steps = [{"name": "enter", "op": "enter", "id": "l0"}]
-    plan = {"stages": [{"name": "stage0"}]}
-    cfg = {"boundary.k.wall": 1.0}
-    with pytest.warns(DeprecationWarning, match="timeline_runner is deprecated"):
-        info = run_timeline(scene, steps, plan, cfg)
     hist = info.get("history", {})
     assert len(hist.get("records", [])) > 0

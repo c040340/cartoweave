@@ -34,3 +34,5 @@ tuning:
   warmup:
     steps: 1
     # step_cap_px: 3.0   # uncomment if your orchestrator consumes it for warmup stages
+  data:
+    random: {}

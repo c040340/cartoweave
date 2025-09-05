@@ -15,7 +15,7 @@ without rebuilding common infrastructure.
 * Pluggable force-based engine for point, line and area labels
 * Example configurations for common layouts
 * Multiple solvers: L-BFGS, semi-Newton and a hybrid strategy
-* Timeline orchestrator that runs multi-stage schedules across frames
+* Scene-script orchestrator that runs multi-stage schedules across frames
 * Random scene generator for demos and tests
 
 ## Installation
@@ -57,7 +57,7 @@ demonstrates the interactive viewer when ``viz.show`` is set to ``True``.
 
 * `cartoweave/api.py` – public API for solving a single frame or a timeline
 * `cartoweave/engine` – energy evaluation and numerical solvers
-* `cartoweave/orchestrators` – multi-phase timeline runner
+* `cartoweave/orchestrators` – scene script and solve plan runners
 * `cartoweave/data` – random scene and timeline generators
 * `cartoweave/viz` – placeholders for future visualisation tools
 * `tests` – unit tests and integration tests

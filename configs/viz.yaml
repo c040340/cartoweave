@@ -1,19 +1,35 @@
 panels:
-  layout: true     # show layout panel
-  forces: false    # show force panel
-colors:
-  background: "#ffffff"  # canvas background
-linewidths:
-  layout: 1.0      # layout line width
-  force: 1.0       # force vector line width
+  layout: true
+  forces: false
+  info: true
 layout:
-  anchor_marker_size: 4.0  # default anchor marker size
+  colors:
+    points: "#2E86DE"
+    lines: "#10AC84"
+    areas: "#F1C40F"
+    label_fill: "#FFFFFF"
+    label_edge: "#2D3436"
+    anchor_line: "#34495E"
+    anchor_marker_face: "#FFFFFF"
+    anchor_marker_edge: "#2D3436"
+  line_width: 1.0
+  area_face_alpha: 0.30
+  area_edge_width: 1.0
+  label_edge_width: 1.0
+  label_fontsize: 10
+  anchor_marker_size: 4.0
+forces:
+  colors:
+    ll.rect: "#1f77b4"
+    boundary.wall: "#ff7f0e"
+    anchor.spring: "#2ca02c"
+  component_arrow_lw: 1.0
 force_view:
-  show_vectors: true  # display force arrows
-  clamp_force_max: 1000.0  # max force magnitude for display
+  show_vectors: true
+  clamp_force_max: 1000.0
 picker:
-  enable: false    # interactive picker
+  enable: false
 surface3d:
-  enable: false    # 3D surface view
+  enable: false
 export:
-  enable: false    # export figures
+  enable: false

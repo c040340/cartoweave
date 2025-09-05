@@ -17,7 +17,10 @@ use_compatible_backend()
 
 from cartoweave.data.random import get_scene  # noqa: E402
 from cartoweave.api import solve_scene_script  # noqa: E402
-from cartoweave.config.loader import load_configs, print_effective_config  # noqa: E402
+from cartoweave.config.loader import (
+    load_configs,
+    print_effective_config,
+)  # noqa: E402
 try:  # noqa: E402
     from cartoweave.config.schema import ConfigBundle  # type: ignore
 except ImportError:  # noqa: E402
@@ -117,8 +120,23 @@ def main():
         "<memory>",
         float(viz_eff.get("layout", {}).get("anchor_marker_size", 0.0)),
     )
+    data_rand = bundle_dict.get("data", {}).get("random", {})
+    frame_w = data_rand.get("frame", {}).get("width")
+    frame_h = data_rand.get("frame", {}).get("height")
+    counts = data_rand.get("counts", {})
+    route_gen = data_rand.get("route_gen", {})
+    area_gen = data_rand.get("area_gen", {})
+
     scene = get_scene(
-        use_random=GENERATE_NEW, cache_path=CACHE_PATH, with_scene_script=True
+        use_random=GENERATE_NEW,
+        cache_path=CACHE_PATH,
+        with_scene_script=True,
+        gen_cfg={
+            "frame": {"width": frame_w, "height": frame_h},
+            "counts": counts,
+            "route_gen": route_gen,
+            "area_gen": area_gen,
+        },
     )
     scene_script = scene.get("scene_script") or {"steps": [{"name": "step0"}]}
     if isinstance(scene_script, list):

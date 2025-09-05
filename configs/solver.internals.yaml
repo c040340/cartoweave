@@ -3,3 +3,9 @@ internals:
   clip:        { force_abs_max: 1.0e6, energy_abs_max: 1.0e6 }
   temperature: { min: 1.0e-3, max: 10.0 }
   finite_check: warn
+  data:
+    random:
+      route_gen:
+        k_sigma_bound: 5
+      area_gen:
+        k_sigma_bound: 5

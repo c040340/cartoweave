@@ -1,10 +1,17 @@
 # src/cartoweave/data/random.py
 from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional
-from dataclasses import dataclass
-import os, time, math, string, random
+import os, time, math, string, random, hashlib, json
 import numpy as np
+from typing import Dict, Any, List, Tuple, Optional, Mapping
 from ..labels import anchor_xy, init_position
+from cartoweave.config.schema import (
+    RouteGenCfg,
+    AreaGenCfg,
+    DataRandomCfg,
+    DataRandomCounts,
+    DataRandomFrame,
+)
 
 Array = np.ndarray
 
@@ -38,26 +45,6 @@ def _sample_split_normal_trunc(mu: float, L: float, U: float, k: int, rng: np.ra
     return float(np.clip(mu, L, U))
 
 
-@dataclass
-class RouteGenCfg:
-    mean_length_scale: float = 0.55
-    k_sigma_bound: int = 4
-    min_vertex_spacing_scale: float = 0.01
-    min_edge_margin_scale: float = 0.02
-    lower_bound_scale: float = 0.10
-    upper_bound_scale: float = 1.20
-
-
-@dataclass
-class AreaGenCfg:
-    mean_area_scale: float = 0.05
-    k_sigma_bound: int = 5
-    min_vertex_spacing_scale: float = 0.01
-    min_edge_margin_scale: float = 0.02
-    lower_bound_scale: float = 0.01
-    upper_bound_scale: float = 0.50
-
-
 def _sample_route_length(frame_size, cfg: RouteGenCfg, rng) -> float:
     W, H, D, A = _frame_metrics(frame_size)
     mu = cfg.mean_length_scale * D
@@ -72,6 +59,34 @@ def _sample_area_size(frame_size, cfg: AreaGenCfg, rng) -> float:
     L = cfg.lower_bound_scale * A
     U = cfg.upper_bound_scale * A
     return _sample_split_normal_trunc(mu, L, U, cfg.k_sigma_bound, rng)
+
+
+def _ensure_cfg(
+    gen_cfg: Mapping[str, Any] | DataRandomCfg | None,
+    legacy: Optional[Dict[str, Any]] | None = None,
+) -> DataRandomCfg:
+    if isinstance(gen_cfg, DataRandomCfg):
+        return gen_cfg
+    if isinstance(gen_cfg, Mapping):
+        return DataRandomCfg(**gen_cfg)
+    legacy = legacy or {}
+    canvas_size = legacy.get("canvas_size") or _DEF_CANVAS
+    counts = DataRandomCounts(
+        n_points=legacy.get("n_points", DataRandomCounts().n_points),
+        n_lines=legacy.get("n_lines", DataRandomCounts().n_lines),
+        n_areas=legacy.get("n_areas", DataRandomCounts().n_areas),
+    )
+    frame = DataRandomFrame(width=int(canvas_size[0]), height=int(canvas_size[1]))
+    route_gen = RouteGenCfg(**legacy.get("route_gen", {}))
+    area_gen = AreaGenCfg(**legacy.get("area_gen", {}))
+    return DataRandomCfg(frame=frame, counts=counts, route_gen=route_gen, area_gen=area_gen)
+
+
+def config_hash(gen_cfg: Mapping[str, Any] | DataRandomCfg) -> str:
+    cfg = _ensure_cfg(gen_cfg)
+    snap = cfg.model_dump(exclude_unset=False, exclude_defaults=False)
+    blob = json.dumps(snap, sort_keys=True).encode("utf-8")
+    return hashlib.sha1(blob).hexdigest()[:8]
 
 # =============== 随机与缓存 ===============
 def _apply_seed(seed: Optional[int]) -> int:
@@ -358,12 +373,13 @@ def _label_specs_for_len(text_len: int, rng=np.random) -> Dict[str, Dict[str, fl
 
 # =============== 公开 API ===============
 def generate_scene(
-    canvas_size: Tuple[float, float] = _DEF_CANVAS,
+    canvas_size: Tuple[float, float] | None = None,
     focus_ratio: float = 0.8,
     n_points: int = 8,
     n_lines: int = 2,
     n_areas: int = 2,
     seed: Optional[int] = None,
+    gen_cfg: Mapping[str, Any] | DataRandomCfg | None = None,
 ) -> Dict[str, Any]:
     """Generate a random scene directly in ``SceneData`` format.
 
@@ -378,32 +394,44 @@ def generate_scene(
       element) so the solver can be invoked without any extra conversion step.
     """
 
+    cfg = _ensure_cfg(
+        gen_cfg,
+        {
+            "canvas_size": canvas_size,
+            "n_points": n_points,
+            "n_lines": n_lines,
+            "n_areas": n_areas,
+        },
+    )
     _apply_seed(seed)
     rng = np.random.default_rng(seed)
-    W, H = canvas_size
+    W, H = cfg.frame.width, cfg.frame.height
 
     # ---- points ---------------------------------------------------------
     pts_xy = _poisson_disc((W, H), r_min=H / 20.0, rng=rng)
-    if len(pts_xy) < n_points:
-        extras = [(rng.uniform(0, W), rng.uniform(0, H)) for _ in range(n_points - len(pts_xy))]
+    if len(pts_xy) < cfg.counts.n_points:
+        extras = [
+            (rng.uniform(0, W), rng.uniform(0, H))
+            for _ in range(cfg.counts.n_points - len(pts_xy))
+        ]
         pts_xy += extras
-    if n_points > 0:
-        pts_xy = np.stack(pts_xy[:n_points]).astype(float)
+    if cfg.counts.n_points > 0:
+        pts_xy = np.stack(pts_xy[: cfg.counts.n_points]).astype(float)
     else:
         pts_xy = np.zeros((0, 2), float)
 
     # ---- lines ---------------------------------------------------------
     lines: List[np.ndarray] = []
-    route_cfg = RouteGenCfg()
-    for _ in range(n_lines):
+    route_cfg = cfg.route_gen
+    for _ in range(cfg.counts.n_lines):
         L = _sample_route_length((W, H), route_cfg, rng)
         poly = generate_polyline_by_length((W, H), L, route_cfg, rng)
         lines.append(poly.astype(float))
 
     # ---- areas ---------------------------------------------------------
     areas: List[Dict[str, Any]] = []
-    area_cfg = AreaGenCfg()
-    for _ in range(n_areas):
+    area_cfg = cfg.area_gen
+    for _ in range(cfg.counts.n_areas):
         S = _sample_area_size((W, H), area_cfg, rng)
         poly = generate_polygon_by_area((W, H), S, area_cfg, rng)
         areas.append({"polygon": poly.astype(float)})
@@ -575,6 +603,7 @@ def get_scene(
     use_random: bool = True,
     cache_path: Optional[str] = None,
     with_scene_script: bool = True,
+    gen_cfg: Mapping[str, Any] | DataRandomCfg | None = None,
     **gen_kwargs
 ) -> Dict[str, Any]:
     """Generate or load a scene together with its scene script.
@@ -587,8 +616,19 @@ def get_scene(
     returned data and no new script is generated.
     """
 
+    cfg_kwargs = {
+        k: v
+        for k, v in gen_kwargs.items()
+        if k
+        in {"canvas_size", "n_points", "n_lines", "n_areas", "route_gen", "area_gen"}
+    }
+    cfg_eff = _ensure_cfg(gen_cfg, cfg_kwargs)
+    cfg_key = config_hash(cfg_eff)
     if cache_path is None:
-        cache_path = _default_cache_path()
+        cache_path = _default_cache_path(f"scene_cache_{cfg_key}.npz")
+    else:
+        base, ext = os.path.splitext(cache_path)
+        cache_path = f"{base}_{cfg_key}{ext or '.npz'}"
 
     seed = gen_kwargs.get("seed", None)
     _apply_seed(seed)
@@ -615,7 +655,7 @@ def get_scene(
         )
         return True
     if use_random:
-        data = generate_scene(**gen_kwargs)
+        data = generate_scene(gen_cfg=cfg_eff, seed=seed)
         _ensure_script(data)
         save_scene(data, cache_path)
         return data
@@ -623,7 +663,7 @@ def get_scene(
     try:
         data = load_scene(cache_path)
     except FileNotFoundError:
-        data = generate_scene(**gen_kwargs)
+        data = generate_scene(gen_cfg=cfg_eff, seed=seed)
         _ensure_script(data)
         save_scene(data, cache_path)
         return data

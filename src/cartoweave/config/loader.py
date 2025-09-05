@@ -7,7 +7,6 @@ and returns a :class:`ConfigBundle` instance.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -15,6 +14,7 @@ import logging
 import yaml
 
 from .schema import validate_config
+from cartoweave.utils.dict_merge import deep_update
 try:  # pragma: no cover - compatibility with schema alias
     from .schema import ConfigBundle
 except ImportError:  # pragma: no cover
@@ -45,15 +45,6 @@ def _read_yaml(path: str | Path) -> Dict[str, Any]:
         return data
 
 
-def _deep_update(base: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
-    for k, v in other.items():
-        if isinstance(v, dict) and isinstance(base.get(k), dict):
-            base[k] = _deep_update(dict(base[k]), v)
-        else:
-            base[k] = deepcopy(v)
-    return base
-
-
 def load_configs(
     internals_path: str = "configs/solver.internals.yaml",
     tuning_path: str = "configs/solver.tuning.yaml",
@@ -75,10 +66,16 @@ def load_configs(
     if "public" in public_cfg and len(public_cfg) == 1:
         public_cfg = public_cfg["public"]
 
+    data_cfg: Dict[str, Any] = {}
+    data_cfg = deep_update(data_cfg, internals_cfg.pop("data", {}))
+    data_cfg = deep_update(data_cfg, public_cfg.pop("data", {}))
+    data_cfg = deep_update(data_cfg, tuning_cfg.pop("data", {}))
+
     log.info(f"[cfg] internals keys: {len(internals_cfg)}")
     log.info(f"[cfg] tuning    keys: {len(tuning_cfg)}")
     log.info(f"[cfg] public    keys: {len(public_cfg)}")
     log.info(f"[cfg] viz       keys: {len(viz_cfg)}")
+    log.info(f"[cfg] data      keys: {len(data_cfg)}")
 
     root: Dict[str, Any] = {
         "solver": {
@@ -87,6 +84,7 @@ def load_configs(
             "public": public_cfg,
         },
         "viz": viz_cfg,
+        "data": data_cfg,
     }
 
     override_profile = (
@@ -95,10 +93,10 @@ def load_configs(
     profile = override_profile or public_cfg.get("profile")
     preset = _PROFILE_PRESETS.get(str(profile), {})
     if preset:
-        root["solver"]["tuning"] = _deep_update(root["solver"].get("tuning", {}), preset)
+        root["solver"]["tuning"] = deep_update(root["solver"].get("tuning", {}), preset)
 
     if overrides:
-        root = _deep_update(root, overrides)
+        root = deep_update(root, overrides)
 
     validate_config(root)
     bundle = ConfigBundle(**root)

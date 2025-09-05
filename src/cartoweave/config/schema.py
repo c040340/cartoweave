@@ -163,6 +163,46 @@ class SolverInternals(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RouteGenCfg(BaseModel):
+    mean_length_scale: float = 0.25
+    k_sigma_bound: int = 5
+    min_vertex_spacing_scale: float = 0.01
+    min_edge_margin_scale: float = 0.02
+    lower_bound_scale: float = 0.02
+    upper_bound_scale: float = 0.60
+
+
+class AreaGenCfg(BaseModel):
+    mean_area_scale: float = 0.05
+    k_sigma_bound: int = 5
+    min_vertex_spacing_scale: float = 0.01
+    min_edge_margin_scale: float = 0.02
+    lower_bound_scale: float = 0.01
+    upper_bound_scale: float = 0.50
+
+
+class DataRandomCounts(BaseModel):
+    n_points: int = 8
+    n_lines: int = 3
+    n_areas: int = 2
+
+
+class DataRandomFrame(BaseModel):
+    width: int = 1920
+    height: int = 1080
+
+
+class DataRandomCfg(BaseModel):
+    frame: DataRandomFrame = DataRandomFrame()
+    counts: DataRandomCounts = DataRandomCounts()
+    route_gen: RouteGenCfg = RouteGenCfg()
+    area_gen: AreaGenCfg = AreaGenCfg()
+
+
+class DataConfig(BaseModel):
+    random: DataRandomCfg = Field(default_factory=DataRandomCfg)
+
+
 class VizPanels(BaseModel):
     layout: bool = True
     forces: bool = False
@@ -217,6 +257,7 @@ class SolverConfig(BaseModel):
 class RootConfig(BaseModel):
     solver: SolverConfig = Field(default_factory=SolverConfig)
     viz: VizConfig = Field(default_factory=VizConfig)
+    data: DataConfig = Field(default_factory=DataConfig)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -226,7 +267,7 @@ def validate_config(cfg: Dict[str, Any]) -> None:
     def _scan(data: Mapping[str, Any], path: str = "") -> None:
         for key, value in data.items():
             full_key = f"{path}.{key}" if path else key
-            if "." in key:
+            if "." in key and not full_key.startswith("viz."):
                 raise ValueError(
                     f"Invalid configuration: legacy dotted key '{full_key}'"
                 )
@@ -255,5 +296,6 @@ __all__ = [
     "SolverTuning",
     "SolverInternals",
     "VizConfig",
+    "DataRandomCfg",
 ]
 

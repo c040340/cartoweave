@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from cartoweave.data.random import generate_scene, get_scene
+from cartoweave.data.random import generate_scene, get_scene, config_hash
 from cartoweave.api import solve_frame
 
 def _tmp_cache(tmp_path, name="scene_cache.npz"):
@@ -41,11 +41,17 @@ def test_seed_reproducible():
 
 
 def test_cache_roundtrip(tmp_path):
-    cache = _tmp_cache(tmp_path)
-    d0 = get_scene(use_random=True, cache_path=cache, canvas_size=(320,240), n_points=3, n_lines=1, n_areas=1, seed=7)
-    assert os.path.exists(cache)
-    d1 = get_scene(use_random=False, cache_path=cache)
-    d2 = get_scene(use_random=False, cache_path=cache)
+    base = _tmp_cache(tmp_path)
+    gen_cfg = {
+        "frame": {"width": 320, "height": 240},
+        "counts": {"n_points": 3, "n_lines": 1, "n_areas": 1},
+    }
+    key = config_hash(gen_cfg)
+    expected = base.replace(".npz", f"_{key}.npz")
+    d0 = get_scene(use_random=True, cache_path=base, gen_cfg=gen_cfg, seed=7)
+    assert os.path.exists(expected)
+    d1 = get_scene(use_random=False, cache_path=base, gen_cfg=gen_cfg)
+    d2 = get_scene(use_random=False, cache_path=base, gen_cfg=gen_cfg)
     _compare_scene(d0, d1)
     _compare_scene(d1, d2)
 

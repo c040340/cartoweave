@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Dict, Any, Tuple
-import warnings
 import numpy as np
 
 from .types import SceneData
@@ -47,13 +46,13 @@ def solve_plan(
     cache_path: str | None = None,
 ):
     """Run a sequence of actions (timeline). Returns (history, last_result).
-    This is a placeholder orchestrator-level API; see orchestrators.timeline for details.
+    This is a placeholder orchestrator-level API; see orchestrators.solve_plan for details.
     """
     from .orchestrators.solve_plan import run_solve_plan
 
-    logger.info("solve_timeline start mode=%s", mode)
+    logger.info("solve_plan start mode=%s", mode)
     result = run_solve_plan(stages, scene, cfg or {}, mode=mode, cache_path=cache_path)
-    logger.info("solve_timeline done mode=%s", mode)
+    logger.info("solve_plan done mode=%s", mode)
     return result
 
 
@@ -76,27 +75,4 @@ def solve_scene_script(
         plan = {"stages": [{"name": "main"}]}
 
     cfg = cfg or {}
-    return run_scene_script(scene, steps, plan, cfg)
-
-
-def solve_timeline(
-    scene: SceneData,
-    timeline: Dict[str, Any] | list[Dict[str, Any]],
-    cfg: Dict[str, Any] | None = None,
-    solve_plan: Dict[str, Any] | list[Dict[str, Any]] | None = None,
-):
-    """Deprecated wrapper for :func:`run_scene_script`.
-
-    This function mirrors the old ``solve_timeline`` API but merely forwards the
-    call to :func:`run_scene_script` while emitting a ``DeprecationWarning``.
-    """
-
-    warnings.warn(
-        "timeline_runner is deprecated, use scene_script_runner",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    cfg = cfg or {}
-    plan = solve_plan if solve_plan is not None else {"stages": [{"name": "main"}]}
-    steps = timeline.get("steps") if isinstance(timeline, dict) else timeline
     return run_scene_script(scene, steps, plan, cfg)
