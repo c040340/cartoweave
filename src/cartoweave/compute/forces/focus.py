@@ -3,15 +3,31 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from ._common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.kernels import (
+    softplus,
+    sigmoid,
+    softabs,
+    invdist_energy,
+    invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
+    softmin_weights,
+)
+from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 
 @register("focus.attract")
 def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
-    L = P.shape[0] if P is not None else 0
+    if phase != "pre_anchor" or P is None or P.size == 0:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
+    L = P.shape[0]
     eps = get_eps(cfg)
     w = weight_of("focus.attract", cfg, 0.0)
-    if w <= 0.0 or P is None or P.size == 0:
+    if w <= 0.0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
 
     k = float(cfg.get("focus.k.attract", 0.0))
@@ -30,8 +46,10 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     sigy = float(cfg.get("focus.sigma.y", 100.0))
     delta = float(cfg.get("focus.delta", 8.0))
     only_free = bool(cfg.get("focus.only_free", False))
-    sigx = max(sigx, eps)
-    sigy = max(sigy, eps)
+
+    if sigx <= eps or sigy <= eps:
+        sigx = max(sigx, eps)
+        sigy = max(sigy, eps)
 
     labels_all = scene.get("labels", [])
     N = P.shape[0]
@@ -43,12 +61,15 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     modes = [lab.get("mode") for lab in labels]
     mask = np.array([m != "circle" for m in modes], dtype=bool)
     idxs = np.nonzero(mask)[0]
+    skip_circle = int(np.count_nonzero(~mask))
 
     F = np.zeros_like(P, float)
     E = 0.0
     info = []
+
     for i in idxs:
         lab = labels[i]
+        w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
         if only_free:
             kind = lab.get("anchor_kind", "none")
             if kind and kind != "none":
@@ -69,5 +90,6 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
         E += E_i
         info.append((int(i), float(E_i), float(fx), float(fy)))
 
+    logger.debug("term_focus_huber: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"source": "compute.forces.focus.attract", "focus_huber": info}
+    return float(E * w), F * w, {"term": "focus.attract", "focus_huber": info}

@@ -3,18 +3,16 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from ._common import get_eps, weight_of, ensure_vec2
-from cartoweave.utils.kernels import softplus, sigmoid, softabs
-from cartoweave.utils.geometry import (
-    project_point_to_segment,
-    poly_signed_area,
-    rect_half_extent_along_dir,
-)
+from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.kernels import softplus, sigmoid, softabs, EPS_DIST, EPS_NORM, EPS_ABS
+from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 
 def segment_intersects_rect(ax, ay, bx, by, cx, cy, w, h, pad=0.0) -> bool:
-    # simple AABB overlap with rectangle expanded by pad
-    x1, x2 = sorted([ax, bx]); y1, y2 = sorted([ay, by])
+    x1, x2 = sorted([ax, bx])
+    y1, y2 = sorted([ay, by])
     rx1, rx2 = (cx - w * 0.5 - pad), (cx + w * 0.5 + pad)
     ry1, ry2 = (cy - h * 0.5 - pad), (cy + h * 0.5 + pad)
     return not (x2 < rx1 or x1 > rx2 or y2 < ry1 or y1 > ry2)
@@ -25,7 +23,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
     w = weight_of("area.cross", cfg, 0.0)
-    if w <= 0.0 or P is None or P.size == 0:
+    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.cross"}
 
     labels_all = scene.get("labels", [])
@@ -39,6 +37,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     modes = [lab.get("mode") for lab in labels]
     mask = np.array([m != "circle" for m in modes], dtype=bool)
     idxs = np.nonzero(mask)[0]
+    skip_circle = int(np.count_nonzero(~mask))
 
     k_cross = float(cfg.get("area.k.cross", 900.0))
     min_gap = float(cfg.get("area.cross.min_gap", 1.5))
@@ -48,7 +47,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     use_lc = bool(cfg.get("area.cross.use_logcosh", True))
     p0_lc = float(cfg.get("area.cross.sat_p0", 2.0))
     g_min_int = float(cfg.get("area.cross.gate_min_interior", 0.6))
-    eps_abs = float(cfg.get("eps.abs", 1e-3))
+    eps_abs = float(cfg.get("eps.abs", EPS_ABS))
 
     F = np.zeros_like(P, float)
     E = 0.0
@@ -120,5 +119,6 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             F[i, 1] += fy_sum
             S[i].append((int(ai), float(fx_sum), float(fy_sum), float(best)))
 
+    logger.debug("term_area_cross: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"source": "compute.forces.area.cross", "area_cross": S}
+    return float(E * w), F * w, {"term": "area.cross", "area_cross": S}

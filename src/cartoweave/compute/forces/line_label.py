@@ -2,7 +2,7 @@
 from __future__ import annotations
 import numpy as np
 from . import register
-from ._common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
 from cartoweave.utils.geometry import (
     project_point_to_segment,
     rect_half_extent_along_dir,
@@ -14,7 +14,12 @@ from cartoweave.utils.kernels import (
     softabs,
     invdist_energy,
     invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
 )
+from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 
 @register("ln.rect")
@@ -22,15 +27,13 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
     w = weight_of("ln.rect", cfg, 0.0)
-    if w <= 0.0 or P is None or P.size == 0:
+    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
     segs_raw = scene.get("lines")
     if segs_raw is None or len(segs_raw) == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
-    segs = polylines_to_segments(segs_raw)
-    if segs.shape[0] == 0:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
-
+    segs_arr = polylines_to_segments(segs_raw)
+    segs = segs_arr.reshape((segs_arr.shape[0], 4))
     N = P.shape[0]
     WH = np.asarray(scene.get("WH"), float)
     assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
@@ -41,15 +44,15 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     modes = [lab.get("mode") for lab in labels]
     mask = np.array([m != "circle" for m in modes], dtype=bool)
     idxs = np.nonzero(mask)[0]
-
+    skip_circle = int(np.count_nonzero(~mask))
     F = np.zeros_like(P)
     E = 0.0
 
     k_out = float(cfg.get("ln.k.repulse", 0.0))
     k_in = float(cfg.get("ln.k.inside", 0.0))
     pwr = float(cfg.get("ln.edge_power", 2.0))
-    eps_d = float(cfg.get("eps.dist", eps))
-    eps_a = float(cfg.get("eps.abs", 1e-3))
+    eps_d = float(cfg.get("eps.dist", EPS_DIST))
+    eps_a = float(cfg.get("eps.abs", EPS_ABS))
     beta_sep = float(cfg.get("ln.beta.sep", 6.0))
     beta_in = float(cfg.get("ln.beta.in", 6.0))
     g_eps = float(cfg.get("ln.g_eps", 1e-6))
@@ -59,8 +62,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
         w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
         cx, cy = float(P[i, 0]), float(P[i, 1])
         for s in segs:
-            ax, ay = float(s[0, 0]), float(s[0, 1])
-            bx, by = float(s[1, 0]), float(s[1, 1])
+            ax, ay, bx, by = map(float, s)
             qx, qy, t, tx, ty = project_point_to_segment(cx, cy, ax, ay, bx, by)
             nx, ny = -ty, tx
             dx, dy = (cx - qx), (cy - qy)
@@ -86,6 +88,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
                     fx = fy = 0.0
                 F[i, 0] += fx
                 F[i, 1] += fy
+
             if k_in > 0.0:
                 vin = softplus(-s_n, beta_in)
                 E += 0.5 * k_in * (vin * vin)
@@ -96,5 +99,6 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
                 F[i, 0] += fx_in
                 F[i, 1] += fy_in
 
+    logger.debug("term_line_label: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"source": "compute.forces.ln.rect", "ln": int(segs.shape[0])}
+    return float(E * w), F * w, {"term": "ln.rect", "ln": int(segs.shape[0])}

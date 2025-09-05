@@ -2,14 +2,19 @@
 from __future__ import annotations
 import numpy as np
 from . import register
-from ._common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
     softabs,
     invdist_energy,
     invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
 )
+from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 
 @register("ll.rect")
@@ -17,12 +22,13 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
     w = weight_of("ll.rect", cfg, 0.0)
-    if w <= 0.0 or P is None or P.size == 0:
+    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.rect"}
 
     N = P.shape[0]
     WH = np.asarray(scene.get("WH"), float)
     assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
+
     labels_all = scene.get("labels", [])
     active_ids = scene.get("_active_ids_solver", list(range(N)))
     assert len(active_ids) == N, f"_active_ids_solver misaligned: {len(active_ids)} vs P {P.shape}"
@@ -37,9 +43,10 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     k_out = float(cfg.get("ll.k.repulse", 0.0))
     k_in = float(cfg.get("ll.k.inside", 0.0))
     pwr = float(cfg.get("ll.edge_power", 2.0))
-    eps_d = float(cfg.get("eps.dist", eps))
-    eps_n = float(cfg.get("eps.norm", eps))
-    eps_a = float(cfg.get("eps.abs", 1e-3))
+    eps_d = float(cfg.get("eps.dist", EPS_DIST))
+    eps_n = float(cfg.get("eps.norm", EPS_NORM))
+    eps_a = float(cfg.get("eps.abs", EPS_ABS))
+
     beta_sep = float(cfg.get("ll.beta.sep", 6.0))
     beta_in = float(cfg.get("ll.beta.in", 6.0))
     g_eps = float(cfg.get("ll.g_eps", 1e-6))
@@ -52,19 +59,21 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             b = idxs[bi]
             xb, yb = float(P[b, 0]), float(P[b, 1])
             wb, hb = float(WH[b, 0]), float(WH[b, 1])
+
             dx, dy = xa - xb, ya - yb
             adx, ady = softabs(dx, eps_a), softabs(dy, eps_a)
             sx = adx - 0.5 * (wa + wb)
             sy = ady - 0.5 * (ha + hb)
+
             spx = softplus(sx, beta_sep)
             spy = softplus(sy, beta_sep)
             g = (spx * spx + spy * spy + g_eps * g_eps) ** 0.5
+
             if k_out > 0.0:
                 E += invdist_energy(g + eps_d, k_out, pwr)
                 dEdg = -invdist_force_mag(g + eps_d, k_out, pwr)
                 if g > 0.0:
                     dspx_dsx = sigmoid(beta_sep * sx)
-                    dsy_dy = None
                     d_adx_ddx = dx / (adx + eps)
                     d_ady_ddy = dy / (ady + eps)
                     d_g_ddx = (spx / g) * dspx_dsx * d_adx_ddx
@@ -77,6 +86,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
                 F[a, 1] += fy
                 F[b, 0] -= fx
                 F[b, 1] -= fy
+
             if k_in > 0.0:
                 vin = softplus(-sx, beta_in) + softplus(-sy, beta_in)
                 E += 0.5 * k_in * (vin * vin)
@@ -89,6 +99,6 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
                 F[b, 0] -= fx_in
                 F[b, 1] -= fy_in
 
-    F = ensure_vec2(F, L)
     M = len(idxs)
-    return float(E * w), F * w, {"source": "compute.forces.ll.rect", "pairs": int(M * (M - 1) // 2)}
+    F = ensure_vec2(F, L)
+    return float(E * w), F * w, {"term": "ll.rect", "pairs": int(M * (M - 1) // 2)}

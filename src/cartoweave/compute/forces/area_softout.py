@@ -3,22 +3,33 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from ._common import get_eps, weight_of, ensure_vec2
-from cartoweave.utils.kernels import softplus, sigmoid, softabs
+from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.kernels import (
+    softplus,
+    sigmoid,
+    softabs,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
+)
 from cartoweave.utils.geometry import (
     project_point_to_segment,
     poly_signed_area,
     rect_half_extent_along_dir,
 )
 from cartoweave.utils.numerics import softmin_weights_np
+from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.logging import logger
 
 
 @register("area.softout")
 def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
-    L = P.shape[0] if P is not None else 0
+    if phase != "pre_anchor" or P is None or P.size == 0:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
+    L = P.shape[0]
     eps = get_eps(cfg)
     w = weight_of("area.softout", cfg, 0.0)
-    if w <= 0.0 or P is None or P.size == 0:
+    if w <= 0.0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
 
     labels_all = scene.get("labels", [])
@@ -32,6 +43,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     modes = [lab.get("mode") for lab in labels]
     mask = np.array([m != "circle" for m in modes], dtype=bool)
     idxs = np.nonzero(mask)[0]
+    skip_circle = int(np.count_nonzero(~mask))
 
     k_push = float(cfg.get("area.k.softout", 250.0))
     min_gap = float(cfg.get("area.softout.min_gap", 0.0))
@@ -40,7 +52,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     gamma_out = float(cfg.get("area.softout.outside_weight", 0.5))
     lambda_out = float(cfg.get("area.softout.in_decay", 0.10))
     lambda_in = float(cfg.get("area.softout.out_decay", 0.06))
-    eps_abs = float(cfg.get("eps.abs", 1e-3))
+    eps_abs = float(cfg.get("eps.abs", EPS_ABS))
 
     F = np.zeros_like(P, float)
     E = 0.0
@@ -110,5 +122,6 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             F[i, 1] += fy
             S[i].append((int(ai), float(fx), float(fy), float(mag)))
 
+    logger.debug("term_area_softout: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"source": "compute.forces.area.softout", "area_softout": S}
+    return float(E * w), F * w, {"term": "area.softout", "area_softout": S}

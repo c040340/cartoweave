@@ -3,13 +3,21 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from ._common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
+    softabs,
     invdist_energy,
     invdist_force_mag,
+    EPS_DIST,
+    EPS_NORM,
+    EPS_ABS,
+    softmin_weights,
 )
+from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+from cartoweave.utils.logging import logger
 
 
 @register("ll.disk")
@@ -17,12 +25,13 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
     w = weight_of("ll.disk", cfg, 0.0)
-    if w <= 0.0 or P is None or P.size == 0:
+    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.disk"}
 
     N = P.shape[0]
     WH = np.asarray(scene.get("WH"), float)
     assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
+
     labels_all = scene.get("labels", [])
     active_ids = scene.get("_active_ids_solver", list(range(N)))
     assert len(active_ids) == N, f"_active_ids_solver misaligned: {len(active_ids)} vs P {P.shape}"
@@ -33,12 +42,12 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
 
     k_out = float(cfg.get("ll.k.repulse", 900.0))
     p = float(cfg.get("ll.edge_power", 2.0))
-    edge_eps = float(cfg.get("ll.edge_eps", 0.5))
+    eps_sep = float(cfg.get("ll.edge_eps", 0.5))
     beta = float(cfg.get("beta.softplus.sep", cfg.get("beta_softplus_sep", 6.0)))
     k_in = float(cfg.get("ll.k.inside", 0.0))
     mode = str(cfg.get("ll.disk.mode", "max"))
 
-    def radius_from_wh(w, h):
+    def radius_from_wh(w: float, h: float) -> float:
         if mode == "min":
             return 0.5 * min(w, h)
         if mode == "avg":
@@ -47,10 +56,10 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             return 0.5 * math.hypot(w, h)
         return 0.5 * max(w, h)
 
-    v0 = math.log(2.0) / max(beta, eps)
-    e0 = v0 + edge_eps
+    v0 = math.log(2.0) / max(beta, 1e-8)
+    e0 = v0 + eps_sep
     if k_in <= 0.0:
-        k_in = k_out / ((e0 ** p) * max(v0, eps))
+        k_in = k_out / ((e0 ** p) * max(v0, 1e-8))
 
     F = np.zeros_like(P)
     E = 0.0
@@ -71,7 +80,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             dx, dy = xi - xj, yi - yj
             rc = math.hypot(dx, dy) + eps
             s = rc - (ri + rj)
-            c = softplus(s, beta) + edge_eps
+            c = softplus(s, beta) + eps_sep
             v = softplus(-s, beta)
             sc = sigmoid(beta * s)
             sv = sigmoid(-beta * s)
@@ -87,4 +96,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             src[j].append((int(i), float(-fx), float(-fy), float(abs(fmag))))
 
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"source": "compute.forces.ll.disk", "ll.disk": src}
+    return float(E * w), F * w, {"term": "ll.disk", "ll.disk": src}
