@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Callable
 import numpy as np
 
 from cartoweave.engine.solvers import lbfgs
+from cartoweave.utils.logging import logger
 
 Stage = Dict[str, Any]
 
@@ -50,6 +51,27 @@ def run_solve_plan(
         raise NotImplementedError(f"Unsupported mode: {mode}")
     if not plan:
         raise ValueError("run_solve_plan received empty solve_plan")
+
+    stages = list(plan)
+    use_warmup = (
+        cfg.get("solver", {}).get("public", {}).get("use_warmup", False)
+    )
+    step_cap = (
+        cfg.get("solver", {})
+        .get("tuning", {})
+        .get("warmup", {})
+        .get("step_cap_px")
+    )
+    if use_warmup and len(stages) == 1 and str(stages[0].get("name", ""))[:4] == "main":
+        warm = {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}}
+        if step_cap is not None:
+            warm["step_cap_px"] = float(step_cap)
+        stages.insert(0, warm)
+        logger.info(
+            "solve_plan: prepended warmup stage 'warmup_no_anchor'%s",
+            f" step_cap_px={step_cap}" if step_cap is not None else "",
+        )
+    plan = stages
 
     sc = dict(scene)
     P_cur = np.asarray(sc.get("labels_init", np.zeros((0, 2), float)), float)

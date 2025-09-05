@@ -29,6 +29,15 @@ def energy_and_grad_fullP(
     sources_merged: Dict[str, Any] = {}
     E_total = 0.0
 
+    clamp_max = (
+        cfg.get("solver", {})
+        .get("tuning", {})
+        .get("clamp", {})
+        .get("optimize_force_max")
+    )
+    if clamp_max is not None:
+        clamp_max = float(clamp_max)
+
     labels_all = scene.get("labels", [])
     active_ids = scene.get("_active_ids", list(range(len(labels_all))))
     modes = [labels_all[i].get("mode") for i in active_ids if i < len(labels_all)]
@@ -57,6 +66,8 @@ def energy_and_grad_fullP(
                     f"[TERM SHAPE MISMATCH] term={name} F_add={F_add.shape} P={P.shape} "
                     f"step={step_name} stage={stage_name}"
                 )
+            if clamp_max is not None:
+                np.clip(F_add, -clamp_max, clamp_max, out=F_add)
             g -= F_add  # F = -∇E  →  ∇E 累加为 -F
             comps[name] = F_add
             Fsum_ext += F_add
@@ -80,6 +91,8 @@ def energy_and_grad_fullP(
                     f"[TERM SHAPE MISMATCH] term={name} F_add={F_add.shape} P={P.shape} "
                     f"step={step_name} stage={stage_name}"
                 )
+            if clamp_max is not None:
+                np.clip(F_add, -clamp_max, clamp_max, out=F_add)
             g -= F_add
             comps[name] = F_add
         if source:

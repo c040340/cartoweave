@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dataclasses import asdict
 from pathlib import Path
-from cartoweave.config_loader import load_configs
+from cartoweave.config.loader import load_configs
 from cartoweave.viz.panels import draw_layout
 from cartoweave.viz.defaults import merge_defaults
 
@@ -14,8 +14,8 @@ def test_anchor_marker_size_from_yaml(tmp_path):
     orig = Path("configs/viz.yaml").read_text()
     viz_path = tmp_path / "viz.yaml"
     viz_path.write_text(orig.replace("anchor_marker_size: 4.0", "anchor_marker_size: 11.0"))
-    bundle = load_configs(viz_path=str(viz_path), run_path=str(tmp_path / "no_run.yaml"))
-    viz = merge_defaults(asdict(bundle.viz))
+    bundle = load_configs(viz_path=str(viz_path))
+    viz = merge_defaults(bundle["viz"])
     fig, ax = plt.subplots()
     draw_layout(
         ax,
@@ -27,8 +27,8 @@ def test_anchor_marker_size_from_yaml(tmp_path):
         anchors=np.array([[5.0, 5.0]]),
         viz_layout=viz["layout"],
     )
-    from matplotlib.patches import Circle
+    from matplotlib.collections import PathCollection
 
-    circles = [p for p in ax.patches if isinstance(p, Circle)]
-    radius = circles[0].radius
-    assert radius == 11.0
+    scat = [c for c in ax.collections if isinstance(c, PathCollection)]
+    sizes = scat[0].get_sizes()
+    assert sizes[0] == (11.0 * 2) ** 2

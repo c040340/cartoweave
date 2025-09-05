@@ -18,7 +18,7 @@ use_compatible_backend()
 
 from cartoweave.data.random import get_scene
 from cartoweave.api import solve_scene_script
-from cartoweave.config_loader import load_configs
+from cartoweave.config.loader import load_configs, print_effective_config
 from cartoweave.utils.dict_merge import deep_update
 from cartoweave.utils.logging import logger
 from cartoweave.engine.core_eval import scalar_potential_field
@@ -76,24 +76,36 @@ def run_example_headless(scene: Dict[str, Any], plan, cfg: Dict[str, Any]):
 
 
 def main():
-    bundle = load_configs()
-    cfg = deep_update(asdict(bundle.core), {
-        "ll.k.repulse": 150.0,
-        "pl.k.repulse": 200.0,
-        "ln.k.repulse": 180.0,
-        "boundary.k.wall": 80.0,
-        "anchor.k.spring": 10.0,
-        "viz.show": True,
-        "viz.field.kind": "none",
-        "viz.field.cmap": "viridis",
-    })
-    viz = deep_update(asdict(bundle.viz), {})
+    bundle = load_configs(
+        internals_path = "../configs/solver.internals.yaml",
+        tuning_path = "../configs/solver.tuning.yaml",
+        public_path = "../configs/solver.public.yaml",
+        viz_path = "../configs/viz.yaml",
+        deprecations_path = "../configs/deprecations.yaml",
+    )
+    print_effective_config()
+    cfg = deep_update(
+        bundle["solver"],
+        {
+            "tuning": {
+                "term_weights": {
+                    "ll.k.repulse": 150.0,
+                    "pl.k.repulse": 200.0,
+                    "ln.k.repulse": 180.0,
+                    "boundary.k.wall": 80.0,
+                    "anchor.k.spring": 10.0,
+                }
+            },
+            "viz": {"show": True, "field": {"kind": "none", "cmap": "viridis"}},
+        },
+    )
+    viz = deep_update(bundle["viz"], {})
     viz_eff = deep_update(viz, {})
     logger.info(
         "configs loaded config=%s viz=%s run=%s anchor_marker_size=%.1f",
-        "configs/config.yaml",
+        "configs/solver.*.yaml",
         "configs/viz.yaml",
-        "configs/run.yaml",
+        "<memory>",
         float(viz_eff.get("layout", {}).get("anchor_marker_size", 0.0)),
     )
     scene = get_scene(

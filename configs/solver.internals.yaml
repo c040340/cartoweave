@@ -1,0 +1,12 @@
+internals:
+  eps:
+    div: 1e-9  # avoid division by zero
+    sqrt: 1e-9  # avoid sqrt of negative
+    proj: 1e-9  # projection epsilon
+  clip:
+    force_abs_max: 1e6  # hard cap on force magnitude
+    energy_abs_max: 1e6  # hard cap on energy
+  temperature:        # annealing temperature bounds
+    min: 1e-3        # minimum
+    max: 10          # maximum
+  finite_check: "warn"  # warn on non-finite numbers

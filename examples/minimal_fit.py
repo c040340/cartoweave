@@ -26,7 +26,7 @@ from cartoweave.viz.backend import use_compatible_backend
 use_compatible_backend()
 
 from cartoweave.api import solve_frame
-from cartoweave.config_loader import load_configs
+from cartoweave.config.loader import load_configs, print_effective_config
 from cartoweave.utils.dict_merge import deep_update
 from cartoweave.utils.logging import logger
 
@@ -83,33 +83,35 @@ def _make_scene() -> Dict[str, Any]:
     )
 
 def main():
-    bundle = load_configs(
-        config_path="configs/config.yaml",
-        viz_path="configs/viz.yaml",
-        run_path="configs/run.yaml",
+    bundle = load_configs()
+    print_effective_config()
+
+    cfg = deep_update(
+        bundle["solver"],
+        {
+            "tuning": {
+                "term_weights": {
+                    "ll.k.repulse": 150.0,
+                    "pl.k.repulse": 200.0,
+                    "ln.k.repulse": 180.0,
+                    "boundary.k.wall": 80.0,
+                    "anchor.k.spring": 10.0,
+                }
+            },
+            "viz": {"show": False, "field": {"kind": "heatmap", "cmap": "viridis"}},
+            "engine": {"max_iter_hint": 200},
+        },
     )
 
-    cfg = deep_update(asdict(bundle.core), {
-        "ll.k.repulse": 150.0,
-        "pl.k.repulse": 200.0,
-        "ln.k.repulse": 180.0,
-        "boundary.k.wall": 80.0,
-        "anchor.k.spring": 10.0,
-        "viz.show": False,
-        "viz.field.kind": "heatmap",
-        "viz.field.cmap": "viridis",
-        "engine.max_iter_hint": 200,
-    })
-
-    viz = deep_update(asdict(bundle.viz), {})
+    viz = deep_update(bundle["viz"], {})
     viz_override = {"layout": {"anchor_marker_size": 8.0}} if os.getenv("DEMO_BIG_ANCHOR") else {}
     viz_eff = deep_update(viz, viz_override)
 
     logger.info(
         "configs loaded config=%s viz=%s run=%s anchor_marker_size=%.1f",
-        "configs/config.yaml",
+        "configs/solver.*.yaml",
         "configs/viz.yaml",
-        "configs/run.yaml",
+        "<memory>",
         float(viz_eff.get("layout", {}).get("anchor_marker_size", 0.0)),
     )
 

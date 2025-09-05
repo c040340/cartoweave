@@ -1,0 +1,63 @@
+# Deprecated configuration keys mapped to new locations
+# anchor term settings
+anchor.k.spring: solver.tuning.anchor.k_spring
+anchor.sample_step_len: solver.tuning.anchor.sample_step_len
+anchor.clip: solver.tuning.anchor.clip
+anchor.pad_line: solver.tuning.anchor.pad_line
+
+# area terms
+area.k.cross: solver.tuning.terms.area_cross.weight
+area.k.softout: solver.tuning.terms.area_softout.weight
+area.width_px.cross: solver.tuning.terms.area_cross.width_px
+area.width_px.softout: solver.tuning.terms.area_softout.width_px
+
+# boundary terms
+boundary.k.wall: solver.tuning.terms.boundary_wall.weight
+boundary.inverse_square_eps: solver.tuning.terms.boundary_wall.inverse_square_eps
+boundary.outside_penalty: solver.tuning.terms.boundary_wall.outside_penalty
+
+# focus region
+focus.center_norm: solver.tuning.focus.center_norm
+focus.axes_px: solver.tuning.focus.axes_px
+focus.angle_deg: solver.tuning.focus.angle_deg
+focus.falloff.beta: solver.tuning.focus.falloff.beta
+focus.falloff.decay: solver.tuning.focus.falloff.decay
+
+# numeric internals
+eps.div: solver.internals.eps.div
+eps.sqrt: solver.internals.eps.sqrt
+eps.proj: solver.internals.eps.proj
+clip.force_abs_max: solver.internals.clip.force_abs_max
+clip.energy_abs_max: solver.internals.clip.energy_abs_max
+temperature.min: solver.internals.temperature.min
+temperature.max: solver.internals.temperature.max
+finite_check: solver.internals.finite_check
+
+# lbfgsb solver options
+lbfgsb.m: solver.tuning.lbfgsb.m
+lbfgsb.maxiter: solver.tuning.lbfgsb.maxiter
+lbfgsb.factr: solver.tuning.lbfgsb.factr
+lbfgsb.maxfun: solver.tuning.lbfgsb.maxfun
+lbfgsb.maxls: solver.tuning.lbfgsb.maxls
+lbfgsb.disp: solver.tuning.lbfgsb.disp
+
+# warmup and retry
+warmup.steps: solver.tuning.warmup.steps
+warmup.pixel_equiv: solver.tuning.warmup.pixel_equiv
+warmup.step_cap: solver.tuning.warmup.step_cap
+retry.enable: solver.tuning.retry.enable
+retry.keep_best: solver.tuning.retry.keep_best
+retry.noise_px: solver.tuning.retry.noise_px
+retry.noise_ratio: solver.tuning.retry.noise_ratio
+retry.noise_seed: solver.tuning.retry.noise_seed
+
+# solver public switches
+solver.mode: solver.public.mode
+solver.use_autocal: solver.public.use_autocal
+solver.use_warmup: solver.public.use_warmup
+solver.use_retry: solver.public.use_retry
+solver.use_topk_sources: solver.public.use_topk_sources
+solver.profile: solver.public.profile
+solver.force_level: solver.public.force_level
+
+# visualization keys

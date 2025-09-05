@@ -1,0 +1,32 @@
+tuning:
+  merge:               # merging coincident labels
+    mode: "sum"         # sum | softmax | logsumexp | weighted
+    temperature: 1.0
+  normalize:           # resultant force normalization
+    kind: "l2"         # l1 | l2 | max | topk_norm
+  threshold:           # convergence thresholds
+    abs: 1e-3
+    rel: 0.0            # [0,1]
+  topk:
+    enable: false      # restrict to top-k sources
+    k: 8                # >=1
+    min_share: 0.0     # [0,1]
+  lbfgsb:
+    m: 10            # L-BFGS history size
+    maxiter: 100     # iteration cap
+  stopping:
+    gtol: 1e-3       # gradient tolerance
+  clamp:
+    optimize_force_max: 1e6  # soft clamp on force magnitude
+  warmup:
+    steps: 0         # conservative PG steps
+  retry:
+    enable: false    # retry with noise on failure
+  anti_jump:
+    max_step_px: 30.0  # step cap to prevent jumps
+  term_weights:
+    ll.k.repulse: 1.0
+    pl.k.repulse: 1.0
+    ln.k.repulse: 1.0
+    boundary.k.wall: 1.0
+    anchor.k.spring: 1.0
