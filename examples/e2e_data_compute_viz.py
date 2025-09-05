@@ -46,7 +46,7 @@ def load_scene_with_script(seed: int = SEED):
       - scene_script: List[{"op": "appear"|"change"|"hide", "id": "pN|lN|aN", "mode"?: str, "step_id": int}]
     """
     data = get_scene(use_random=True, cache_path=None, with_scene_script=True,
-                     gen_cfg=None, seed=seed)
+                     gen_cfg=None, seed=seed, frame_size=(1080, 1920))
     return data
 
 
