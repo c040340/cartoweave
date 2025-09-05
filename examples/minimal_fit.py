@@ -184,7 +184,6 @@ def main():
             H=scene["frame_size"][1],
             force_getter=_force,
             active_getter=_active,
-            field_kind=cfg.get("viz.field.kind", "heatmap"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
             actions=payload.get("steps"),
             boundaries=payload.get("boundaries"),

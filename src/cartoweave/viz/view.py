@@ -121,7 +121,6 @@ def interactive_view(
     field_getter: Optional[Callable[[int], Any]] = None,
     active_getter: Optional[Callable[[int], Sequence[int]]] = None,
     frames: Optional[Sequence[Dict[str, Any]]] = None,
-    field_kind: str = "3d",
     field_cmap: str = "viridis",
     boundaries: Optional[Sequence[int]] = None,
     actions: Optional[Sequence[Any]] = None,
@@ -142,9 +141,9 @@ def interactive_view(
     allows callers to supply ``(forces, field)``, ``(forces, sources, field)``
     or any other ordering without redundant recomputation.  Missing pieces are
     obtained via ``source_getter``/``field_getter`` when available.
-    ``field_kind`` selects between a 2‑D heatmap, a 3‑D surface or disables the
-    panel entirely when set to ``"none"``. ``field_cmap`` controls the colour
-    map used for either representation.
+    The presence and type of the field panel are controlled via
+    ``viz.panels.field`` and ``viz.field.mode``.  ``field_cmap`` controls the
+    colour map used for either representation.
 
     ``boundaries`` and ``actions`` describe high level actions in the timeline.
     When action information is available (either explicit ``actions`` or
@@ -163,6 +162,20 @@ def interactive_view(
         warnings.warn(
             "interactive_view called without viz configuration; using defaults",
             DeprecationWarning,
+        )
+
+    panels_cfg = viz_config.get("panels", {})
+    show_field = bool(panels_cfg.get("field", True))
+    field_cfg = viz_config.get("field", {})
+    field_kind = "3d" if field_cfg.get("mode") == "surface3d" else "heatmap"
+    field_res = int(field_cfg.get("resolution", 128))
+    field_cmap = field_cfg.get("cmap", field_cmap)
+    if not show_field:
+        field_kind = "none"
+        logger.info("[viz] field panel disabled")
+    else:
+        logger.info(
+            "[viz] field panel mode=%s resolution=%d", field_kind, field_res
         )
 
     SHOW_ORDER = list(ALL_FORCE_KEYS)
@@ -454,7 +467,10 @@ def interactive_view(
         if step in _field_cache:
             return _field_cache[step]
         if callable(field_getter):
-            _field_cache[step] = field_getter(step)
+            try:
+                _field_cache[step] = field_getter(step, resolution=field_res)
+            except TypeError:
+                _field_cache[step] = field_getter(step)
             return _field_cache[step]
         _get_forces(step)
         return _field_cache.get(step)

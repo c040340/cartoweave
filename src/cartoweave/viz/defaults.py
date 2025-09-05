@@ -5,6 +5,8 @@ from cartoweave.utils.dict_merge import deep_update
 
 # Minimal viewer defaults used when no YAML configuration is supplied.
 VIZ_DEFAULTS: Dict[str, Any] = {
+    "panels": {"layout": True, "forces": True, "info": True, "field": True},
+    "field": {"mode": "heatmap", "resolution": 128, "cmap": "viridis"},
     "info": {"title_fontsize": 10, "row_main_fontsize": 8, "row_component_fontsize": 8},
     "forces": {
         "colors": {

@@ -1,5 +1,5 @@
 solver:
-  mode: lbfgsb                  # allowed: lbfgsb|simple|hybrid|newton
+  mode: hybrid                  # allowed: lbfgsb|simple|hybrid|newton
   use_autocal: false
   use_warmup: true
   use_retry: false
@@ -26,7 +26,7 @@ data:
 
 terms:
   anchor:
-    spring: { k: 6.0, r0: 12.0, damping: 0.0 }
+    spring: { k: 6.0, r0: 62.0, damping: 0.0 }
   focus: { k: 0.5, sigma: 40.0 }
   boundary: { k: 2.0, softness: 4.0 }
   label_label_repulse: { k: 0.4, d0: 10.0, exponent: 2.0 }

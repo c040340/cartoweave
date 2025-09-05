@@ -274,7 +274,9 @@ class DataConfig(BaseModel):
 
 class VizPanels(BaseModel):
     layout: bool = True
-    forces: bool = False
+    forces: bool = True
+    info: bool = True
+    field: bool = True
 
     model_config = ConfigDict(extra="allow")
 
@@ -288,6 +290,13 @@ class VizForceView(BaseModel):
 
 class VizPicker(BaseModel):
     enable: bool = False
+
+    model_config = ConfigDict(extra="allow")
+
+
+class VizField(BaseModel):
+    mode: Literal["heatmap", "surface3d"] = "heatmap"
+    resolution: int = 128
 
     model_config = ConfigDict(extra="allow")
 
@@ -309,6 +318,7 @@ class VizConfig(BaseModel):
     colors: Dict[str, Any] = Field(default_factory=dict)
     force_view: VizForceView = Field(default_factory=VizForceView)
     picker: VizPicker = Field(default_factory=VizPicker)
+    field: VizField = Field(default_factory=VizField)
     surface3d: VizSurface3D = Field(default_factory=VizSurface3D)
     export: VizExport = Field(default_factory=VizExport)
 

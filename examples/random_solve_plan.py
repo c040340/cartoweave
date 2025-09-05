@@ -20,7 +20,7 @@ from cartoweave.data.random import get_scene  # noqa: E402
 from cartoweave.api import solve_scene_script  # noqa: E402
 from cartoweave.config.loader import load_configs, print_effective_config  # noqa: E402
 from cartoweave.utils.dict_merge import deep_update  # noqa: E402
-from cartoweave.utils.logging import logger  # noqa: E402
+from cartoweave.utils.logging import logger, configure_logging  # noqa: E402
 from cartoweave.engine.core_eval import scalar_potential_field  # noqa: E402
 
 try:  # optional viewer
@@ -29,7 +29,7 @@ except Exception:  # pragma: no cover - viewer not installed
     interactive_view = None
 
 CACHE_PATH = os.environ.get("CARTOWEAVE_EXAMPLE_CACHE", "examples/_scene_cache.npz")
-GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "1")))
+GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "0")))
 def build_random_plan(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
     """Return a trivial specification describing the example's two stages."""
 
@@ -85,6 +85,8 @@ def main():
     parser.add_argument("--override", type=str, help="JSON blob of overrides")
     parser.add_argument("--debug-nan", action="store_true", help="diagnose first NaN")
     args = parser.parse_args()
+
+    configure_logging()
 
     cfg = load_configs(
         internals_path="../configs/solver.internals.yaml",
@@ -243,7 +245,7 @@ def main():
                 cfg,
             )
 
-        def _field(idx: int):
+        def _field(idx: int, *, resolution: int | None = None):
             """Return a real scalar potential field for the current step.
 
             Strategy:
@@ -276,8 +278,13 @@ def main():
                 else:
                     label_index = int(np.nanargmax(mags))
 
-            # 使用真实势场（内部会根据 cfg/viz 分辨率锁定网格）
-            field = scalar_potential_field(scene, P_now, cfg, label_index=label_index, resolution=None)
+            field = scalar_potential_field(
+                scene,
+                P_now,
+                cfg,
+                label_index=label_index,
+                resolution=resolution,
+            )
             # 数值清理，避免渲染警告
             field = np.nan_to_num(field, nan=0.0, posinf=0.0, neginf=0.0)
             return field
@@ -295,7 +302,6 @@ def main():
             metrics_getter=_metrics,
             active_getter=_active,
             field_getter=_field,
-            field_kind=cfg.get("viz.field.kind", "3d"),
             field_cmap=cfg.get("viz.field.cmap", "viridis"),
             actions=payload.get("steps"),
             boundaries=payload.get("boundaries"),

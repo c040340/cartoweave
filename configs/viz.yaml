@@ -1,9 +1,12 @@
 show: true
 panels:
   layout: true
-  forces: false
+  forces: true
   info: true
   field: false
+field:
+  mode: heatmap  # "heatmap" | "surface3d"
+  resolution: 40  # grid size per axis; used for both heatmap and 3D
 layout:
   colors:
     points: "#2E86DE"

@@ -101,6 +101,11 @@ def load_configs(
     public_cfg = _read_yaml(public_path)
     viz_cfg = _read_yaml(viz_path)
 
+    surf = viz_cfg.get("surface3d", {})
+    if isinstance(surf, dict) and surf.get("enable"):
+        viz_cfg.setdefault("panels", {})["field"] = True
+        viz_cfg.setdefault("field", {})["mode"] = "surface3d"
+
     if "internals" in internals_cfg and len(internals_cfg) == 1:
         internals_cfg = internals_cfg["internals"]
     if "tuning" in tuning_cfg and len(tuning_cfg) == 1:
