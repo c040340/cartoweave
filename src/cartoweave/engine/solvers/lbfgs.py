@@ -3,7 +3,6 @@ from typing import Dict, Any, Tuple, Callable
 import numpy as np
 from scipy.optimize import minimize
 
-from ..core_eval import energy_and_grad_fullP
 from ...utils.logging import logger
 
 
@@ -17,6 +16,7 @@ def solve_layout_lbfgs(
     cfg: Dict[str, Any],
     record: Callable[[np.ndarray, float, Dict[str, np.ndarray], Dict[str, Any]], None]
     | None = None,
+    energy_fn: Callable | None = None,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     labels_init = np.asarray(scene.get("labels_init"), float)
     assert labels_init.ndim == 2 and labels_init.shape[1] == 2, (
@@ -60,7 +60,17 @@ def solve_layout_lbfgs(
     pgtol = float(_cfg(cfg, "lbfgs_pgtol", 1e-3))
     maxiter = int(_cfg(cfg, "lbfgs_maxiter", 150))
 
-    E0, G0, _ = energy_and_grad_fullP(scene, labels_init, cfg, record=_recorder)
+    if energy_fn is None:
+        from ...compute.eval import energy_and_grad_full as _eval
+
+        def energy_fn(sc, P, cfg_, record=None):
+            mask = np.ones(P.shape[0], bool)
+            E, G, comps, _ = _eval(P, sc, mask, cfg_)
+            if record is not None:
+                record(P, E, comps, {})
+            return E, G
+
+    E0, G0 = energy_fn(scene, labels_init, cfg, record=_recorder)
     g0 = float(np.linalg.norm(G0, np.inf))
     _eval_counter["n"] += 1
     history["positions"].append(np.asarray(labels_init, float).copy())
@@ -80,7 +90,7 @@ def solve_layout_lbfgs(
     def fun(x: np.ndarray):
         nonlocal last_E, last_g
         P = x.reshape(N, 2)
-        E, G, _ = energy_and_grad_fullP(scene, P, cfg, record=_recorder)
+        E, G = energy_fn(scene, P, cfg, record=_recorder)
         g = float(np.linalg.norm(G, np.inf))
         _eval_counter["n"] += 1
         meta = history["records"][-1].setdefault("meta", {})
@@ -128,6 +138,7 @@ def run(
     cfg: Dict[str, Any],
     record: Callable[[np.ndarray, float, Dict[str, np.ndarray], Dict[str, Any]], None]
     | None = None,
+    energy_fn: Callable | None = None,
     **kw,
 ) -> Dict[str, Any]:
     """Convenience wrapper used by tests and timeline orchestrators.
@@ -146,6 +157,6 @@ def run(
 
     sc = dict(scene)
     sc["labels_init"] = np.asarray(P0, float)
-    P_opt, info = solve_layout_lbfgs(sc, cfg, record=record)
+    P_opt, info = solve_layout_lbfgs(sc, cfg, record=record, energy_fn=energy_fn)
     info["P"] = P_opt
     return info

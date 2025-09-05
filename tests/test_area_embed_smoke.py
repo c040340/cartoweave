@@ -1,5 +1,6 @@
 import numpy as np
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+import numpy as np
+from cartoweave.compute.eval import energy_and_grad_full
 
 
 def random_poly(rng, n=5, cx=400.0, cy=300.0, rmin=50.0, rmax=200.0):
@@ -24,13 +25,13 @@ def test_area_embed_smoke():
             anchors=np.zeros((1,2)),
         )
         cfg = {"terms": {"area_embed": {"k": 200.0, "sigma": 6.0}}}
-        E, G, _ = energy_and_grad_fullP(scene, P0.copy(), cfg)
+        E, G, comps, _ = energy_and_grad_full(P0.copy(), scene, np.ones(len(P0), bool), cfg)
         assert np.isfinite(E)
         assert np.isfinite(G).all()
         assert np.linalg.norm(G) < 1e12
 
         cfg_small = {"terms": {"area_embed": {"k": 200.0, "sigma": 1.0e-3}}}
-        E2, G2, _ = energy_and_grad_fullP(scene, P0.copy(), cfg_small)
+        E2, G2, comps2, _ = energy_and_grad_full(P0.copy(), scene, np.ones(len(P0), bool), cfg_small)
         assert np.isfinite(E2)
         assert np.isfinite(G2).all()
 

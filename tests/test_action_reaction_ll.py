@@ -1,7 +1,7 @@
 # tests/test_action_reaction_ll.py
 import numpy as np
 import pytest
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+from cartoweave.compute.eval import energy_and_grad_full
 
 @pytest.mark.parametrize("geom", ["rect", "disk"])
 def test_ll_global_force_zero(geom):
@@ -18,7 +18,8 @@ def test_ll_global_force_zero(geom):
     )
     cfg = {"ll.geom": geom, "ll.k.repulse": 200.0, "ll.k.inside": 50.0}
 
-    E, G, _ = energy_and_grad_fullP(scene, P0, cfg)
+    mask = np.ones(P0.shape[0], bool)
+    E, G, comps, _ = energy_and_grad_full(P0, scene, mask, cfg)
     # 只开 ll.* 时，总外力为 0 → ΣF = 0 → Σ(-G) = 0
     resid = float(np.abs(G.sum(axis=0)).max())
     assert resid < 1e-8, f"ll.{geom} action-reaction broken, resid={resid}"

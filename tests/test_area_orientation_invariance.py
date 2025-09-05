@@ -1,6 +1,6 @@
 # tests/test_area_orientation_invariance.py
 import numpy as np
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+from cartoweave.compute.eval import energy_and_grad_full
 
 def make_triangle(cx=400., cy=300., r=120.):
     ang = np.deg2rad(np.array([0., 120., 240.]))
@@ -25,8 +25,10 @@ def test_embed_orientation_invariance():
 
     cfg = {"area.k.embed": 200.0, "area.k.tan": 30.0, "area.embed.ratio_in": 0.60}
 
-    E1, G1, _ = energy_and_grad_fullP(scene_ccw, scene_ccw["labels_init"], cfg)
-    E2, G2, _ = energy_and_grad_fullP(scene_cw,  scene_cw["labels_init"],  cfg)
+    mask_ccw = np.ones(scene_ccw["labels_init"].shape[0], bool)
+    mask_cw = np.ones(scene_cw["labels_init"].shape[0], bool)
+    E1, G1, comps1, _ = energy_and_grad_full(scene_ccw["labels_init"], scene_ccw, mask_ccw, cfg)
+    E2, G2, comps2, _ = energy_and_grad_full(scene_cw["labels_init"],  scene_cw,  mask_cw, cfg)
 
     assert abs(E1 - E2) < 1e-8
     assert float(np.max(np.abs(G1 - G2))) < 1e-6
@@ -49,8 +51,10 @@ def test_cross_orientation_invariance():
 
     cfg = {"area.k.cross": 400.0, "area.cross.use_logcosh": True, "area.cross.min_gap": 1.5}
 
-    E1, G1, _ = energy_and_grad_fullP(scene_ccw, scene_ccw["labels_init"], cfg)
-    E2, G2, _ = energy_and_grad_fullP(scene_cw,  scene_cw["labels_init"],  cfg)
+    mask_ccw = np.ones(scene_ccw["labels_init"].shape[0], bool)
+    mask_cw = np.ones(scene_cw["labels_init"].shape[0], bool)
+    E1, G1, comps1, _ = energy_and_grad_full(scene_ccw["labels_init"], scene_ccw, mask_ccw, cfg)
+    E2, G2, comps2, _ = energy_and_grad_full(scene_cw["labels_init"],  scene_cw,  mask_cw, cfg)
 
     assert abs(E1 - E2) < 1e-8
     assert float(np.max(np.abs(G1 - G2))) < 1e-6

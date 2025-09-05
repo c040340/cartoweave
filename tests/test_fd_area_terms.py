@@ -10,20 +10,21 @@ Area 系列有限差分测试（embed & cross）
 
 import numpy as np
 import pytest
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+from cartoweave.compute.eval import energy_and_grad_full
 
 H = 3e-5
 TOL = 5e-4
 
 def fd_err(scene, cfg):
     P = scene["labels_init"].copy()
-    E, G, _ = energy_and_grad_fullP(scene, P, cfg)
+    mask = np.ones(P.shape[0], bool)
+    E, G, comps, _ = energy_and_grad_full(P, scene, mask, cfg)
     flatP = P.reshape(-1)
     G_fd = np.zeros_like(flatP)
     for i in range(flatP.size):
         d = np.zeros_like(flatP); d[i] = H
-        Ep, _, _ = energy_and_grad_fullP(scene, (flatP + d).reshape(-1,2), cfg)
-        Em, _, _ = energy_and_grad_fullP(scene, (flatP - d).reshape(-1,2), cfg)
+        Ep, _, _, _ = energy_and_grad_full((flatP + d).reshape(-1,2), scene, mask, cfg)
+        Em, _, _, _ = energy_and_grad_full((flatP - d).reshape(-1,2), scene, mask, cfg)
         G_fd[i] = (Ep - Em) / (2*H)
     return float(np.max(np.abs(G.reshape(-1) - G_fd)))
 

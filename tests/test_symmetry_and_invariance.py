@@ -14,19 +14,7 @@
 """
 
 import numpy as np
-from cartoweave.engine.core_eval import energy_and_grad_fullP
-
-def capture_comps():
-    """
-    返回一个简易记录器：
-    - bucket：保存最近一次 record 的分力字典（term_name -> ndarray）
-    - rec：    传给 energy_and_grad_fullP 的回调
-    """
-    bucket = {}
-    def rec(P, E, comps, sources):
-        bucket.clear()
-        bucket.update({k: v.copy() for k, v in comps.items()})
-    return bucket, rec
+from cartoweave.compute.eval import energy_and_grad_full
 
 def test_ll_rect_action_reaction():
     """
@@ -42,11 +30,11 @@ def test_ll_rect_action_reaction():
     )
     cfg = {"ll.geom": "rect", "ll.k.repulse": 200.0, "ll.k.inside": 50.0}
 
-    bucket, rec = capture_comps()
-    E, G, _ = energy_and_grad_fullP(scene, scene["labels_init"], cfg, record=rec)
+    mask = np.ones(scene["labels_init"].shape[0], bool)
+    E, G, comps, _ = energy_and_grad_full(scene["labels_init"], scene, mask, cfg)
 
     # 仅 ll.rect 时，ΣF ≈ 0
-    F = bucket.get("ll.rect", None)
+    F = comps.get("ll.rect")
     assert F is not None, "ll.rect not captured; ensure enabled_terms gating by k>0"
     residual = np.abs(F.sum(axis=0)).max()
     assert residual < 1e-8, f"action-reaction violated: resid={residual}"
@@ -67,7 +55,8 @@ def test_pl_rect_translation_invariance():
     cfg = {"pl.k.repulse": 200.0, "pl.k.inside": 50.0}
 
     P0 = scene["labels_init"]
-    E0, _, _ = energy_and_grad_fullP(scene, P0, cfg)
+    mask0 = np.ones(P0.shape[0], bool)
+    E0, _, _, _ = energy_and_grad_full(P0, scene, mask0, cfg)
 
     # 同步平移 labels 与 points
     shift = np.array([123.4, -77.7], float)
@@ -75,5 +64,6 @@ def test_pl_rect_translation_invariance():
     scene2["labels_init"] = P0 + shift
     scene2["points"] = scene["points"] + shift
 
-    E1, _, _ = energy_and_grad_fullP(scene2, scene2["labels_init"], cfg)
+    mask1 = np.ones(scene2["labels_init"].shape[0], bool)
+    E1, _, _, _ = energy_and_grad_full(scene2["labels_init"], scene2, mask1, cfg)
     assert abs(E0 - E1) < 1e-8, f"translation invariance broken: dE={abs(E0 - E1)}"

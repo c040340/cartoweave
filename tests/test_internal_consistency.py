@@ -11,7 +11,7 @@
 """
 
 import numpy as np
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+from cartoweave.compute.eval import energy_and_grad_full
 
 def test_sumF_plus_grad_zero_anchor_ll_boundary():
     # 构造一个小场景；WH/anchors 的数量匹配 labels
@@ -28,19 +28,11 @@ def test_sumF_plus_grad_zero_anchor_ll_boundary():
         "boundary.k.wall": 80.0, "boundary.wall_eps": 0.3,
     }
 
-    # 通过 record 收集每个 term 的分力
-    comps_box = {}
-    def rec(P, E, comps, sources):
-        comps_box.clear()
-        # 深拷贝到本地，避免外部后续修改
-        comps_box.update({k: v.copy() for k, v in comps.items()})
+    mask = np.ones(scene["labels_init"].shape[0], bool)
+    E, G, comps, _ = energy_and_grad_full(scene["labels_init"], scene, mask, cfg)
 
-    # 计算 E 与 G，同时填充 comps_box
-    E, G, _ = energy_and_grad_fullP(scene, scene["labels_init"], cfg, record=rec)
-
-    # 将所有分力相加，按 F = -∇E 约定应满足 ΣF + G ≈ 0
-    Fsum = 0.0 * G
-    for V in comps_box.values():
+    Fsum = np.zeros_like(G)
+    for V in comps.values():
         Fsum += V
     resid = float(np.abs(Fsum + G).max())
     assert resid < 1e-6, f"sum(F) + grad ≠ 0, resid={resid}"

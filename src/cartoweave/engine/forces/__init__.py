@@ -33,6 +33,8 @@ def enabled_terms(cfg: Dict[str, Any], phase: str) -> List[str]:
     if phase == "pre_anchor":
         if tcfg.get("label_label_repulse", {}).get("k", cfg.get("ll.k.repulse", 0)) > 0 or tcfg.get("label_label_inside", {}).get("k", cfg.get("ll.k.inside", 0)) > 0:
             terms.append("ll.rect")
+        if tcfg.get("ll", {}).get("disk", {}).get("k", 0) > 0:
+            terms.append("ll.disk")
         if tcfg.get("boundary", {}).get("k", cfg.get("boundary.k.wall", 0)) > 0:
             terms.append("boundary.wall")
         if tcfg.get("point_label_repulse", {}).get("k", cfg.get("pl.k.repulse", 0)) > 0 or tcfg.get("point_label_inside", {}).get("k", cfg.get("pl.k.inside", 0)) > 0:
@@ -43,6 +45,8 @@ def enabled_terms(cfg: Dict[str, Any], phase: str) -> List[str]:
             terms.append("area.embed")
         if tcfg.get("area_cross", {}).get("k", cfg.get("area.k.cross", 0)) > 0:
             terms.append("area.cross")
+        if tcfg.get("area", {}).get("softout", {}).get("k", cfg.get("area.k.softout", 0)) > 0:
+            terms.append("area.softout")
         if tcfg.get("focus", {}).get("k", cfg.get("focus.k.attract", 0)) > 0:
             terms.append("focus.attract")
         return terms

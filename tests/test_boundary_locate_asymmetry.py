@@ -3,7 +3,7 @@ import math
 import numpy as np
 import pytest
 
-from cartoweave.engine.core_eval import energy_and_grad_fullP
+from cartoweave.compute.eval import energy_and_grad_full
 from cartoweave.utils import kernels
 
 def _scene(frame_size=(1080, 1920), w=80.0, h=80.0):
@@ -93,8 +93,9 @@ def test_boundary_asymmetry_is_from_far_sides(frame_size, capsys):
     x_top,  y_top  = W/2.0, 80.0/2.0 + 1.0
     x_left, y_left = 80.0/2.0 + 1.0, H/2.0
 
-    E_top, *_  = energy_and_grad_fullP(sc, np.array([[x_top,  y_top]], float), cfg)
-    E_left, *_ = energy_and_grad_fullP(sc, np.array([[x_left, y_left]], float), cfg)
+    mask = np.array([True], bool)
+    E_top, *_  = energy_and_grad_full(np.array([[x_top,  y_top]], float), sc, mask, cfg)
+    E_left, *_ = energy_and_grad_full(np.array([[x_left, y_left]], float), sc, mask, cfg)
 
     top  = _decompose_per_side(sc, cfg, x_top,  y_top)
     left = _decompose_per_side(sc, cfg, x_left, y_left)
@@ -135,13 +136,14 @@ def test_boundary_profile_x_vs_y_equal_only_when_frame_is_square():
         W, H = frame_size
         sc = _scene(frame_size=frame_size, w=80.0, h=80.0)
         cfg = _cfg_boundary(k=37.0, p=2.0, eps=0.25, pad=0.0, y_down=True)
+        mask = np.array([True], bool)
 
         xs = np.arange(1.0, 51.0, 1.0)
         E_x, E_y = [], []
         for d in xs:
-            E,_g,_ = energy_and_grad_fullP(sc, np.array([[80.0/2.0 + d, H/2.0]], float), cfg)
+            E,_g,_,_ = energy_and_grad_full(np.array([[80.0/2.0 + d, H/2.0]], float), sc, mask, cfg)
             E_x.append(E)
-            E,_g,_ = energy_and_grad_fullP(sc, np.array([[W/2.0, 80.0/2.0 + d]], float), cfg)
+            E,_g,_,_ = energy_and_grad_full(np.array([[W/2.0, 80.0/2.0 + d]], float), sc, mask, cfg)
             E_y.append(E)
         E_x = np.asarray(E_x); E_y = np.asarray(E_y)
         if W == H:

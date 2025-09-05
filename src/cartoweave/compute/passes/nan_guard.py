@@ -1,0 +1,63 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+from typing import Dict, Any
+import numpy as np
+from .base import ComputePass
+
+
+class NaNGuardPass(ComputePass):
+    """防止 NaN/Inf 扩散：将非有限值置零并计数。"""
+
+    def __init__(self, e_fallback: float = 0.0):
+        self.e_fallback = float(e_fallback)
+        self.stats: Dict[str, Any] = {"nan_frames": 0, "inf_frames": 0, "fixed_frames": 0}
+
+    def wrap_energy(self, energy_fn):
+        ef = self.e_fallback
+        stats = self.stats
+
+        def _wrapped(P, scene, active_mask, cfg):
+            E, G, comps, meta = energy_fn(P, scene, active_mask, cfg)
+            meta = dict(meta or {})
+            hit_nan = False
+            hit_inf = False
+
+            # Energy
+            if not np.isfinite(E):
+                E = ef
+                hit_nan = True
+
+            # Gradient
+            if G is None:
+                G = np.zeros_like(P)
+            else:
+                bad = ~np.isfinite(G)
+                if bad.any():
+                    G = G.copy()
+                    G[bad] = 0.0
+                    hit_nan = True
+                    hit_inf = hit_inf or np.isinf(G[bad]).any()
+
+            # Components
+            comps2 = {}
+            for k, V in (comps or {}).items():
+                V = np.asarray(V)
+                bad = ~np.isfinite(V)
+                if bad.any():
+                    V = V.copy()
+                    V[bad] = 0.0
+                    hit_nan = True
+                    hit_inf = hit_inf or np.isinf(V[bad]).any()
+                comps2[k] = V
+
+            if hit_nan or hit_inf:
+                stats["fixed_frames"] += 1
+                if hit_nan:
+                    stats["nan_frames"] += 1
+                if hit_inf:
+                    stats["inf_frames"] += 1
+
+            return E, G, comps2, meta
+
+        return _wrapped
+

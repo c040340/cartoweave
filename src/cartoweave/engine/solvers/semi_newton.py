@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Dict, Any, Tuple, Callable
 import numpy as np
 
-from ..core_eval import energy_and_grad_fullP
 from ...utils.logging import logger
 
 Array = np.ndarray
@@ -50,7 +49,7 @@ def _cg_solve(apply_A: Callable[[Array], Array], b: Array, tol: float, maxit: in
 # Semi-Newton solver
 # ----------------------------------------------------------------------------
 
-def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Dict[str, Any]]:
+def solve_layout_semi_newton(scene, cfg: Dict[str, Any], record=None, energy_fn: Callable | None = None) -> Tuple[np.ndarray, Dict[str, Any]]:
     """A lightweight semi-Newton solver using finite-difference Hessian probes.
 
     The algorithm optimises only the indices listed in ``scene['movable_idx']``.
@@ -96,10 +95,23 @@ def solve_layout_semi_newton(scene, cfg: Dict[str, Any]) -> Tuple[np.ndarray, Di
             "comps": {k: v.copy() for k, v in comps.items()},
             "meta": dict(meta) if meta else {},
         })
+        if record is not None:
+            record(P, E, comps, meta)
+
     logger.info("Semi-Newton start n_labels=%d max_outer=%d", N, max_outer)
 
+    if energy_fn is None:
+        from ...compute.eval import energy_and_grad_full as _eval
+
+        def energy_fn(sc, P, cfg_, record=None):
+            mask = np.ones(P.shape[0], bool)
+            E, G, comps, _ = _eval(P, sc, mask, cfg_)
+            if record is not None:
+                record(P, E, comps, {})
+            return E, G
+
     def fun_full(P_full: Array, *, record_cb=_recorder) -> Tuple[float, Array]:
-        E, G, _ = energy_and_grad_fullP(scene, P_full, cfg, record=record_cb)
+        E, G = energy_fn(scene, P_full, cfg, record=record_cb)
         return E, G
 
     def fun_vars(x_vars: Array, *, record_cb=_recorder) -> Tuple[float, Array]:
