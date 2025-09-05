@@ -249,6 +249,11 @@ def draw_layout(
     for i in range(min(len(labels), len(pos_arr), len(wh_arr))):
         x, y = pos_arr[i]
         w, h = wh_arr[i]
+        anchor_xy = None
+        if anchors is not None and i < len(anchors):
+            ax_, ay_ = anchors[i, 0], anchors[i, 1]
+            if np.isfinite(ax_) and np.isfinite(ay_):
+                anchor_xy = (float(ax_), float(ay_))
         if not (
             np.isfinite(x)
             and np.isfinite(y)
@@ -260,6 +265,8 @@ def draw_layout(
             continue
         lab = labels[i] if i < len(labels) else {}
         if is_circle_label(lab):
+            if anchor_xy is not None:
+                x, y = anchor_xy
             radius = float(min(w, h)) / 2.0
             circ = Circle(
                 (x, y),
@@ -296,16 +303,23 @@ def draw_layout(
                 zorder=6,
             )
 
-        if ~np.isnan(anchors[i]).all() and i < len(anchors):
+        if anchor_xy is not None:
             ax.plot(
-                [anchors[i, 0], x],
-                [anchors[i, 1], y],
+                [anchor_xy[0], x],
+                [anchor_xy[1], y],
                 color=colors["anchor_line"],
                 lw=cfg["line_width"],
                 linestyle='--',
             )
-            ax.scatter(anchors[i, 0], anchors[i, 1], marker='x', s=(cfg.get("anchor_marker_size", 4.0) * 2) ** 2,
-                       c=colors["anchor_marker_edge"], lw=cfg["line_width"], zorder=4)
+            ax.scatter(
+                anchor_xy[0],
+                anchor_xy[1],
+                marker='x',
+                s=(cfg.get("anchor_marker_size", 4.0) * 2) ** 2,
+                c=colors["anchor_marker_edge"],
+                lw=cfg["line_width"],
+                zorder=4,
+            )
 
     return patches
 

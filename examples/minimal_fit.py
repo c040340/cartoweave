@@ -157,7 +157,7 @@ def main():
     P_opt, info = solve_frame(scene, cfg, mode="lbfgs")
     print("[minimal_fit] done. final positions shape:", P_opt.shape)
 
-    payload = build_viz_payload(info)
+    payload = build_viz_payload({**info, "scene": scene})
 
     # Optional interactive viewer
     if interactive_view and cfg.get("viz", {}).get("show", False):

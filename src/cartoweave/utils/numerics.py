@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Sequence
 
 
 def sigmoid_np(x: np.ndarray) -> np.ndarray:
@@ -59,4 +60,43 @@ def sanitize_array(x: np.ndarray) -> np.ndarray:
     if np.isfinite(arr).all():
         return arr
     return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def repair_nonfinite_rows(
+    arr: np.ndarray, reference: np.ndarray, indices: Sequence[int] | None = None
+) -> tuple[np.ndarray, list[int]]:
+    """Replace non-finite rows in ``arr`` with rows from ``reference``.
+
+    Parameters
+    ----------
+    arr:
+        ``(M, 2)`` array to be checked in-place.
+    reference:
+        ``(N, 2)`` array providing fallback values.
+    indices:
+        Optional mapping of row indices in ``arr`` to rows in ``reference``.
+
+    Returns
+    -------
+    tuple[np.ndarray, list[int]]
+        The possibly modified ``arr`` and a list of the repaired reference
+        indices.
+    """
+
+    a = np.asarray(arr, float)
+    ref = np.asarray(reference, float)
+    if a.ndim != 2 or a.shape[1] != 2:
+        return a, []
+    bad = ~np.isfinite(a).all(axis=1)
+    if not np.any(bad):
+        return a, []
+    repaired: list[int] = []
+    idxs = list(range(len(a))) if indices is None else list(indices)
+    for local_i in np.where(bad)[0]:
+        if local_i < len(idxs):
+            ref_i = idxs[local_i]
+            if 0 <= ref_i < len(ref):
+                a[local_i] = ref[ref_i]
+                repaired.append(ref_i)
+    return a, repaired
 

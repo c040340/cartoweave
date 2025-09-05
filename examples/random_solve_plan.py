@@ -29,7 +29,7 @@ except Exception:  # pragma: no cover - viewer not installed
     interactive_view = None
 
 CACHE_PATH = os.environ.get("CARTOWEAVE_EXAMPLE_CACHE", "examples/_scene_cache.npz")
-GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "0")))
+GENERATE_NEW = bool(int(os.environ.get("CARTOWEAVE_GENERATE_NEW", "1")))
 def build_random_plan(scene: Dict[str, Any] | None = None, cfg: Dict[str, Any] | None = None):
     """Return a trivial specification describing the example's two stages."""
 
@@ -193,7 +193,7 @@ def main():
     max_disp = float(np.abs(P_final - scene["labels_init"]).max())
     print("[random_solve_plan] labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}")
 
-    payload = build_viz_payload(info)
+    payload = build_viz_payload({**info, "scene": scene})
     if debug_nan:
         payload_ok = all(
             is_finite_array(f.get("P"))

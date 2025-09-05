@@ -56,6 +56,7 @@ def _compute_anchors(
     lines: Any = None,
     areas: Any = None,
     sources: Optional[Dict[str, Any]] = None,
+    frame_size: Optional[tuple[float, float]] = None,
 ) -> Optional[np.ndarray]:
     """Find anchor positions for ``labels``.
 
@@ -64,6 +65,11 @@ def _compute_anchors(
     inferred from the background geometry based on ``anchor_kind`` and
     ``anchor_index`` stored inside each label.  Only a few common formats are
     supported and any missing information results in ``NaN`` anchors.
+
+    ``frame_size`` defaults to ``(0, 0)`` which previously caused all anchors to
+    collapse to the origin when certain anchor kinds relied on the frame
+    dimensions.  Passing the actual ``(W, H)`` ensures anchors reflect the scene
+    geometry.
     """
 
     if isinstance(sources, dict):
@@ -78,12 +84,13 @@ def _compute_anchors(
 
     pts = _as_vec2(points)
     data_geo = {"points": pts, "lines": lines, "areas": areas}
+    fs = (0.0, 0.0) if frame_size is None else frame_size
     anchors = []
     for lab in labels:
         kind = str(lab.get("anchor_kind", ""))
         idx = lab.get("anchor_index")
         if isinstance(idx, int) and kind:
-            qx, qy = anchor_xy(kind, idx, data_geo, (0.0, 0.0))
+            qx, qy = anchor_xy(kind, idx, data_geo, fs)
             anchors.append((qx, qy))
         else:
             anchors.append((np.nan, np.nan))
@@ -497,6 +504,32 @@ def interactive_view(
         src_full = _get_sources(step)
         src = dict(src_full) if isinstance(src_full, dict) else {}
 
+        fr = frames[step] if frames and step < len(frames) else None
+        ids_solver = (
+            fr.get("active_ids_solver") if isinstance(fr, dict) else None
+        )
+        traj_step = traj[step]
+        if ids_solver is not None and traj_step.shape[0] != len(labels):
+            if traj_step.shape[0] == len(ids_solver):
+                logger.error("[viz] remapping solver subset at step %d", step)
+                full = (
+                    traj[step - 1]
+                    if step > 0 and traj[step - 1].shape[0] == len(labels)
+                    else np.zeros((len(labels), 2), float)
+                )
+                full = np.asarray(full, float).copy()
+                for i_local, idx in enumerate(ids_solver):
+                    if 0 <= idx < len(labels) and i_local < len(traj_step):
+                        full[idx] = traj_step[i_local]
+                traj_step = full
+            else:
+                logger.error(
+                    "[viz] active_ids_solver mismatch: %d vs traj rows %d",
+                    len(ids_solver),
+                    traj_step.shape[0],
+                )
+                return
+
         pts_step = src.get("points", points) if src else points
         lns_step = src.get("lines", lines) if src else lines
         ars_step = src.get("areas", areas) if src else areas
@@ -568,7 +601,7 @@ def interactive_view(
                 src.pop("anchors_xy", None)
                 src.pop("anchor_xy", None)
 
-        pos_step = traj[step][active_ids]
+        pos_step = traj_step[active_ids]
         wh_step = rect_wh[active_ids]
         if active_ids == list(range(N)):
             forces = forces_raw
@@ -590,25 +623,34 @@ def interactive_view(
                 ars_list.append(_assert_vec2(poly, "area"))
 
         # [patch-yx-2025-09-05] build full geometry for anchor computation
-        pts_full_raw = src_full.get("points", points) if isinstance(src_full, dict) else points  # [patch-yx-2025-09-05]
-        pts_full = _assert_vec2(pts_full_raw, "points") if pts_full_raw is not None else np.zeros((0, 2), float)  # [patch-yx-2025-09-05]
-        lns_full_raw = src_full.get("lines", lines) if isinstance(src_full, dict) else lines  # [patch-yx-2025-09-05]
-        lns_full = None  # [patch-yx-2025-09-05]
-        if lns_full_raw is not None:  # [patch-yx-2025-09-05]
-            iterable = lns_full_raw if isinstance(lns_full_raw, (list, tuple)) else lns_full_raw  # [patch-yx-2025-09-05]
-            lns_full = [_assert_vec2(pl, "line") for pl in iterable]  # [patch-yx-2025-09-05]
-        ars_full_raw = src_full.get("areas", areas) if isinstance(src_full, dict) else areas  # [patch-yx-2025-09-05]
-        ars_full = None  # [patch-yx-2025-09-05]
-        if ars_full_raw is not None:  # [patch-yx-2025-09-05]
-            iterable = ars_full_raw if isinstance(ars_full_raw, (list, tuple)) else ars_full_raw  # [patch-yx-2025-09-05]
-            ars_full = []  # [patch-yx-2025-09-05]
-            for poly in iterable:  # [patch-yx-2025-09-05]
-                if isinstance(poly, dict):  # [patch-yx-2025-09-05]
-                    poly = poly.get("polygon")  # [patch-yx-2025-09-05]
-                ars_full.append(_assert_vec2(poly, "area"))  # [patch-yx-2025-09-05]
+        pts_full_raw = points if points is not None else (src_full.get("points") if isinstance(src_full, dict) else None)
+        pts_full = (
+            _assert_vec2(pts_full_raw, "points")
+            if pts_full_raw is not None
+            else np.zeros((0, 2), float)
+        )
+        lns_full_raw = lines if lines is not None else (src_full.get("lines") if isinstance(src_full, dict) else None)
+        lns_full = None
+        if lns_full_raw is not None:
+            iterable = lns_full_raw if isinstance(lns_full_raw, (list, tuple)) else lns_full_raw
+            lns_full = [_assert_vec2(pl, "line") for pl in iterable]
+        ars_full_raw = areas if areas is not None else (src_full.get("areas") if isinstance(src_full, dict) else None)
+        ars_full = None
+        if ars_full_raw is not None:
+            iterable = ars_full_raw if isinstance(ars_full_raw, (list, tuple)) else ars_full_raw
+            ars_full = []
+            for poly in iterable:
+                if isinstance(poly, dict):
+                    poly = poly.get("polygon")
+                ars_full.append(_assert_vec2(poly, "area"))
 
         anchors = _compute_anchors(  # [patch-yx-2025-09-05]
-            labs, points=pts_full, lines=lns_full, areas=ars_full, sources=src_full  # [patch-yx-2025-09-05]
+            labs,
+            points=pts_full,
+            lines=lns_full,
+            areas=ars_full,
+            sources=src_full,
+            frame_size=(W, H),
         )
 
         if selected >= len(active_ids):
