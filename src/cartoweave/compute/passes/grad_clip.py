@@ -6,7 +6,12 @@ from .base import ComputePass
 
 
 class GradClipPass(ComputePass):
-    """梯度裁剪：支持范数裁剪和元素级裁剪。"""
+    """Clip gradients and component forces.
+
+    Supports global L2-norm clipping via ``max_norm`` and element-wise
+    clipping via ``max_abs``. When clipping occurs, ``stats`` records how many
+    frames were affected and the strongest scale factor applied.
+    """
 
     def __init__(self, max_norm: float | None = None, max_abs: float | None = None, eps: float = 1e-12):
         self.max_norm = float(max_norm) if max_norm is not None else None
@@ -15,6 +20,8 @@ class GradClipPass(ComputePass):
         self.stats: Dict[str, Any] = {"clipped_frames": 0, "max_scale_down": 0.0}
 
     def wrap_energy(self, energy_fn):
+        """Scale ``G`` and all component forces if thresholds are exceeded."""
+
         mn, ma, eps = self.max_norm, self.max_abs, self.eps
         stats = self.stats
 

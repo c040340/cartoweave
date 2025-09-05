@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Pass registry and builder utilities."""
+
 from __future__ import annotations
 from typing import Any, Dict, List, Union
 from .base import Context, Stage, ComputePass
@@ -20,14 +22,11 @@ REGISTRY = {
 
 
 def build_passes(cfg_list: List[Union[str, Dict]] | None, default_capture_cfg: Dict) -> List[ComputePass]:
-    """
-    cfg_list 允许：
-      - "schedule"
-      - {"name":"schedule","args":{...}}
-      - "capture"
-      - {"name":"capture","args":{"every":5,"limit":100}}
-    未提供 capture 时，会用 default_capture_cfg 补一个 CapturePass。
-    schedule 若未提供，则默认也会加上（单阶段）。
+    """Instantiate passes from configuration.
+
+    ``cfg_list`` may contain strings or ``{"name": ..., "args": ...}``
+    dictionaries. ``CapturePass`` is added with ``default_capture_cfg`` if not
+    specified. ``SchedulePass`` is always present (single stage by default).
     """
     passes: List[ComputePass] = []
     names = set()

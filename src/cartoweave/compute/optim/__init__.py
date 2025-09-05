@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Adapter for engine solver entry points."""
+"""Adapter for calling solvers from the engine package.
+
+The compute module assembles energies and gradients but delegates the
+iteration loop to existing solvers in :mod:`cartoweave.engine.solvers`.
+This module provides a thin wrapper that normalizes parameters and wiring
+so that compute's :func:`~cartoweave.compute.run.solve` can invoke the
+engine solvers in a uniform way.
+"""
+
+from __future__ import annotations
 
 from typing import Callable, Dict, Any
 import numpy as np
@@ -15,7 +24,7 @@ def _import_solver(mode: str):
     return _impl
 
 
-def run_via_legacy_solver(
+def run_via_engine_solver(
     mode: str,
     *,
     P0,
@@ -25,7 +34,22 @@ def run_via_legacy_solver(
     energy_and_grad: Callable,
     recorder: Callable[[Dict], None],
 ) -> Dict[str, Any]:
-    """Optimizer adapter delegating to engine solvers."""
+    """Call an engine solver with compute's energy callback.
+
+    Parameters
+    ----------
+    mode:
+        Solver name (``"lbfgs"`` or ``"semi"``).
+    P0, scene, active_mask, params:
+        Initial positions, immutable scene, active mask and solver
+        parameters passed through unchanged.
+    energy_and_grad:
+        Callable returning ``(E, G, comps, meta)`` following compute's
+        conventions.
+    recorder:
+        Callback invoked after each evaluation with a dict containing
+        ``P``, ``G``, ``comps`` and ``E``.
+    """
     impl = _import_solver(mode)
     active_ids = np.nonzero(active_mask)[0]
 
@@ -65,3 +89,9 @@ def run_via_legacy_solver(
         }
 
     return result
+
+
+# Backward compatibility ----------------------------------------------------
+
+# DEPRECATED: to be removed in 2 releases
+run_via_legacy_solver = run_via_engine_solver

@@ -6,13 +6,16 @@ from .base import Stage, Context, ComputePass
 
 
 class SchedulePass(ComputePass):
-    """
-    读取 SolvePack.schedule，生成阶段序列。
-    每个阶段项可含：
-      - iters: int               # 传给 legacy solver 的 max_iter 覆盖
-      - mask_override: np.ndarray(bool[L])  # 与全局 active_mask0 取 AND
-      - params: dict             # 覆盖/增量合并至 pack.params
-    若 pack.schedule 为空，则生成单一阶段：使用 pack.params 与 active_mask0。
+    """Expand :class:`SolvePack.schedule` into concrete stages.
+
+    Each stage item may specify:
+
+    - ``iters`` – overrides ``max_iter`` for the engine solver
+    - ``mask_override`` – boolean mask ANDed with the pack's base mask
+    - ``params`` – dict merged into the pack's ``params``
+
+    When ``SolvePack.schedule`` is empty, a single stage using the
+    pack-wide ``params`` and mask is produced.
     """
 
     def plan_stages(self, ctx: Context) -> List[Stage]:

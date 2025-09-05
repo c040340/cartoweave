@@ -5,7 +5,7 @@ from .base import ComputePass, Context, Stage
 
 
 class StepLimitPass(ComputePass):
-    """Inject step_limit and damping into stage params."""
+    """Inject ``step_limit`` and ``damping`` into each stage's params."""
 
     def __init__(self, max_step: float | None = None, damping: float | None = None):
         self.max_step = max_step
@@ -17,6 +17,7 @@ class StepLimitPass(ComputePass):
         }
 
     def mutate_stage(self, stage: Stage):
+        """Modify ``stage.params`` in-place and record how many stages changed."""
         changed = False
         if self.max_step is not None:
             stage.params = dict(stage.params)

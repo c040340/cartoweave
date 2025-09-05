@@ -1,4 +1,17 @@
 # -*- coding: utf-8 -*-
+"""Compute-only energy and gradient aggregator.
+
+All force terms are evaluated through :mod:`cartoweave.compute.forces` and
+assembled into a single energy and gradient. The aggregator runs in two
+phases:
+
+``pre_anchor → (inject _ext_dir) → anchor``
+
+For each enabled term a force field ``F_i`` is produced. We ensure shapes are
+``(L, 2)``, inactive rows are zeroed, and the gradient satisfies
+``G ≈ -Σcomps``.
+"""
+
 from __future__ import annotations
 from typing import Dict, Tuple, Any, List
 import numpy as np
@@ -49,7 +62,28 @@ def _weight_for(name: str, wmap: dict) -> float:
 
 
 def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask: np.ndarray, cfg: dict):
-    """两阶段聚合所有启用项，返回 (E_total, g, comps, meta)。"""
+    """Evaluate all enabled terms via the compute aggregator.
+
+    Parameters
+    ----------
+    P, active_mask
+        Current positions ``(L,2)`` and boolean mask. Inactive rows are zeroed
+        in the output.
+    scene, cfg
+        Immutable scene data and configuration.
+
+    Returns
+    -------
+    E_total : float
+        Total energy after weighting.
+    g : Array2
+        Gradient satisfying ``g = -Σ comps``.
+    comps : Dict[str, Array2]
+        Per-term force fields after weighting. Weights are resolved by exact
+        key match, ``prefix.*`` or bare ``prefix``.
+    meta : dict
+        Aggregated source metadata.
+    """
     P = np.asarray(P, float)
     L = P.shape[0]
     assert P.ndim == 2 and P.shape[1] == 2, f"P must be (L,2), got {P.shape}"
@@ -129,5 +163,6 @@ def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask:
 
 
 def energy_and_grad_full(P: Array2, scene, active_mask: np.ndarray, cfg: dict):
-    """Compute energy, gradient, and per-term forces via compute aggregator."""
+    """Public entry point for compute-side energy evaluation."""
+
     return _energy_and_grad_full_compute(P, scene, active_mask, cfg)

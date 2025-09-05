@@ -1,40 +1,50 @@
 # -*- coding: utf-8 -*-
+"""Shared dataclasses and helpers for the compute module."""
+
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict  # noqa: F401
 import numpy as np
 
 Array2 = np.ndarray  # shape == (L, 2)
 
-# energy 回调签名：返回 (E, G_full, comps_full, meta)
+# Energy callback signature: ``(P, scene, mask, cfg) -> (E, G, comps, meta)``
 EnergyFn = Callable[
     [Array2, object, np.ndarray, dict],
     Tuple[float, Array2, Dict[str, Array2], dict],
 ]
 
+
 @dataclass
 class Frame:
-    i: int
-    stage: int
-    E: float
-    P: Array2
-    G: Array2
-    comps: Dict[str, Array2]
-    mask: np.ndarray
-    metrics: Dict[str, float] = field(default_factory=dict)
-    meta: Dict[str, Any] = field(default_factory=dict)
+    """Single evaluation snapshot."""
+
+    i: int  # evaluation index
+    stage: int  # stage index
+    E: float  # energy value
+    P: Array2  # positions (L,2)
+    G: Array2  # gradient (L,2)
+    comps: Dict[str, Array2]  # per-term forces
+    mask: np.ndarray  # active mask
+    metrics: Dict[str, float] = field(default_factory=dict)  # extra metrics
+    meta: Dict[str, Any] = field(default_factory=dict)  # passthrough metadata
+
 
 @dataclass
 class ViewPack:
-    L: int
-    mode: str
-    params_used: Dict[str, Any]
-    terms_used: List[str]
-    frames: List[Frame]
-    last: Frame
-    summary: Dict[str, Any]
+    """Container returned by :func:`cartoweave.compute.run.solve`."""
+
+    L: int  # number of labels
+    mode: str  # solver mode used
+    params_used: Dict[str, Any]  # final solver parameters
+    terms_used: List[str]  # force term keys encountered
+    frames: List[Frame]  # captured frames
+    last: Frame  # reference to last frame
+    summary: Dict[str, Any]  # aggregate statistics
 
 
 def _grad_metrics(G: Optional[Array2]) -> Dict[str, float]:
+    """Return infinity and L2 norms of ``G`` if provided."""
+
     import numpy as np
 
     if G is None:

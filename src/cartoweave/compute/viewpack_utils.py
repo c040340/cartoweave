@@ -8,9 +8,9 @@ from .types import ViewPack
 
 
 def to_old_payload(vp: ViewPack) -> Dict[str, Any]:
-    """Convert a :class:`ViewPack` to the legacy payload format.
+    """Convert a :class:`ViewPack` to the old visualization payload format.
 
-    The returned structure contains minimal fields expected by older
+    The returned structure contains minimal fields expected by earlier
     visualization utilities.
     """
     P_seq: List[np.ndarray] = []

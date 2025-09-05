@@ -6,13 +6,20 @@ from .base import ComputePass
 
 
 class NaNGuardPass(ComputePass):
-    """防止 NaN/Inf 扩散：将非有限值置零并计数。"""
+    """Sanitize non-finite values produced by the energy function.
+
+    Any ``NaN`` or ``Inf`` in ``E``, ``G`` or component forces is replaced
+    with zero. ``E`` falls back to ``e_fallback``. Counts of fixed frames are
+    recorded in ``stats``.
+    """
 
     def __init__(self, e_fallback: float = 0.0):
         self.e_fallback = float(e_fallback)
         self.stats: Dict[str, Any] = {"nan_frames": 0, "inf_frames": 0, "fixed_frames": 0}
 
     def wrap_energy(self, energy_fn):
+        """Check the output of ``energy_fn`` and zero-out non-finite values."""
+
         ef = self.e_fallback
         stats = self.stats
 

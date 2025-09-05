@@ -1,16 +1,24 @@
 # -*- coding: utf-8 -*-
+"""Compute-side force registry and wrappers.
+
+Each force term lives in ``compute/forces/<name>.py`` and registers an
+``evaluate`` function returning ``(E, F, meta)`` where ``F`` is a force field of
+shape ``(L, 2)``. The compute aggregator converts these forces into gradients.
+"""
+
 from __future__ import annotations
 from typing import Dict, Callable
 
-# 我们自己的（计算侧）注册表：名字 → evaluate(scene, P, cfg, phase) -> (E, F, meta)
-# 注意：此处每个 evaluate 返回的是“力（force）场 F=(L,2)”，而非梯度；
-# 聚合器会做 g -= F 与 comps[name] = F。
 REGISTRY: Dict[str, Callable] = {}
 
+
 def register(name: str):
+    """Decorator registering a compute-side force implementation."""
+
     def deco(fn: Callable):
         REGISTRY[name] = fn
         return fn
+
     return deco
 
 # 显式导入我们迁移/包装过的项

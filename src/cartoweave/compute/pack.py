@@ -32,6 +32,9 @@ class SolvePack:
     def validate(self) -> None:
         assert isinstance(self.L, int) and self.L > 0, "L must be positive int"
         assert isinstance(self.P0, np.ndarray) and self.P0.shape == (self.L, 2), "P0 shape must be (L,2)"
-        assert isinstance(self.active_mask0, np.ndarray) and self.active_mask0.shape == (self.L,), "active_mask0 shape must be (L,)"
+        assert (
+            isinstance(self.active_mask0, np.ndarray)
+            and self.active_mask0.shape == (self.L,)
+        ), "active_mask0 shape must be (L,)"
         assert self.P0.dtype.kind in "fc", "P0 must be float/complex (float expected)"
-        # 非活跃梯度零的约束在评价/优化器层保证；此处只校形状
+        # Inactive gradients are zeroed elsewhere; only check shapes here.

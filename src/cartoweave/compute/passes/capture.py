@@ -4,7 +4,10 @@ from .base import Context, ComputePass
 
 
 class CapturePass(ComputePass):
-    """按 every / limit / final_always 控制采样。"""
+    """Decide whether to record a frame.
+
+    Parameters mirror those used by :class:`SolvePack.capture`.
+    """
 
     def __init__(self, every: int = 1, limit=None, final_always: bool = True):
         self.every = max(1, int(every))

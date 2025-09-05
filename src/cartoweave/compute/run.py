@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+"""Solve function coordinating passes and engine solvers."""
 from __future__ import annotations
 
 from typing import Dict, List, Any
@@ -7,17 +7,32 @@ import numpy as np
 from .pack import SolvePack
 from .eval import energy_and_grad_full as _default_energy
 from .types import ViewPack, Frame, _grad_metrics, Array2
-from . import optim
+from .optim import run_via_engine_solver
 from .passes import build_passes
 from .passes.base import Context
 
 
 def solve(pack: SolvePack) -> ViewPack:
-    """
-    第3步版：
-      - 通过 schedule pass 产出阶段序列
-      - 每阶段调用 legacy solver（继承其收敛与线搜索等数值细节）
-      - 通过 capture pass 控制帧采样
+    """Run the compute pipeline and return a :class:`ViewPack`.
+
+    The workflow is:
+
+    ``SolvePack → passes.wrap_energy → engine solver → recorder → ViewPack``
+
+    The function orchestrates passes that may wrap the energy function,
+    mutate per-stage parameters, and decide whether each evaluation should be
+    captured. Solvers themselves live in :mod:`cartoweave.engine.solvers` and
+    are called via :func:`run_via_engine_solver`.
+
+    The returned summary includes:
+
+    - ``evals`` / ``frames_captured`` – total evaluations and captured frames
+    - ``stage_solvers`` – solver used for each stage
+    - ``pass_stats`` – statistics reported by passes (when present)
+    - ``E0`` / ``E_last`` / ``g_inf_last`` / ``moved_ratio``
+
+    Each :class:`Frame` contains gradient norms (``g_inf``, ``g_norm``) and, if
+    available, step metrics such as ``step_norm``, ``dP_inf`` and ``dE``.
     """
     pack.validate()
     L = pack.L
@@ -136,7 +151,7 @@ def solve(pack: SolvePack) -> ViewPack:
         ctx.stage_index = s_idx
         mode_stage = (st.solver or pack.mode or "lbfgs").lower()
         stage_solver_names.append(mode_stage)
-        result = optim.run_via_legacy_solver(
+        result = run_via_engine_solver(
             mode=mode_stage,
             P0=P_curr,
             scene=pack.scene,

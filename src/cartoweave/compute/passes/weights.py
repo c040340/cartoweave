@@ -7,7 +7,7 @@ from .base import ComputePass, Context
 
 
 class WeightsPass(ComputePass):
-    """静态项权重（最小版）。"""
+    """Inject static per-term weights into the evaluation config."""
 
     def __init__(self, weights: Dict[str, float] | None = None):
         self.weights = weights or {}
@@ -24,6 +24,8 @@ class WeightsPass(ComputePass):
         return 1.0
 
     def wrap_energy(self, energy_fn):
+        """Attach weight mapping to the config before evaluation."""
+
         def _wrapped(P, scene, active_mask, cfg):
             cfg2 = copy.deepcopy(cfg) if isinstance(cfg, dict) else {}
             cfg2.setdefault("solver", {}).setdefault("internals", {})["weights"] = {
