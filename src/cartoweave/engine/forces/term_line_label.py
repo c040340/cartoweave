@@ -1,7 +1,11 @@
 from __future__ import annotations
 import numpy as np
 from . import register
-from cartoweave.utils.geometry import project_point_to_segment, rect_half_extent_along_dir
+from cartoweave.utils.geometry import (
+    project_point_to_segment,
+    rect_half_extent_along_dir,
+    polylines_to_segments,
+)
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -19,13 +23,12 @@ from cartoweave.utils.logging import logger
 def term_line_label(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     if phase != "pre_anchor" or P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {}
-    segs = scene.get("lines")
-    if segs is None or len(segs) == 0:
+    segs_raw = scene.get("lines")
+    if segs_raw is None or len(segs_raw) == 0:
         return 0.0, np.zeros_like(P), {}
-
-    segs = np.asarray(segs, float)
-    if not (segs.ndim == 3 and segs.shape[1:] == (2, 2)):
-        raise ValueError(f"lines must have shape (N,2,2), got {segs.shape}")
+    segs = polylines_to_segments(segs_raw)
+    if segs.shape[0] == 0:
+        return 0.0, np.zeros_like(P), {}
     N = P.shape[0]
     WH = np.asarray(scene.get("WH"), float)
     assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"

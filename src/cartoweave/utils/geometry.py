@@ -1,7 +1,10 @@
 from __future__ import annotations
 import math
 import numpy as np
+from typing import Sequence, Union
 from .kernels import softabs, EPS_ABS, EPS_NORM
+
+Array = np.ndarray
 
 def project_point_to_segment(cx, cy, ax, ay, bx, by):
     vx, vy = (bx-ax), (by-ay)
@@ -25,3 +28,40 @@ def poly_signed_area(poly_xy: np.ndarray) -> float:
 
 def rect_half_extent_along_dir(w: float, h: float, nx: float, ny: float, eps_abs: float = EPS_ABS) -> float:
     return 0.5*w*softabs(nx, eps_abs) + 0.5*h*softabs(ny, eps_abs)
+
+
+def polylines_to_segments(lines: Union[Sequence[Array], Array], eps: float = 1e-12) -> Array:
+    """
+    Accepts:
+      - list[np.ndarray(Mi,2)]  (preferred)
+      - np.ndarray(Nl,2,2)      (legacy segments)
+      - np.ndarray(Nl,M,2)      (fixed-length polylines)
+      - np.ndarray(M,2)         (single polyline)
+    Returns a numeric (S,2,2) float array with zero-length segments dropped.
+    """
+    arr = np.asarray(lines, dtype=object)
+
+    def _from_polyline(P: Array) -> Array:
+        P = np.asarray(P, float).reshape(-1, 2)
+        if P.shape[0] < 2:
+            return np.zeros((0, 2, 2), float)
+        AB = np.stack([P[:-1], P[1:]], axis=1)
+        d = np.linalg.norm(AB[:, 1] - AB[:, 0], axis=1)
+        return AB[d > eps]
+
+    if arr.dtype == object:
+        chunks = [_from_polyline(p) for p in lines]
+        return np.concatenate(chunks, axis=0) if len(chunks) else np.zeros((0, 2, 2), float)
+
+    if arr.ndim == 3:
+        if arr.shape[-2:] == (2, 2):
+            AB = np.asarray(arr, float)
+            d = np.linalg.norm(AB[:, 1] - AB[:, 0], axis=1)
+            return AB[d > eps]
+        chunks = [_from_polyline(p) for p in np.asarray(lines)]
+        return np.concatenate(chunks, axis=0) if len(chunks) else np.zeros((0, 2, 2), float)
+
+    if arr.ndim == 2 and arr.shape[1] == 2:
+        return _from_polyline(arr)
+
+    return np.zeros((0, 2, 2), float)

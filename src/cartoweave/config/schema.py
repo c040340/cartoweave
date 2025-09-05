@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, ValidationError
 
 
 class SolverPublic(BaseModel):
-    mode: Literal["lbfgsb", "semi-newton", 'hybrid'] = "lbfgsb"
+    mode: Literal["lbfgsb", "semi-newton", "simple", "hybrid"] = "lbfgsb"
     use_autocal: bool = False
     use_warmup: bool = False
     use_retry: bool = False

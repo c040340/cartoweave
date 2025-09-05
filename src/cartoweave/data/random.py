@@ -1,6 +1,7 @@
 # src/cartoweave/data/random.py
 from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional
+from dataclasses import dataclass
 import os, time, math, string, random
 import numpy as np
 from ..labels import anchor_xy, init_position
@@ -10,6 +11,67 @@ Array = np.ndarray
 # ---------- 非物理键，允许默认值 ----------
 _DEF_CACHE_NAME = "scene_cache.npz"
 _DEF_CANVAS = (1080.0, 1920.0)
+
+
+def _frame_metrics(frame_size: tuple[int, int]) -> tuple[float, float, float, float]:
+    """Return (W, H, D, A) where D is diagonal, A is W*H (float)."""
+    W, H = frame_size
+    D = (W ** 2 + H ** 2) ** 0.5
+    A = float(W) * float(H)
+    return float(W), float(H), float(D), float(A)
+
+
+def _sample_split_normal_trunc(mu: float, L: float, U: float, k: int, rng: np.random.Generator) -> float:
+    # ensure mu inside (L,U)
+    tiny = 1e-6 * (U - L)
+    mu = min(max(mu, L + tiny), U - tiny)
+    sigL = max((mu - L) / float(k), 1e-12 * (U - L))
+    sigR = max((U - mu) / float(k), 1e-12 * (U - L))
+    pL = sigL / (sigL + sigR)
+    for _ in range(128):
+        if rng.random() < pL:
+            x = mu - abs(rng.normal(0.0, sigL))
+        else:
+            x = mu + abs(rng.normal(0.0, sigR))
+        if L <= x <= U:
+            return float(x)
+    return float(np.clip(mu, L, U))
+
+
+@dataclass
+class RouteGenCfg:
+    mean_length_scale: float = 0.55
+    k_sigma_bound: int = 4
+    min_vertex_spacing_scale: float = 0.01
+    min_edge_margin_scale: float = 0.02
+    lower_bound_scale: float = 0.10
+    upper_bound_scale: float = 1.20
+
+
+@dataclass
+class AreaGenCfg:
+    mean_area_scale: float = 0.05
+    k_sigma_bound: int = 5
+    min_vertex_spacing_scale: float = 0.01
+    min_edge_margin_scale: float = 0.02
+    lower_bound_scale: float = 0.01
+    upper_bound_scale: float = 0.50
+
+
+def _sample_route_length(frame_size, cfg: RouteGenCfg, rng) -> float:
+    W, H, D, A = _frame_metrics(frame_size)
+    mu = cfg.mean_length_scale * D
+    L = cfg.lower_bound_scale * D
+    U = cfg.upper_bound_scale * D
+    return _sample_split_normal_trunc(mu, L, U, cfg.k_sigma_bound, rng)
+
+
+def _sample_area_size(frame_size, cfg: AreaGenCfg, rng) -> float:
+    W, H, D, A = _frame_metrics(frame_size)
+    mu = cfg.mean_area_scale * A
+    L = cfg.lower_bound_scale * A
+    U = cfg.upper_bound_scale * A
+    return _sample_split_normal_trunc(mu, L, U, cfg.k_sigma_bound, rng)
 
 # =============== 随机与缓存 ===============
 def _apply_seed(seed: Optional[int]) -> int:
@@ -105,6 +167,174 @@ def _random_polygon(canvas_size, focus_ratio, n=8, rng=np.random):
     order = np.argsort(ang)
     return cloud[order].astype(float).tolist()
 
+
+def _poly_area(P: np.ndarray) -> float:
+    x, y = P[:, 0], P[:, 1]
+    return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+
+def _segments_self_intersect(P: np.ndarray) -> bool:
+    M = P.shape[0]
+    if M < 4:
+        return False
+
+    def seg_int(a, b, c, d):
+        def orient(p, q, r):
+            return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+        o1 = orient(a, b, c)
+        o2 = orient(a, b, d)
+        o3 = orient(c, d, a)
+        o4 = orient(c, d, b)
+        if o1 == 0 and o2 == 0 and o3 == 0 and o4 == 0:
+            return False
+        return (o1 * o2 < 0) and (o3 * o4 < 0)
+
+    for i in range(M - 1):
+        a, b = P[i], P[i + 1]
+        for j in range(i + 2, M - 1):
+            c, d = P[j], P[j + 1]
+            if seg_int(a, b, c, d):
+                return True
+    return False
+
+
+def _polygon_self_intersect(P: np.ndarray) -> bool:
+    Q = np.vstack([P, P[0]])
+    return _segments_self_intersect(Q)
+
+
+def _inset_rect(W, H, margin):
+    return (margin, margin, W - margin, H - margin)
+
+
+def _project_to_inset(P: np.ndarray, inset: tuple[float, float, float, float]) -> np.ndarray:
+    x0, y0, x1, y1 = inset
+    P[:, 0] = np.clip(P[:, 0], x0, x1)
+    P[:, 1] = np.clip(P[:, 1], y0, y1)
+    return P
+
+
+def _min_spacing_ok(P: np.ndarray, s_min: float) -> bool:
+    if P.shape[0] < 2:
+        return True
+    d = np.linalg.norm(P[1:] - P[:-1], axis=1)
+    return bool(np.all(d >= s_min - 1e-9))
+
+
+def generate_polyline_by_length(
+    frame_size: tuple[int, int],
+    L_target: float,
+    cfg: RouteGenCfg,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    W, H, D, A = _frame_metrics(frame_size)
+    s_min = max(cfg.min_vertex_spacing_scale * D, 1e-6)
+    margin = cfg.min_edge_margin_scale * D
+    inset = _inset_rect(W, H, margin)
+
+    for _ in range(32):
+        cx = rng.uniform(inset[0], inset[2])
+        cy = rng.uniform(inset[1], inset[3])
+        theta = rng.uniform(0, 2 * np.pi)
+
+        u = np.array([np.cos(theta), np.sin(theta)], float)
+        p0 = np.array([cx, cy], float) - 0.5 * L_target * u
+        p1 = np.array([cx, cy], float) + 0.5 * L_target * u
+        P = np.stack([p0, p1], axis=0)
+        P = _project_to_inset(P, np.array(inset, float))
+
+        L_eff = float(np.linalg.norm(P[1] - P[0]))
+        M = max(2, int(np.clip(round(L_eff / (0.06 * D)), 2, 64)))
+        t = np.linspace(0.0, 1.0, M)
+        P = (1 - t)[:, None] * P[0] + t[:, None] * P[1]
+
+        ang_std = np.deg2rad(25.0)
+        for i in range(1, M - 1):
+            dvec = P[i] - P[i - 1]
+            Ld = np.linalg.norm(dvec) + 1e-12
+            rot = rng.normal(0.0, ang_std)
+            R = np.array(
+                [[np.cos(rot), -np.sin(rot)], [np.sin(rot), np.cos(rot)]], float
+            )
+            P[i] = P[i - 1] + (R @ (dvec / Ld)) * Ld
+        P = _project_to_inset(P, np.array(inset, float))
+
+        if not _min_spacing_ok(P, s_min):
+            continue
+        if _segments_self_intersect(P):
+            continue
+        return P.astype(np.float32)
+
+    a = np.array([rng.uniform(inset[0], inset[2]), rng.uniform(inset[1], inset[3])])
+    b = np.array([rng.uniform(inset[0], inset[2]), rng.uniform(inset[1], inset[3])])
+    c = (a + b) / 2 + rng.normal(0, 0.05 * D, size=2)
+    P = np.vstack([a, c, b])
+    P = _project_to_inset(P, np.array(inset, float))
+    return P.astype(np.float32)
+
+
+def generate_polygon_by_area(
+    frame_size: tuple[int, int],
+    S_target: float,
+    cfg: AreaGenCfg,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    W, H, D, A = _frame_metrics(frame_size)
+    s_min = max(cfg.min_vertex_spacing_scale * D, 1e-6)
+    margin = cfg.min_edge_margin_scale * D
+    inset = _inset_rect(W, H, margin)
+
+    for _ in range(32):
+        cx = rng.uniform(inset[0], inset[2])
+        cy = rng.uniform(inset[1], inset[3])
+        K = int(rng.integers(12, 21))
+
+        R0 = (S_target / np.pi) ** 0.5
+        radii = np.clip(rng.normal(R0, 0.25 * R0, size=K), 0.2 * R0, 2.0 * R0)
+        angs = np.sort(rng.uniform(0, 2 * np.pi, size=K))
+        P = np.stack([cx + radii * np.cos(angs), cy + radii * np.sin(angs)], axis=1)
+
+        P = _project_to_inset(P, np.array(inset, float))
+
+        keep = [0]
+        for i in range(1, K):
+            if np.linalg.norm(P[i] - P[keep[-1]]) >= s_min:
+                keep.append(i)
+        if len(keep) < 3:
+            continue
+        P = P[keep]
+
+        if _polygon_self_intersect(P):
+            continue
+
+        area = abs(_poly_area(P))
+        if area <= 1e-9:
+            continue
+        scale = (S_target / area) ** 0.5
+        P = np.column_stack([(P[:, 0] - cx) * scale + cx, (P[:, 1] - cy) * scale + cy])
+        P = _project_to_inset(P, np.array(inset, float))
+        area2 = abs(_poly_area(P))
+        if 0.8 * S_target <= area2 <= 1.2 * S_target:
+            return P.astype(np.float32)
+
+    w = np.sqrt(S_target / 1.5)
+    h = 1.5 * w
+    w = np.clip(w, 0.05 * D, 0.4 * D)
+    h = np.clip(h, 0.05 * D, 0.4 * D)
+    cx = rng.uniform(inset[0] + w / 2, inset[2] - w / 2)
+    cy = rng.uniform(inset[1] + h / 2, inset[3] - h / 2)
+    P = np.array(
+        [
+            [cx - w / 2, cy - h / 2],
+            [cx + w / 2, cy - h / 2],
+            [cx + w / 2, cy + h / 2],
+            [cx - w / 2, cy + h / 2],
+        ],
+        float,
+    )
+    return P.astype(np.float32)
+
 # =============== 文本宽度（估算） ===============
 def _measure_text_width(text: str, ascii_w: int = 9, cjk_w: int = 18, max_width: int = 820) -> int:
     def is_wide(ch: str) -> bool: return ord(ch) > 127
@@ -142,44 +372,54 @@ def generate_scene(
     arrays expected by the solver directly:
 
     - ``points``: ``(Np,2)`` float array.
-    - ``lines``: ``(Nl,2,2)`` float array of simple segment polylines.
+    - ``lines``: list of ``(Mi,2)`` float arrays for polylines.
     - ``areas``: list of dicts with ``{"polygon": np.ndarray}``.
     - ``labels_init``/``WH``/``anchors``: arrays for every label (one per
       element) so the solver can be invoked without any extra conversion step.
     """
 
     _apply_seed(seed)
+    rng = np.random.default_rng(seed)
     W, H = canvas_size
 
     # ---- points ---------------------------------------------------------
-    pts_xy = _poisson_disc((W, H), r_min=H / 20.0, rng=np.random)
+    pts_xy = _poisson_disc((W, H), r_min=H / 20.0, rng=rng)
     if len(pts_xy) < n_points:
-        extras = [
-            (np.random.uniform(0, W), np.random.uniform(0, H))
-            for _ in range(n_points - len(pts_xy))
-        ]
+        extras = [(rng.uniform(0, W), rng.uniform(0, H)) for _ in range(n_points - len(pts_xy))]
         pts_xy += extras
     if n_points > 0:
         pts_xy = np.stack(pts_xy[:n_points]).astype(float)
     else:
         pts_xy = np.zeros((0, 2), float)
 
-    # ---- lines (as simple segments) ------------------------------------
-    line_segs: List[List[List[float]]] = []
+    # ---- lines ---------------------------------------------------------
+    lines: List[np.ndarray] = []
+    route_cfg = RouteGenCfg()
     for _ in range(n_lines):
-        a = np.random.uniform(0, 1, size=2) * [W, H]
-        b = np.random.uniform(0, 1, size=2) * [W, H]
-        line_segs.append([[float(a[0]), float(a[1])], [float(b[0]), float(b[1])]])
-    lines = np.array(line_segs, float)
+        L = _sample_route_length((W, H), route_cfg, rng)
+        poly = generate_polyline_by_length((W, H), L, route_cfg, rng)
+        lines.append(poly.astype(float))
 
     # ---- areas ---------------------------------------------------------
     areas: List[Dict[str, Any]] = []
+    area_cfg = AreaGenCfg()
     for _ in range(n_areas):
-        poly = np.array(
-            _random_polygon((W, H), focus_ratio, n=int(np.random.randint(6, 11)), rng=np.random),
-            float,
-        )
-        areas.append({"polygon": poly})
+        S = _sample_area_size((W, H), area_cfg, rng)
+        poly = generate_polygon_by_area((W, H), S, area_cfg, rng)
+        areas.append({"polygon": poly.astype(float)})
+
+    assert isinstance(lines, list) and all(
+        isinstance(p, np.ndarray) and p.ndim == 2 and p.shape[1] == 2 and p.shape[0] >= 2
+        for p in lines
+    )
+    assert isinstance(areas, list) and all(
+        isinstance(a, dict)
+        and isinstance(a.get("polygon"), np.ndarray)
+        and a["polygon"].ndim == 2
+        and a["polygon"].shape[1] == 2
+        and a["polygon"].shape[0] >= 3
+        for a in areas
+    )
 
     # ---- labels / anchors / sizes --------------------------------------
     anchors: List[np.ndarray] = []
@@ -190,7 +430,7 @@ def generate_scene(
     data_geo = {"points": pts_xy, "lines": lines, "areas": [a["polygon"] for a in areas]}
 
     def _rand_label_spec() -> float:
-        spec = _label_specs_for_len(int(np.random.randint(6, 25)))
+        spec = _label_specs_for_len(int(rng.integers(6, 25)), rng=rng)
         return float(spec["single"]["w"])
 
     # point labels
@@ -361,7 +601,8 @@ def get_scene(
             return False
 
         n_pts = data.get("points", np.zeros((0, 2))).shape[0]
-        n_lines = data.get("lines", np.zeros((0, 2, 2))).shape[0]
+        _ln = data.get("lines")
+        n_lines = len(_ln) if isinstance(_ln, list) else int(getattr(_ln, "shape", (0, 0, 0))[0])
         n_areas = len(data.get("areas", []))
 
         pts = [{"id": f"p{i}"} for i in range(n_pts)]
