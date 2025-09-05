@@ -274,17 +274,14 @@ def scalar_potential_field(scene: dict,
             try:
                 out = energy_and_grad_fullP(sc, P_work, cfg)
             except TypeError:
-                # Some implementations return fixed arity; handle safely
-                E, G = out[0], out[1] if isinstance(out, (list, tuple)) else (float(out), None)
+                # Fallback for evaluators that do not accept ``cfg``
+                out = energy_and_grad_fullP(sc, P_work)
+            if isinstance(out, (list, tuple)):
+                E = out[0]
+                G = out[1] if len(out) > 1 else None
             else:
-                # Normal case
-                if isinstance(out, (list, tuple)):
-                    if len(out) >= 2:
-                        E, G = out[0], out[1]
-                    else:
-                        E, G = out[0], None
-                else:
-                    E, G = float(out), None
+                E = float(out)
+                G = None
 
             if use_grad_norm and (G is not None):
                 gxy = np.asarray(G, dtype=float)
@@ -300,7 +297,10 @@ def scalar_potential_field(scene: dict,
             field[j, i] = val
 
     # ------ sanitize numeric issues ------
-    field = np.nan_to_num(field, nan=0.0, posinf=0.0, neginf=0.0)
+    # Keep ``inf`` values large instead of collapsing them to zero so that
+    # the resulting field reflects areas where the energy evaluation blew up
+    # (commonly perceived as the panel "degenerating" to all zeros).
+    field = np.nan_to_num(field, nan=0.0)
 
     # Optional dynamic range conditioning (keeps colormap useful)
     vmin = field.min()
