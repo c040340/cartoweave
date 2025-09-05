@@ -18,7 +18,7 @@ def test_solve_plan_runs_and_records():
     cfg = {
         "ll.geom": "rect", "ll.k.repulse": 150.0, "ll.k.inside": 50.0,
         "boundary.k.wall": 80.0, "boundary.wall_eps": 0.3,
-        "anchor.k.spring": 10.0,
+        "terms": {"anchor": {"spring": {"k": 10.0}}},
         "focus.k.attract": 30.0,
         "focus.center": np.array([400.,300.]),
         "focus.sigma.x": 80.0, "focus.sigma.y": 120.0,
@@ -26,7 +26,7 @@ def test_solve_plan_runs_and_records():
         "pl.k.repulse": 0.0, "pl.k.inside": 0.0,  # 关闭点↔label 力
     }
     schedule = [
-        {"name": "warmup_no_anchor", "scale": {"anchor.k.spring": 0.0}},
+        {"name": "warmup_no_anchor", "scale": {"terms.anchor.spring.k": 0.0}},
         {"name": "main_solve"},
     ]
     P_final, info = run_solve_plan(scene, cfg, schedule, mode="hybrid", carry_P=True)

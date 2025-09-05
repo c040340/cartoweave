@@ -22,7 +22,7 @@ def _base_cfg():
         "ll.k.inside": 50.0,
         "boundary.k.wall": 80.0,
         "boundary.wall_eps": 0.3,
-        "anchor.k.spring": 10.0,
+        "terms": {"anchor": {"spring": {"k": 10.0}}},
         "focus.k.attract": 30.0,
         "focus.center": np.array([400.0, 300.0]),
         "focus.sigma.x": 80.0,
@@ -35,7 +35,7 @@ def _base_cfg():
 def test_injects_warmup_when_flag_true(caplog):
     scene = make_scene()
     cfg = _base_cfg()
-    cfg["solver"] = {"public": {"use_warmup": True}, "tuning": {"warmup": {"step_cap_px": 5.0}}}
+    cfg["solver"] = {"use_warmup": True, "warmup": {"step_cap_px": 5.0}}
     plan = [{"name": "main"}]
     with caplog.at_level(logging.INFO):
         _, info = run_solve_plan(scene, cfg, plan, mode="hybrid", carry_P=True)
@@ -45,7 +45,7 @@ def test_injects_warmup_when_flag_true(caplog):
 def test_no_injection_with_custom_stages(caplog):
     scene = make_scene()
     cfg = _base_cfg()
-    cfg["solver"] = {"public": {"use_warmup": True}}
+    cfg["solver"] = {"use_warmup": True}
     plan = [{"name": "stage0"}, {"name": "stage1"}]
     with caplog.at_level(logging.INFO):
         _, info = run_solve_plan(scene, cfg, plan, mode="hybrid", carry_P=True)

@@ -13,8 +13,8 @@ def test_anchor_marker_size_from_yaml(tmp_path):
     orig = Path("configs/viz.yaml").read_text()
     viz_path = tmp_path / "viz.yaml"
     viz_path.write_text(orig.replace("anchor_marker_size: 4.0", "anchor_marker_size: 11.0"))
-    bundle = load_configs(viz_path=str(viz_path))
-    viz = merge_defaults(bundle.viz.model_dump(exclude_unset=False, exclude_defaults=False))
+    cfg = load_configs(viz_path=str(viz_path))
+    viz = merge_defaults(cfg["viz"])
     assert viz["layout"]["colors"]["points"] == "#2E86DE"
     fig, ax = plt.subplots()
     draw_layout(

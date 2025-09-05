@@ -12,19 +12,17 @@ def _avg_line_length(scene):
 
 
 def test_route_gen_length_scale(tmp_path):
-    bundle = load_configs()
-    cfg = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
-    assert cfg["data"]["random"]["frame"]["width"] == 1920
-    assert cfg["data"]["random"]["frame"]["height"] == 1080
+    cfg = load_configs()
+    assert cfg["data"]["random"]["frame"]["width"] == 1080
+    assert cfg["data"]["random"]["frame"]["height"] == 1920
     scene0 = generate_scene(gen_cfg=cfg["data"]["random"], seed=0)
     L0 = _avg_line_length(scene0)
 
     override = tmp_path / "solver.tuning.yaml"
     override.write_text(
-        """tuning:\n  data:\n    random:\n      route_gen:\n        mean_length_scale: 0.40\n"""
+        """data:\n  random:\n    route_gen:\n      mean_length_scale: 0.40\n"""
     )
-    bundle2 = load_configs(tuning_path=str(override))
-    cfg2 = bundle2.model_dump(exclude_unset=False, exclude_defaults=False)
+    cfg2 = load_configs(tuning_path=str(override))
     scene1 = generate_scene(gen_cfg=cfg2["data"]["random"], seed=0)
     L1 = _avg_line_length(scene1)
     assert L1 > L0

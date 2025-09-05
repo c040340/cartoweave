@@ -1,7 +1,9 @@
+show: true
 panels:
   layout: true
   forces: false
   info: true
+  field: false
 layout:
   colors:
     points: "#2E86DE"

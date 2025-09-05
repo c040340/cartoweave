@@ -10,27 +10,26 @@ def test_load_overrides_and_viz(tmp_path):
     public = tmp_path / "solver.public.yaml"
     viz = tmp_path / "viz.yaml"
 
-    internals.write_text("eps: {div: 1}\n")
-    tuning.write_text("threshold: {abs: 1}\n")
-    public.write_text("use_retry: true\n")
+    internals.write_text("solver: {internals: {eps: {div: 1}}}\n")
+    tuning.write_text("solver: {threshold: {abs: 1}}\n")
+    public.write_text("solver: {use_retry: true}\n")
     viz.write_text("panels: {layout: true}\n")
 
-    bundle = load_configs(
+    cfg = load_configs(
         internals_path=str(internals),
         tuning_path=str(tuning),
         public_path=str(public),
         viz_path=str(viz),
-        overrides={"solver": {"tuning": {"threshold": {"abs": 4}}}},
+        overrides={"solver": {"threshold": {"abs": 4}}},
     )
-
-    assert bundle.solver.tuning.threshold.abs == 4
-    assert bundle.viz.panels.layout is True
+    assert cfg["solver"]["threshold"]["abs"] == 4
+    assert cfg["viz"]["panels"]["layout"] is True
 
 
 def test_print_effective_config(tmp_path):
-    bundle = load_configs()
+    cfg = load_configs()
     out = tmp_path / "snap.yaml"
-    print_effective_config(bundle, out)
+    print_effective_config(cfg, out)
     data = yaml.safe_load(out.read_text())
     assert "solver" in data and "viz" in data
 
@@ -43,30 +42,23 @@ def test_legacy_key_error(tmp_path):
 
 
 def test_profile_preset_respected():
-    bundle = load_configs(overrides={"solver": {"public": {"profile": "fast"}}})
-    assert bundle.solver.tuning.warmup.steps == 1
+    cfg = load_configs(overrides={"solver": {"profile": "fast"}})
+    assert cfg["solver"]["warmup"]["steps"] == 1
 
-    bundle = load_configs(
-        overrides={
-            "solver": {
-                "public": {"profile": "fast"},
-                "tuning": {"warmup": {"steps": 7}},
-            }
-        }
-    )
-    assert bundle.solver.tuning.warmup.steps == 7
+    cfg = load_configs(overrides={"solver": {"profile": "fast", "warmup": {"steps": 7}}})
+    assert cfg["solver"]["warmup"]["steps"] == 7
 
 
 def test_force_shaping_defaults_present():
-    bundle = load_configs()
-    tuning = bundle.solver.tuning
-    assert tuning.merge.mode == "sum"
-    assert tuning.normalize.kind == "l2"
-    assert tuning.topk.min_share == 0.0
+    cfg = load_configs()
+    solver = cfg["solver"]
+    assert solver["merge"]["mode"] == "sum"
+    assert solver["normalize"]["kind"] == "l2"
+    assert solver["topk"]["min_share"] == 0.0
 
 
 def test_schema_validation_error():
     with pytest.raises(ValueError) as exc:
-        load_configs(overrides={"solver": {"tuning": {"topk": {"min_share": 2.0}}}})
-    assert "solver.tuning.topk.min_share" in str(exc.value)
+        load_configs(overrides={"solver": {"topk": {"min_share": 2.0}}})
+    assert "solver.topk.min_share" in str(exc.value)
 

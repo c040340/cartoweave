@@ -1,4 +1,4 @@
-public:
+solver:
   mode: lbfgsb                  # allowed: lbfgsb|simple|hybrid|newton
   use_autocal: false
   use_warmup: true
@@ -6,19 +6,34 @@ public:
   use_topk_sources: false
   profile: basic                # also accepts: balanced|stable|cinematic
   force_level: medium
-  data:
-    random:
-      frame: { width: 1080, height: 1920 }
-      counts: { n_points: 8, n_lines: 3, n_areas: 2 }
-      route_gen:
-        mean_length_scale: 0.25
-        min_vertex_spacing_scale: 0.01
-        min_edge_margin_scale: 0.02
-        lower_bound_scale: 0.02
-        upper_bound_scale: 0.60
-      area_gen:
-        mean_area_scale: 0.05
-        min_vertex_spacing_scale: 0.01
-        min_edge_margin_scale: 0.02
-        lower_bound_scale: 0.01
-        upper_bound_scale: 0.50
+
+data:
+  random:
+    frame: { width: 1080, height: 1920 }
+    counts: { n_points: 8, n_lines: 3, n_areas: 2 }
+    route_gen:
+      mean_length_scale: 0.25
+      min_vertex_spacing_scale: 0.01
+      min_edge_margin_scale: 0.02
+      lower_bound_scale: 0.02
+      upper_bound_scale: 0.60
+    area_gen:
+      mean_area_scale: 0.05
+      min_vertex_spacing_scale: 0.01
+      min_edge_margin_scale: 0.02
+      lower_bound_scale: 0.01
+      upper_bound_scale: 0.50
+
+terms:
+  anchor:
+    spring: { k: 6.0, r0: 12.0, damping: 0.0 }
+  focus: { k: 0.5, sigma: 40.0 }
+  boundary: { k: 2.0, softness: 4.0 }
+  label_label_repulse: { k: 0.4, d0: 10.0, exponent: 2.0 }
+  line_label_repulse:  { k: 0.3, d0: 10.0, exponent: 2.0 }
+  point_label_repulse: { k: 0.3, d0: 10.0, exponent: 2.0 }
+  label_label_inside:  { k: 0.2, margin: 4.0 }
+  line_label_inside:   { k: 0.2, margin: 4.0 }
+  point_label_inside:  { k: 0.2, margin: 4.0 }
+  area_cross:          { k: 1.2, sigma: 6.0 }
+  area_embed:          { k: 0.8, sigma: 6.0, edge_bias: 0.0 }

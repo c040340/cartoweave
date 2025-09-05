@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Dict, Any, List
 import numpy as np
 
+from cartoweave.utils.numerics import is_finite_array, sanitize_array
+from cartoweave.utils.logging import logger
 from .solve_plan_runner import run_solve_plan
 
 
@@ -232,22 +234,34 @@ def run_scene_script(
             rec = rec[1:]
 
         pos_full = []
-        for arr in pos:
+        for idx_arr, arr in enumerate(pos):
             arr = np.asarray(arr, float)
             if arr.shape[0] == len(ids):
                 full = np.full_like(P_pre, np.nan)
                 full[ids] = arr
-                pos_full.append(full)
-            else:
-                pos_full.append(arr)
+                arr = full
+            if not is_finite_array(arr):
+                logger.warning(
+                    "sanitize history: positions frame=%d",
+                    len(history_pos) + idx_arr,
+                )
+                arr = sanitize_array(arr)
+            pos_full.append(arr)
         pos = pos_full
 
-        for r in rec:
+        for idx_r, r in enumerate(rec):
             P_snap = np.asarray(r.get("P"), float)
             if P_snap.shape[0] == len(ids):
                 full = np.full_like(P_pre, np.nan)
                 full[ids] = P_snap
-                r["P"] = full
+                P_snap = full
+                r["P"] = P_snap
+            if not is_finite_array(P_snap):
+                logger.warning(
+                    "sanitize history: records.P frame=%d",
+                    len(history_rec) + idx_r,
+                )
+                r["P"] = sanitize_array(P_snap)
 
             comps = r.get("comps")
             if isinstance(comps, dict):
@@ -257,9 +271,15 @@ def run_scene_script(
                     if arr_np.shape[0] == len(ids):
                         full = np.zeros((P_pre.shape[0], 2), float)
                         full[ids] = arr_np
-                        comps_full[k] = full
-                    else:
-                        comps_full[k] = arr_np
+                        arr_np = full
+                    if not is_finite_array(arr_np):
+                        logger.warning(
+                            "sanitize history: frame=%d term=%s",
+                            len(history_rec) + idx_r,
+                            k,
+                        )
+                        arr_np = sanitize_array(arr_np)
+                    comps_full[k] = arr_np
                 r["comps"] = comps_full
 
                 if cfg.get("DEBUG_VISIBILITY_ASSERTS", False):

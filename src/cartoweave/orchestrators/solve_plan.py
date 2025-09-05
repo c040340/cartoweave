@@ -8,6 +8,7 @@ import numpy as np
 
 from cartoweave.engine.solvers import lbfgs
 from cartoweave.utils.logging import logger
+from cartoweave.utils.numerics import is_finite_array, sanitize_array
 
 Stage = Dict[str, Any]
 
@@ -53,24 +54,24 @@ def _debug_enabled(cfg: Dict[str, Any]) -> bool:
     env_flag = os.environ.get("CFG_DEBUG_FORCES", "")
     if env_flag and env_flag not in {"0", "false", "False"}:
         return True
-    return bool(
-        cfg.get("solver", {})
-        .get("tuning", {})
-        .get("debug", {})
-        .get("force_stats")
-    )
+    return bool(cfg.get("solver", {}).get("debug", {}).get("force_stats"))
 
 
 def _log_config_stats(cfg: Dict[str, Any]) -> None:
-    tuning = cfg.get("solver", {}).get("tuning", {})
-    terms = tuning.get("terms", {})
-    terms_sum = float(sum(float(v.get("weight", 0.0)) for v in terms.values()))
-    anchor_k = float(tuning.get("anchor", {}).get("k_spring", 0.0))
-    thr = tuning.get("threshold", {})
+    terms_cfg = cfg.get("terms", {})
+    anchor_k = float(terms_cfg.get("anchor", {}).get("spring", {}).get("k", 0.0))
+    terms_sum = float(
+        sum(
+            float(v.get("k", 0.0))
+            for key, v in terms_cfg.items()
+            if isinstance(v, dict) and key != "anchor"
+        )
+    )
+    thr = cfg.get("solver", {}).get("threshold", {})
     abs_thr = thr.get("abs")
     rel_thr = thr.get("rel")
     msg = (
-        f"[cfg] terms_weight_sum={terms_sum}, anchor.k_spring={anchor_k}, "
+        f"[cfg] terms_k_sum={terms_sum}, anchor.spring.k={anchor_k}, "
         f"threshold.abs={abs_thr}, threshold.rel={rel_thr}"
     )
     if terms_sum <= 1e-12 and anchor_k <= 1e-12:
@@ -90,13 +91,9 @@ def run_solve_plan(
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     """Execute a simple multi-stage solve plan."""
 
-    cfg_mode = (
-        cfg.get("solver", {}).get("public", {}).get("mode", "lbfgsb")
-        if isinstance(cfg, dict)
-        else "lbfgsb"
-    )
+    cfg_mode = cfg.get("solver", {}).get("mode", "lbfgsb") if isinstance(cfg, dict) else "lbfgsb"
     mode = str(mode or cfg_mode).lower()
-    profile = cfg.get("solver", {}).get("public", {}).get("profile") if isinstance(cfg, dict) else None
+    profile = cfg.get("solver", {}).get("profile") if isinstance(cfg, dict) else None
 
     if mode in {"lbfgs", "lbfgsb"}:
         solver_fn = lbfgs.run
@@ -121,27 +118,15 @@ def run_solve_plan(
     use_warmup = False
     step_cap = None
     if isinstance(cfg, dict):
-        use_warmup = (
-            cfg.get("solver", {}).get("public", {}).get("use_warmup", False)
-        )
-        step_cap = (
-            cfg.get("solver", {})
-            .get("tuning", {})
-            .get("warmup", {})
-            .get("step_cap_px")
-        )
+        use_warmup = cfg.get("solver", {}).get("use_warmup", False)
+        step_cap = cfg.get("solver", {}).get("warmup", {}).get("step_cap_px")
     if use_warmup and len(stages) == 1:
         warm = {
             "name": "warmup_no_anchor",
-            "scale": {
-                "solver.tuning.anchor.k_spring": 0.0,
-                "anchor.k.spring": 0.0,
-            },
+            "scale": {"terms.anchor.spring.k": 0.0, "anchor.k.spring": 0.0},
         }
         if step_cap is not None:
-            warm.setdefault("override", {})[
-                "solver.tuning.anti_jump.step_cap_px"
-            ] = float(step_cap)
+            warm.setdefault("override", {})["solver.anti_jump.step_cap_px"] = float(step_cap)
         stages.insert(0, warm)
         logger.info(
             "[orchestrator] injected warmup_no_anchor (k_spring→0, step_cap_px=%s)",
@@ -187,9 +172,33 @@ def run_solve_plan(
                 pos = pos[1:]
                 eng = eng[1:]
                 rec = rec[1:]
-        history_pos.extend(pos)
-        history_E.extend(eng)
-        history_rec.extend(rec)
+        for idx, arr in enumerate(pos):
+            if not is_finite_array(arr):
+                logger.warning(
+                    "sanitize history: positions frame=%d", len(history_pos) + idx
+                )
+                arr = sanitize_array(arr)
+            history_pos.append(np.asarray(arr, float))
+        for val in eng:
+            history_E.append(float(val))
+        for idx, r in enumerate(rec):
+            P_snap = np.asarray(r.get("P"), float)
+            if not is_finite_array(P_snap):
+                logger.warning(
+                    "sanitize history: records.P frame=%d", len(history_rec) + idx
+                )
+                r["P"] = sanitize_array(P_snap)
+            comps = r.get("comps", {}) or {}
+            for k, v in list(comps.items()):
+                arr = np.asarray(v, float)
+                if not is_finite_array(arr):
+                    logger.warning(
+                        "sanitize history: frame=%d term=%s",
+                        len(history_rec) + idx,
+                        k,
+                    )
+                    comps[k] = sanitize_array(arr)
+            history_rec.append(r)
         stages_meta.append({"name": stage_name})
 
     history = {"positions": history_pos, "energies": history_E, "records": history_rec}

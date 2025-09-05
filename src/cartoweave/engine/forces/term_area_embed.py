@@ -18,7 +18,7 @@ from cartoweave.utils.shape import as_nx2
 from cartoweave.utils.logging import logger
 
 from cartoweave.utils.numerics import (
-    sigmoid_np, d_sigmoid_np, softabs_np, softmin_weights_np,
+    sigmoid_np, d_sigmoid_np, softabs_np,
 )
 
 @register("area.embed")
@@ -52,14 +52,23 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
     idxs = np.nonzero(mask)[0]
     skip_circle = int(np.count_nonzero(~mask))
 
-    k_embed   = float(cfg.get("area.k.embed", 200.0))
-    k_tan     = float(cfg.get("area.k.tan",   30.0))
-    ratio_in  = float(cfg.get("area.embed.ratio_in", 0.60))
-    gate_eta  = float(cfg.get("area.tan.gate.eta", 2.0))
-    gate_slack= float(cfg.get("area.tan.gate.slack", 1.0))
-    beta_edge = float(cfg.get("area.embed.beta_edge", 6.0))  # softmin 温度（稍大些更稳）
+    term_cfg = cfg.get("terms", {}).get("area_embed", {})
+    k_embed   = float(term_cfg.get("k", 0.8))
+    k_tan     = k_embed
+    ratio_in  = 0.60
+    gate_eta  = 2.0
+    gate_slack= 1.0
+    edge_bias = float(np.clip(term_cfg.get("edge_bias", 0.0), 0.0, 1.0))
+    st_cfg = (
+        cfg.get("solver", {})
+        .get("internals", {})
+        .get("stability", {})
+    )
+    sigma     = max(float(term_cfg.get("sigma", 6.0)), float(st_cfg.get("eps_sigma", 1.0e-3)))
+    exp_clip  = float(st_cfg.get("exp_clip", 40.0))
+    eps_norm  = float(st_cfg.get("eps_norm", 1.0e-12))
+    area_eps  = float(st_cfg.get("area_eps", 1.0e-12))
     eps_abs   = float(cfg.get("eps.abs", EPS_ABS))
-    eps_div   = 1e-9
 
     F = np.zeros_like(P, float)
     E_total = 0.0
@@ -77,8 +86,13 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         if poly is None:
             continue
         arr = np.asarray(poly, float).reshape(-1, 2)
+        if not np.isfinite(arr).all():
+            logger.warning("area_embed: skip non-finite polygon ai=%d", ai)
+            continue
         nE = arr.shape[0]
         if nE < 3:
+            continue
+        if abs(poly_signed_area(arr)) <= area_eps:
             continue
 
         # label 尺寸/中心
@@ -119,13 +133,29 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
             q_list[k]  = (qx, qy)
             tparam[k]  = t
 
-        # softmin 权重：w = softmax(-β * softabs(s))
         sabs = softabs_np(s_list, eps_abs)
-        wgt = softmin_weights_np(sabs, beta_edge)
-        # dw/dv = (-β) * (diag(w) - w w^T)
-        J = (-beta_edge) * (np.diag(wgt) - np.outer(wgt, wgt))  # (nE,nE)
-        # dv/ds = s / softabs(s)
-        dv_ds = s_list / np.maximum(sabs, eps_div)              # (nE,)
+        coeff_s = s_list / np.maximum(sabs, 1e-9)
+        d2 = s_list * s_list
+        expo = -d2 / (2.0 * sigma * sigma)
+        expo = np.clip(expo, -exp_clip, exp_clip)
+        w0 = np.exp(expo)
+        dv_ds_w = s_list / (sigma * sigma)
+        dv_dC = (dv_ds_w[:, None]) * n_list
+        dw0_dC = w0[:, None] * (-dv_dC)
+        if edge_bias != 0.0:
+            w_raw = (1.0 - edge_bias) * w0 + edge_bias
+            dw_raw_dC = (1.0 - edge_bias) * dw0_dC
+        else:
+            w_raw = w0
+            dw_raw_dC = dw0_dC
+        sum_w = float(np.sum(w_raw))
+        sum_w = max(sum_w, eps_norm)
+        wgt = w_raw / sum_w
+        d_sum_w_dC = dw_raw_dC.sum(axis=0)
+        dwgt_dC = (dw_raw_dC * sum_w - w_raw[:, None] * d_sum_w_dC) / (sum_w * sum_w)
+        if not np.isfinite(wgt).all():
+            logger.warning("area_embed: non-finite weights label=%d skipped", i)
+            continue
 
         # 每条边的能量（配对）
         s_star = (2.0*ratio_in - 1.0) * rn_list                # (nE,)
@@ -133,11 +163,11 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
         E_perp = 0.5 * k_embed * (ds*ds)                       # (nE,)
 
         # 切向 gated
-        inv_eta = 1.0 / max(gate_eta, eps_div)
+        inv_eta = 1.0 / max(gate_eta, 1e-9)
         x = ((rn_list + gate_slack) - sabs) * inv_eta
         g = sigmoid_np(x)
-        if not (np.isfinite(g).all() and np.isfinite(wgt).all()):
-            raise FloatingPointError("area_embed: non-finite gate/weights")
+        if not np.isfinite(g).all():
+            raise FloatingPointError("area_embed: non-finite gate")
         E_tan = 0.5 * k_tan * g * (u_list*u_list)              # (nE,)
 
         # 总能量：按权重加权
@@ -152,21 +182,18 @@ def term_area_embed(scene, P: np.ndarray, cfg, phase="pre_anchor"):
 
         # ∂E_tan_k/∂C = 0.5*k_tan*(u_k^2)*∂g/∂C + k_tan*g*u_k*∂u_k/∂C
         # g = σ(((r_n+slack) - softabs(s))/η)
-        gprime = d_sigmoid_np(x) * (-inv_eta) * dv_ds          # (nE,)
+        gprime = d_sigmoid_np(x) * (-inv_eta) * coeff_s        # (nE,)
         dEtan_dC = (0.5 * k_tan * (u_list*u_list) * gprime)[:,None] * n_list \
                  + (k_tan * g * u_list)[:,None] * t_list       # (nE,2)
 
         dEk_dC = dEperp_dC + dEtan_dC                          # (nE,2)
 
-        # 再算 ∂w/∂C：dw/dC = J · dv/dC = J · (dv/ds * ds/dC)
-        # 其中 ds/dC ≈ n_k
-        dv_dC = (dv_ds[:,None]) * n_list                       # (nE,2)
-        # 按分量把 J 作用到 dv/dC： (nE,nE) · (nE,2) -> (nE,2)
-        dw_dC = J @ dv_dC
-
         # 汇总 ∂E/∂C
         # Σ_k w_k * dEk/dC  +  Σ_k E_k * dw_k/dC
-        grad = (wgt[:,None] * dEk_dC).sum(axis=0) + (E_k[:,None] * dw_dC).sum(axis=0)
+        grad = (wgt[:,None] * dEk_dC).sum(axis=0) + (E_k[:,None] * dwgt_dC).sum(axis=0)
+        if not np.isfinite(grad).all():
+            logger.warning("area_embed: non-finite grad label=%d skipped", i)
+            continue
 
         # 力 = -∇E
         F[i,0] += -grad[0]

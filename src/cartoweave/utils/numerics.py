@@ -47,3 +47,16 @@ def softmin_weights_np(vals: np.ndarray, beta: float, use_abs: bool = False) -> 
     w = np.exp(z)
     return w / (w.sum() + 1e-12)
 
+
+def is_finite_array(x: np.ndarray) -> bool:
+    """Return True if *x* contains only finite values."""
+    return np.isfinite(np.asarray(x, dtype=float)).all()
+
+
+def sanitize_array(x: np.ndarray) -> np.ndarray:
+    """Replace non-finite values in *x* with zeros."""
+    arr = np.asarray(x, dtype=float)
+    if np.isfinite(arr).all():
+        return arr
+    return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+

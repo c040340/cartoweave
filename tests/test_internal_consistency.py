@@ -23,7 +23,7 @@ def test_sumF_plus_grad_zero_anchor_ll_boundary():
         points=np.zeros((0, 2)), lines=np.zeros((0, 2, 2)), areas=np.zeros((0, 6)),
     )
     cfg = {
-        "anchor.k.spring": 10.0,
+        "terms": {"anchor": {"spring": {"k": 10.0}}},
         "ll.geom": "rect", "ll.k.repulse": 150.0, "ll.k.inside": 50.0,
         "boundary.k.wall": 80.0, "boundary.wall_eps": 0.3,
     }

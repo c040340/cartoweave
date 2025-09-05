@@ -24,7 +24,7 @@ def test_lbfgs_records_per_evaluation():
     P0 = np.asarray(scene["labels_init"], float)
     cfg = {
         "solver": {"lbfgs": {"maxiter": 20, "pgtol": 1e-1}},
-        "anchor.k.spring": 10.0,
+        "terms": {"anchor": {"spring": {"k": 10.0}}},
     }
 
     outer_calls = {"n": 0}

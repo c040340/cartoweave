@@ -159,6 +159,73 @@ class SolverInternals(BaseModel):
     clip: ClipConfig = Field(default_factory=ClipConfig)
     temperature: TemperatureConfig = Field(default_factory=TemperatureConfig)
     finite_check: Literal["warn", "raise", "ignore"] = "warn"
+    stability: "StabilityConfig" = Field(default_factory=lambda: StabilityConfig())
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class StabilityConfig(BaseModel):
+    softplus_limit: float = 40.0
+    logsumexp_floor: float = -40.0
+    eps_sigma: float = 1.0e-3
+    eps_norm: float = 1.0e-12
+    exp_clip: float = 40.0
+    area_eps: float = 1.0e-12
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AnchorSpringCfg(BaseModel):
+    k: float = 6.0
+    r0: float = 12.0
+    damping: float = 0.0
+    max_norm_cap: float | None = None
+
+
+class FocusCfg(BaseModel):
+    k: float = 0.5
+    sigma: float = 40.0
+
+
+class BoundaryCfg(BaseModel):
+    k: float = 2.0
+    softness: float = 4.0
+
+
+class RepulseCfg(BaseModel):
+    k: float = 0.3
+    d0: float = 10.0
+    exponent: float = 2.0
+
+
+class InsideCfg(BaseModel):
+    k: float = 0.2
+    margin: float = 4.0
+
+
+class AreaCrossCfg(BaseModel):
+    k: float = 1.2
+    sigma: float = 6.0
+
+
+class AreaEmbedCfg(BaseModel):
+    k: float = 0.8
+    sigma: float = 6.0
+    edge_bias: float = 0.0
+
+
+class TermsCfg(BaseModel):
+    anchor: dict = Field(default_factory=lambda: {"spring": AnchorSpringCfg()})
+    focus: FocusCfg = FocusCfg()
+    boundary: BoundaryCfg = BoundaryCfg()
+    label_label_repulse: RepulseCfg = RepulseCfg()
+    line_label_repulse: RepulseCfg = RepulseCfg()
+    point_label_repulse: RepulseCfg = RepulseCfg()
+    label_label_inside: InsideCfg = InsideCfg()
+    line_label_inside: InsideCfg = InsideCfg()
+    point_label_inside: InsideCfg = InsideCfg()
+    area_cross: AreaCrossCfg = AreaCrossCfg()
+    area_embed: AreaEmbedCfg = AreaEmbedCfg()
 
     model_config = ConfigDict(extra="forbid")
 
@@ -166,6 +233,7 @@ class SolverInternals(BaseModel):
 class RouteGenCfg(BaseModel):
     mean_length_scale: float = 0.25
     k_sigma_bound: int = 5
+    max_retry: int = 50
     min_vertex_spacing_scale: float = 0.01
     min_edge_margin_scale: float = 0.02
     lower_bound_scale: float = 0.02
@@ -175,6 +243,7 @@ class RouteGenCfg(BaseModel):
 class AreaGenCfg(BaseModel):
     mean_area_scale: float = 0.05
     k_sigma_bound: int = 5
+    max_retry: int = 50
     min_vertex_spacing_scale: float = 0.01
     min_edge_margin_scale: float = 0.02
     lower_bound_scale: float = 0.01
@@ -255,9 +324,10 @@ class SolverConfig(BaseModel):
 
 
 class RootConfig(BaseModel):
-    solver: SolverConfig = Field(default_factory=SolverConfig)
+    solver: Dict[str, Any] = Field(default_factory=dict)
     viz: VizConfig = Field(default_factory=VizConfig)
     data: DataConfig = Field(default_factory=DataConfig)
+    terms: TermsCfg = Field(default_factory=TermsCfg)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -271,15 +341,19 @@ def validate_config(cfg: Dict[str, Any]) -> None:
                 raise ValueError(
                     f"Invalid configuration: legacy dotted key '{full_key}'"
                 )
-            if full_key == "solver.tuning.term_weights":
+            if full_key.endswith("term_weights"):
                 raise ValueError(
-                    "Invalid configuration: 'solver.tuning.term_weights' is no longer supported"
+                    "Invalid configuration: 'term_weights' is no longer supported"
                 )
             if isinstance(value, Mapping):
                 _scan(value, full_key)
 
     _scan(cfg)
 
+    topk = cfg.get("solver", {}).get("topk", {})
+    ms = topk.get("min_share")
+    if ms is not None and ms > 1.0:
+        raise ValueError("Invalid configuration: solver.topk.min_share > 1")
     try:
         RootConfig(**cfg)
     except ValidationError as exc:  # pragma: no cover - exercised in tests
@@ -292,10 +366,8 @@ def validate_config(cfg: Dict[str, Any]) -> None:
 
 __all__ = [
     "validate_config",
-    "SolverPublic",
-    "SolverTuning",
-    "SolverInternals",
     "VizConfig",
     "DataRandomCfg",
+    "TermsCfg",
 ]
 

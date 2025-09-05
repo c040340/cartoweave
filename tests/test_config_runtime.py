@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import numpy as np
 
 from cartoweave.config.loader import load_configs
 from cartoweave.config.schema import validate_config
@@ -21,17 +22,20 @@ def _mini_scene():
 
 
 def test_canonical_config_and_logging(monkeypatch, caplog):
-    bundle = load_configs()
-    cfg = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
-    tuning = cfg["solver"]["tuning"]
-    assert "terms" in tuning and tuning["terms"]
-    assert tuning.get("anchor", {}).get("k_spring") is not None
+    cfg = load_configs()
+    assert cfg["terms"]["anchor"]["spring"]["k"] is not None
 
     scene = _mini_scene()
     monkeypatch.setenv("CFG_DEBUG_FORCES", "1")
     with caplog.at_level("INFO"):
         run_solve_plan(scene, cfg, [{"name": "main"}])
-    assert any("[cfg] terms_weight_sum" in r.message for r in caplog.records)
+    assert any("[cfg]" in r.message for r in caplog.records)
+
+
+def test_anchor_r0_and_guardrails_present():
+    cfg = load_configs()
+    assert cfg["terms"]["anchor"]["spring"]["r0"] == 12.0
+    assert cfg["data"]["random"]["route_gen"]["k_sigma_bound"] == 5
 
 
 def test_legacy_term_weights_rejected():

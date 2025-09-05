@@ -29,38 +29,26 @@ def enabled_terms(cfg: Dict[str, Any], phase: str) -> List[str]:
     - 例如：只测 anchor → {"anchor.k.spring": 10.0}（其它 k 默认=0，不会启用）
     """
     terms: List[str] = []
+    tcfg = cfg.get("terms", {})
     if phase == "pre_anchor":
-        # label↔label（仅在 repulse/inside 有正权重时启用）
-        if float(cfg.get("ll.k.repulse", 0)) > 0 or float(cfg.get("ll.k.inside", 0)) > 0:
-            geom = cfg.get("ll.geom", "rect")
-            terms.append("ll.rect" if geom == "rect" else "ll.disk")
-
-        # 边界（画幅四墙）
-        if float(cfg.get("boundary.k.wall", 0)) > 0:
+        if tcfg.get("label_label_repulse", {}).get("k", cfg.get("ll.k.repulse", 0)) > 0 or tcfg.get("label_label_inside", {}).get("k", cfg.get("ll.k.inside", 0)) > 0:
+            terms.append("ll.rect")
+        if tcfg.get("boundary", {}).get("k", cfg.get("boundary.k.wall", 0)) > 0:
             terms.append("boundary.wall")
-
-        # 点-Label、线-Label
-        if float(cfg.get("pl.k.repulse", 0)) > 0 or float(cfg.get("pl.k.inside", 0)) > 0:
+        if tcfg.get("point_label_repulse", {}).get("k", cfg.get("pl.k.repulse", 0)) > 0 or tcfg.get("point_label_inside", {}).get("k", cfg.get("pl.k.inside", 0)) > 0:
             terms.append("pl.rect")
-        if float(cfg.get("ln.k.repulse", 0)) > 0 or float(cfg.get("ln.k.inside", 0)) > 0:
+        if tcfg.get("line_label_repulse", {}).get("k", cfg.get("ln.k.repulse", 0)) > 0 or tcfg.get("line_label_inside", {}).get("k", cfg.get("ln.k.inside", 0)) > 0:
             terms.append("ln.rect")
-
-        # 面相关
-        if float(cfg.get("area.k.embed", 0)) > 0:
+        if tcfg.get("area_embed", {}).get("k", cfg.get("area.k.embed", 0)) > 0:
             terms.append("area.embed")
-        if float(cfg.get("area.k.cross", 0)) > 0:
+        if tcfg.get("area_cross", {}).get("k", cfg.get("area.k.cross", 0)) > 0:
             terms.append("area.cross")
-        if float(cfg.get("area.k.softout", 0)) > 0:
-            terms.append("area.softout")
-
-        # focus 场（吸引/定向）
-        if float(cfg.get("focus.k.attract", 0)) > 0:
+        if tcfg.get("focus", {}).get("k", cfg.get("focus.k.attract", 0)) > 0:
             terms.append("focus.attract")
         return terms
 
     if phase == "anchor":
-        # 锚点弹簧
-        if float(cfg.get("anchor.k.spring", 0)) > 0:
+        if tcfg.get("anchor", {}).get("spring", {}).get("k", cfg.get("anchor.k.spring", 0)) > 0:
             terms.append("anchor.spring")
         return terms
 

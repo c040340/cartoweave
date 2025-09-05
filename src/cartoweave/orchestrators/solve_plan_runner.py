@@ -22,6 +22,8 @@ import numpy as np
 
 from cartoweave.engine.solvers import lbfgs
 from .solve_plan import _debug_enabled, _log_config_stats
+from cartoweave.utils.numerics import is_finite_array, sanitize_array
+from cartoweave.utils.logging import logger
 
 
 def run_solve_plan(
@@ -93,9 +95,33 @@ def run_solve_plan(
                 eng = eng[1:]
                 rec = rec[1:]
 
-        history_pos.extend(pos)
-        history_E.extend(eng)
-        history_rec.extend(rec)
+        for idx, arr in enumerate(pos):
+            if not is_finite_array(arr):
+                logger.warning(
+                    "sanitize history: positions frame=%d", len(history_pos) + idx
+                )
+                arr = sanitize_array(arr)
+            history_pos.append(np.asarray(arr, float))
+        for val in eng:
+            history_E.append(float(val))
+        for idx, r in enumerate(rec):
+            P_snap = np.asarray(r.get("P"), float)
+            if not is_finite_array(P_snap):
+                logger.warning(
+                    "sanitize history: records.P frame=%d", len(history_rec) + idx
+                )
+                r["P"] = sanitize_array(P_snap)
+            comps = r.get("comps", {}) or {}
+            for k, v in list(comps.items()):
+                arr = np.asarray(v, float)
+                if not is_finite_array(arr):
+                    logger.warning(
+                        "sanitize history: frame=%d term=%s",
+                        len(history_rec) + idx,
+                        k,
+                    )
+                    comps[k] = sanitize_array(arr)
+            history_rec.append(r)
 
         stages_meta.append({"name": stage_name})
 

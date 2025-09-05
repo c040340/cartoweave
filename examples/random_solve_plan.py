@@ -12,19 +12,13 @@ import numpy as np
 from cartoweave.viz.build_viz_payload import build_viz_payload  # noqa: E402
 from cartoweave.viz.metrics import collect_solver_metrics  # noqa: E402
 from cartoweave.viz.backend import use_compatible_backend
+from cartoweave.utils.numerics import is_finite_array
 
 use_compatible_backend()
 
 from cartoweave.data.random import get_scene  # noqa: E402
 from cartoweave.api import solve_scene_script  # noqa: E402
-from cartoweave.config.loader import (
-    load_configs,
-    print_effective_config,
-)  # noqa: E402
-try:  # noqa: E402
-    from cartoweave.config.schema import ConfigBundle  # type: ignore
-except ImportError:  # noqa: E402
-    from cartoweave.config.schema import RootConfig as ConfigBundle  # type: ignore
+from cartoweave.config.loader import load_configs, print_effective_config  # noqa: E402
 from cartoweave.utils.dict_merge import deep_update  # noqa: E402
 from cartoweave.utils.logging import logger  # noqa: E402
 from cartoweave.engine.core_eval import scalar_potential_field  # noqa: E402
@@ -65,8 +59,7 @@ def run_example_headless(scene: Dict[str, Any], plan, cfg: Dict[str, Any]):
     if not plan:
         raise ValueError("empty solve_plan content in random_solve_plan example")
     if not cfg:
-        bundle = load_configs()
-        cfg = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
+        cfg = load_configs()
     script = scene.get("scene_script")
     if not script:
         label_id = None
@@ -85,33 +78,53 @@ def run_example_headless(scene: Dict[str, Any], plan, cfg: Dict[str, Any]):
 
 
 def main():
-    bundle = load_configs(
+    import argparse, json
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--frame", type=str, help="WIDTHxHEIGHT override")
+    parser.add_argument("--override", type=str, help="JSON blob of overrides")
+    parser.add_argument("--debug-nan", action="store_true", help="diagnose first NaN")
+    args = parser.parse_args()
+
+    cfg = load_configs(
         internals_path="../configs/solver.internals.yaml",
         tuning_path="../configs/solver.tuning.yaml",
         public_path="../configs/solver.public.yaml",
         viz_path="../configs/viz.yaml",
     )
-    bundle_dict = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
-    cfg = deep_update(
-        bundle_dict,
-        {
-            "solver": {
-                "tuning": {
-                    "terms": {
-                        "label_label_repulse": {"weight": 150.0},
-                        "point_label_repulse": {"weight": 200.0},
-                        "line_label_repulse": {"weight": 180.0},
-                        "boundary_wall": {"weight": 80.0},
-                    },
-                    "anchor": {"k_spring": 10.0},
-                }
-            },
-            "viz": {"show": True, "field": {"kind": "none", "cmap": "viridis"}},
-        },
-    )
-    bundle = ConfigBundle(**cfg)
-    print_effective_config(bundle)
-    viz = deep_update(bundle_dict["viz"], {})
+    overrides = {}
+    if args.frame:
+        try:
+            w, h = map(int, args.frame.lower().split("x"))
+            overrides = deep_update(overrides, {"data": {"random": {"frame": {"width": w, "height": h}}}})
+        except Exception:  # pragma: no cover - CLI parsing error
+            pass
+    if args.override:
+        try:
+            overrides = deep_update(overrides, json.loads(args.override))
+        except Exception:  # pragma: no cover - bad JSON
+            pass
+    if overrides:
+        def _flatten(d, prefix=""):
+            for k, v in d.items():
+                path = f"{prefix}.{k}" if prefix else k
+                if isinstance(v, dict):
+                    yield from _flatten(v, path)
+                else:
+                    yield path, v
+        for path, val in _flatten(overrides):
+            prev = cfg
+            for key in path.split("."):
+                if isinstance(prev, dict) and key in prev:
+                    prev = prev[key]
+                else:
+                    prev = None
+                    break
+            logger.info("[override] %s: %s → %s", path, prev, val)
+        cfg = deep_update(cfg, overrides)
+
+    print_effective_config(cfg)
+    viz = deep_update(cfg.get("viz", {}), {})
     viz_eff = deep_update(viz, {})
     logger.info(
         "configs loaded config=%s viz=%s run=%s anchor_marker_size=%.1f",
@@ -120,23 +133,15 @@ def main():
         "<memory>",
         float(viz_eff.get("layout", {}).get("anchor_marker_size", 0.0)),
     )
-    data_rand = bundle_dict.get("data", {}).get("random", {})
+    data_rand = cfg.get("data", {}).get("random", {})
     frame_w = data_rand.get("frame", {}).get("width")
     frame_h = data_rand.get("frame", {}).get("height")
-    counts = data_rand.get("counts", {})
-    route_gen = data_rand.get("route_gen", {})
-    area_gen = data_rand.get("area_gen", {})
 
     scene = get_scene(
         use_random=GENERATE_NEW,
         cache_path=CACHE_PATH,
         with_scene_script=True,
-        gen_cfg={
-            "frame": {"width": frame_w, "height": frame_h},
-            "counts": counts,
-            "route_gen": route_gen,
-            "area_gen": area_gen,
-        },
+        gen_cfg=data_rand,
     )
     scene_script = scene.get("scene_script") or {"steps": [{"name": "step0"}]}
     if isinstance(scene_script, list):
@@ -144,6 +149,41 @@ def main():
     plan = build_solve_plan(cfg)
 
     info = solve_scene_script(scene, scene_script, cfg, solve_plan=plan)
+    debug_nan = args.debug_nan or os.environ.get("CARTOWEAVE_DEBUG_NAN") in {
+        "1",
+        "true",
+        "True",
+    }
+    nan_info = None
+    if debug_nan:
+        hist = info.get("history", {})
+        pos = hist.get("positions", [])
+        recs = hist.get("records", [])
+        for i, arr in enumerate(pos):
+            if not is_finite_array(arr):
+                phase = recs[i].get("meta", {}).get("stage_name") if i < len(recs) else None
+                nan_info = {"frame": i, "field": "positions", "term": "total", "phase": phase}
+                break
+        if nan_info is None:
+            for i, r in enumerate(recs):
+                P_snap = r.get("P")
+                if P_snap is not None and not is_finite_array(P_snap):
+                    phase = r.get("meta", {}).get("stage_name")
+                    nan_info = {"frame": i, "field": "records.P", "term": "total", "phase": phase}
+                    break
+                for k, v in (r.get("comps") or {}).items():
+                    if not is_finite_array(v):
+                        phase = r.get("meta", {}).get("stage_name")
+                        nan_info = {"frame": i, "field": "records", "term": k, "phase": phase}
+                        break
+                if nan_info:
+                    break
+        if nan_info:
+            print(
+                f"FIRST_NAN frame={nan_info['frame']} field={nan_info['field']} term={nan_info['term']} phase={nan_info['phase']}"
+            )
+        else:
+            print("FIRST_NAN none")
     print(
         f"[example] steps={len(scene_script['steps'])} frame={scene['frame_size']}"
     )
@@ -152,6 +192,17 @@ def main():
     print("[random_solve_plan] labels:", P_final.shape[0], "max_disp:", f"{max_disp:.2f}")
 
     payload = build_viz_payload(info)
+    if debug_nan:
+        payload_ok = all(
+            is_finite_array(f.get("P"))
+            and all(is_finite_array(c) for c in f.get("comps", {}).values())
+            for f in payload.get("frames", [])
+        )
+        print(
+            "ROOT_CAUSE_REPORT first_nan=%s payload_finite=%s guards=[sigma_clamp,exp_clip,edge_bias_clamp,normalize]"%
+            (nan_info if nan_info else "none", payload_ok)
+        )
+        print(f"[debug] viewer_cfg_same_object={True}")
 
     if interactive_view and cfg.get("viz", {}).get("show", False):
         lines_draw = [seg for seg in scene.get("lines", [])]

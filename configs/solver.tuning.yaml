@@ -1,38 +1,19 @@
-tuning:
+solver:
   merge:        { mode: sum, temperature: 1.0 }
   normalize:    { kind: l2 }
-
-  # Do not prune small forces at the optimizer layer initially.
   threshold:    { abs: null, rel: null }
-
   topk:         { enable: false, k: 4, min_share: 0.0 }
-
   lbfgsb:       { m: 10, maxiter: 300 }
   stopping:     { gtol: 1.0e-4 }
-
-  anti_jump:    { step_cap_px: 30.0 }     # unified name
+  anti_jump:    { step_cap_px: 30.0 }
   clamp:        { optimize_force_max: 1.0e6 }
+  warmup:       { steps: 1 }
 
+terms:
   anchor:
-    k_spring: 6.0
+    spring: { k: 5.0 }
 
-  terms:
-    boundary_wall:           { weight: 2.0 }
-    boundary_in:             { weight: 0.5 }
-    area_cross:              { weight: 1.2 }
-    area_embed:              { weight: 0.8 }
-    focus:                   { weight: 0.5 }   # effective only if data provides focus.center
-
-    label_label_repulse:     { weight: 0.4 }
-    line_label_repulse:      { weight: 0.3 }
-    point_label_repulse:     { weight: 0.3 }
-
-    label_label_inside:      { weight: 0.2 }
-    line_label_inside:       { weight: 0.2 }
-    point_label_inside:      { weight: 0.2 }
-
-  warmup:
-    steps: 1
-    # step_cap_px: 3.0   # uncomment if your orchestrator consumes it for warmup stages
-  data:
-    random: {}
+data:
+  random:
+    route_gen:
+      mean_length_scale: 0.30

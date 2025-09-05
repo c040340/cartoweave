@@ -72,7 +72,7 @@ def base_scene():
     )
 
 @pytest.mark.parametrize("name,cfg", [
-    ("anchor.spring", {"anchor.k.spring": 10.0}),
+    ("anchor.spring", {"terms": {"anchor": {"spring": {"k": 10.0}}}}),
     ("boundary.wall", {"boundary.k.wall": 80.0, "boundary.wall_eps": 0.3}),
     ("ln.rect",       {"ln.k.repulse": 180.0, "ln.k.inside": 80.0}),
     ("focus.huber",   {"focus.k.attract": 30.0,

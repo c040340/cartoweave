@@ -2,7 +2,7 @@
 
 This module assembles configuration namespaces from YAML files, applies
 optional overrides and profile presets, validates against the canonical schema
-and returns a :class:`ConfigBundle` instance.
+and returns a merged configuration mapping.
 """
 
 from __future__ import annotations
@@ -15,10 +15,6 @@ import yaml
 
 from .schema import validate_config
 from cartoweave.utils.dict_merge import deep_update
-try:  # pragma: no cover - compatibility with schema alias
-    from .schema import ConfigBundle
-except ImportError:  # pragma: no cover
-    from .schema import RootConfig as ConfigBundle
 
 __all__ = ["load_configs", "print_effective_config"]
 
@@ -45,14 +41,60 @@ def _read_yaml(path: str | Path) -> Dict[str, Any]:
         return data
 
 
+def _inject_legacy_term_keys(cfg: Dict[str, Any]) -> None:
+    """Populate legacy dotted keys expected by older force implementations."""
+    terms = cfg.get("terms", {})
+    anc = terms.get("anchor", {}).get("spring", {})
+    if anc:
+        cfg["anchor.k.spring"] = anc.get("k")
+        r0 = anc.get("r0")
+        if r0 is not None:
+            cfg["anchor.r0.points"] = r0
+            cfg["anchor.r0.lines"] = r0
+            cfg["anchor.r0.areas"] = r0
+    foc = terms.get("focus", {})
+    if foc:
+        cfg["focus.k.attract"] = foc.get("k")
+        sig = foc.get("sigma")
+        cfg["focus.sigma.x"] = sig
+        cfg["focus.sigma.y"] = sig
+    bnd = terms.get("boundary", {})
+    if bnd:
+        cfg["boundary.k.wall"] = bnd.get("k")
+    rep = terms.get("label_label_repulse", {})
+    if rep:
+        cfg["ll.k.repulse"] = rep.get("k")
+    ins = terms.get("label_label_inside", {})
+    if ins:
+        cfg["ll.k.inside"] = ins.get("k")
+    rep = terms.get("line_label_repulse", {})
+    if rep:
+        cfg["ln.k.repulse"] = rep.get("k")
+    ins = terms.get("line_label_inside", {})
+    if ins:
+        cfg["ln.k.inside"] = ins.get("k")
+    rep = terms.get("point_label_repulse", {})
+    if rep:
+        cfg["pl.k.repulse"] = rep.get("k")
+    ins = terms.get("point_label_inside", {})
+    if ins:
+        cfg["pl.k.inside"] = ins.get("k")
+    ac = terms.get("area_cross", {})
+    if ac:
+        cfg["area.k.cross"] = ac.get("k")
+    ae = terms.get("area_embed", {})
+    if ae:
+        cfg["area.k.embed"] = ae.get("k")
+
+
 def load_configs(
     internals_path: str = "configs/solver.internals.yaml",
     tuning_path: str = "configs/solver.tuning.yaml",
     public_path: str = "configs/solver.public.yaml",
     viz_path: str = "configs/viz.yaml",
     overrides: Optional[Dict[str, Any]] = None,
-) -> ConfigBundle:
-    """Load configuration files and return a :class:`ConfigBundle`."""
+) -> Dict[str, Any]:
+    """Load configuration files and return a merged mapping."""
 
     internals_cfg = _read_yaml(internals_path)
     tuning_cfg = _read_yaml(tuning_path)
@@ -66,50 +108,32 @@ def load_configs(
     if "public" in public_cfg and len(public_cfg) == 1:
         public_cfg = public_cfg["public"]
 
-    data_cfg: Dict[str, Any] = {}
-    data_cfg = deep_update(data_cfg, internals_cfg.pop("data", {}))
-    data_cfg = deep_update(data_cfg, public_cfg.pop("data", {}))
-    data_cfg = deep_update(data_cfg, tuning_cfg.pop("data", {}))
-
-    log.info(f"[cfg] internals keys: {len(internals_cfg)}")
-    log.info(f"[cfg] tuning    keys: {len(tuning_cfg)}")
-    log.info(f"[cfg] public    keys: {len(public_cfg)}")
-    log.info(f"[cfg] viz       keys: {len(viz_cfg)}")
-    log.info(f"[cfg] data      keys: {len(data_cfg)}")
-
-    root: Dict[str, Any] = {
-        "solver": {
-            "internals": internals_cfg,
-            "tuning": tuning_cfg,
-            "public": public_cfg,
-        },
-        "viz": viz_cfg,
-        "data": data_cfg,
-    }
+    cfg: Dict[str, Any] = {}
+    cfg = deep_update(cfg, internals_cfg)
+    cfg = deep_update(cfg, public_cfg)
+    cfg = deep_update(cfg, tuning_cfg)
+    cfg = deep_update(cfg, {"viz": viz_cfg})
 
     override_profile = (
-        overrides.get("solver", {}).get("public", {}).get("profile") if overrides else None
+        overrides.get("solver", {}).get("profile") if overrides else None
     )
-    profile = override_profile or public_cfg.get("profile")
+    profile = override_profile or cfg.get("solver", {}).get("profile")
     preset = _PROFILE_PRESETS.get(str(profile), {})
     if preset:
-        root["solver"]["tuning"] = deep_update(root["solver"].get("tuning", {}), preset)
+        cfg["solver"] = deep_update(cfg.get("solver", {}), preset)
 
     if overrides:
-        root = deep_update(root, overrides)
+        cfg = deep_update(cfg, overrides)
 
-    validate_config(root)
-    bundle = ConfigBundle(**root)
-    return bundle
+    validate_config(cfg)
+    _inject_legacy_term_keys(cfg)
+    return cfg
 
 
-def print_effective_config(bundle: ConfigBundle, path: str | None = None) -> None:
-    """Print or dump a fully-populated configuration bundle."""
+def print_effective_config(cfg: Dict[str, Any], path: str | None = None) -> None:
+    """Print or dump a fully-populated configuration."""
 
-    snap = bundle.model_dump(
-        exclude_unset=False, exclude_defaults=False, exclude_none=True
-    )
-    text = yaml.safe_dump(snap, sort_keys=False, allow_unicode=True)
+    text = yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True)
     if path:
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)

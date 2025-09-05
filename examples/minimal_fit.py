@@ -27,7 +27,7 @@ use_compatible_backend()
 from cartoweave.api import solve_frame  # noqa: E402
 from cartoweave.config.loader import load_configs, print_effective_config  # noqa: E402
 from cartoweave.utils.dict_merge import deep_update  # noqa: E402
-from cartoweave.utils.logging import logger  # noqa: E402
+from cartoweave.utils.logging import logger, configure_logging  # noqa: E402
 
 try:
     # optional viz
@@ -35,9 +35,11 @@ try:
 except Exception:
     interactive_view = None  # headless environments are fine
 
-def _make_scene() -> Dict[str, Any]:
-    # Canvas
-    W, H = 800.0, 600.0
+def _make_scene(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    data_rand = cfg.get("data", {}).get("random", {})
+    frame = data_rand.get("frame", {})
+    W = float(frame.get("width", 800.0))
+    H = float(frame.get("height", 600.0))
     frame_size = (W, H)
 
     # Anchors
@@ -82,30 +84,63 @@ def _make_scene() -> Dict[str, Any]:
     )
 
 def main():
-    bundle = load_configs()
-    print_effective_config(bundle)
+    import argparse, json
 
-    bundle_dict = bundle.model_dump(exclude_unset=False, exclude_defaults=False)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--frame", type=str, help="WIDTHxHEIGHT override")
+    parser.add_argument("--override", type=str, help="JSON blob of overrides")
+    args = parser.parse_args()
+
+    configure_logging()
+
+    base = os.path.join(os.path.dirname(__file__), "..")
+    cfg = load_configs(
+        internals_path=os.path.join(base, "configs/solver.internals.yaml"),
+        tuning_path=os.path.join(base, "configs/solver.tuning.yaml"),
+        public_path=os.path.join(base, "configs/solver.public.yaml"),
+        viz_path=os.path.join(base, "configs/viz.yaml"),
+    )
+    overrides: Dict[str, Any] = {}
+    if args.frame:
+        try:
+            w, h = map(int, args.frame.lower().split("x"))
+            overrides = deep_update(overrides, {"data": {"random": {"frame": {"width": w, "height": h}}}})
+        except Exception:  # pragma: no cover - CLI parsing error
+            pass
+    if args.override:
+        try:
+            overrides = deep_update(overrides, json.loads(args.override))
+        except Exception:  # pragma: no cover - bad JSON
+            pass
     cfg = deep_update(
-        bundle_dict,
+        cfg,
         {
-            "solver": {
-                "tuning": {
-                    "terms": {
-                        "label_label_repulse": {"weight": 150.0},
-                        "point_label_repulse": {"weight": 200.0},
-                        "line_label_repulse": {"weight": 180.0},
-                        "boundary_wall": {"weight": 80.0},
-                    },
-                    "anchor": {"k_spring": 10.0},
-                }
-            },
             "viz": {"show": False, "field": {"kind": "heatmap", "cmap": "viridis"}},
             "engine": {"max_iter_hint": 200},
         },
     )
+    if overrides:
+        def _flatten(d, prefix=""):
+            for k, v in d.items():
+                path = f"{prefix}.{k}" if prefix else k
+                if isinstance(v, dict):
+                    yield from _flatten(v, path)
+                else:
+                    yield path, v
+        for path, val in _flatten(overrides):
+            prev = cfg
+            for key in path.split("."):
+                if isinstance(prev, dict) and key in prev:
+                    prev = prev[key]
+                else:
+                    prev = None
+                    break
+            logger.info("[override] %s: %s → %s", path, prev, val)
+        cfg = deep_update(cfg, overrides)
 
-    viz = deep_update(bundle_dict["viz"], {})
+    print_effective_config(cfg)
+
+    viz = deep_update(cfg.get("viz", {}), {})
     viz_override = {"layout": {"anchor_marker_size": 8.0}} if os.getenv("DEMO_BIG_ANCHOR") else {}
     viz_eff = deep_update(viz, viz_override)
 
@@ -117,7 +152,7 @@ def main():
         float(viz_eff.get("layout", {}).get("anchor_marker_size", 0.0)),
     )
 
-    scene = _make_scene()
+    scene = _make_scene(cfg)
 
     P_opt, info = solve_frame(scene, cfg, mode="lbfgs")
     print("[minimal_fit] done. final positions shape:", P_opt.shape)

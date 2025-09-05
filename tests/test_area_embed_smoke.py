@@ -23,13 +23,14 @@ def test_area_embed_smoke():
             points=np.zeros((0,2)), lines=np.zeros((0,2,2)),
             anchors=np.zeros((1,2)),
         )
-        cfg = {
-            "area.k.embed": 200.0,
-            "area.k.tan": 30.0,
-            "area.embed.ratio_in": 0.60,
-        }
+        cfg = {"terms": {"area_embed": {"k": 200.0, "sigma": 6.0}}}
         E, G, _ = energy_and_grad_fullP(scene, P0.copy(), cfg)
         assert np.isfinite(E)
         assert np.isfinite(G).all()
         assert np.linalg.norm(G) < 1e12
+
+        cfg_small = {"terms": {"area_embed": {"k": 200.0, "sigma": 1.0e-3}}}
+        E2, G2, _ = energy_and_grad_fullP(scene, P0.copy(), cfg_small)
+        assert np.isfinite(E2)
+        assert np.isfinite(G2).all()
 

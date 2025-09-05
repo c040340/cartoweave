@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 import numpy as np
 
 from cartoweave.utils.logging import logger
+from cartoweave.utils.numerics import is_finite_array, sanitize_array
 
 
 def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,6 +28,9 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
         for k, v in r.get("comps", {}).items():
             arr = np.asarray(v, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
+                if not is_finite_array(arr):
+                    logger.warning("sanitize payload: frame=%d term=%s", t, k)
+                    arr = sanitize_array(arr)
                 comps[k] = arr
         meta = dict(r.get("meta", {}))
 
@@ -44,6 +48,9 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
         if pts_val is None:
             pts_val = src.get("points_xy")
         pts = np.asarray(pts_val, float).reshape(-1, 2) if pts_val is not None else None
+        if pts is not None and not is_finite_array(pts):
+            logger.warning("sanitize payload: frame=%d sources.points", t)
+            pts = sanitize_array(pts)
 
         lns_raw = src.get("lines")
         if lns_raw is None:
@@ -52,6 +59,9 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
         for seg in lns_raw:
             arr = np.asarray(seg, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
+                if not is_finite_array(arr):
+                    logger.warning("sanitize payload: frame=%d sources.line", t)
+                    arr = sanitize_array(arr)
                 lns.append(arr)
         if len(lns) == 0:
             lns = None
@@ -63,6 +73,9 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
         for poly in ars_raw:
             arr = np.asarray(poly, float)
             if arr.ndim == 2 and arr.shape[1] == 2:
+                if not is_finite_array(arr):
+                    logger.warning("sanitize payload: frame=%d sources.area", t)
+                    arr = sanitize_array(arr)
                 ars.append(arr)
         if len(ars) == 0:
             ars = None
@@ -97,8 +110,12 @@ def build_viz_payload(info: Dict[str, Any]) -> Dict[str, Any]:
                             poly = poly.get("polygon")
                         ars.append(np.asarray(poly, float))
 
+        P_arr = np.asarray(r.get("P"), float)
+        if not is_finite_array(P_arr):
+            logger.warning("sanitize payload: frame=%d field=P", t)
+            P_arr = sanitize_array(P_arr)
         frame = {
-            "P": np.asarray(r.get("P"), float),
+            "P": P_arr,
             "comps": comps,
             "meta": meta,
             "sources_for_step": {"points": pts, "lines": lns, "areas": ars},

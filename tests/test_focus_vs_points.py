@@ -5,7 +5,7 @@ def base_cfg():
     return {
         "ll.geom": "rect", "ll.k.repulse": 150.0, "ll.k.inside": 50.0,
         "boundary.k.wall": 0.0,
-        "anchor.k.spring": 0.0,
+        "terms": {"anchor": {"spring": {"k": 0.0}}},
         # 椭圆 Huber focus
         "focus.k.attract": 40.0,
         "focus.center": np.array([400.,300.]),

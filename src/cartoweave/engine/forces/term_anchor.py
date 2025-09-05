@@ -3,18 +3,7 @@ from __future__ import annotations
 import numpy as np
 from . import register
 
-from cartoweave.utils.kernels import (
-    softplus,
-    sigmoid,
-    softabs,
-    invdist_energy,
-    invdist_force_mag,
-    EPS_DIST,
-    EPS_NORM,
-    EPS_ABS,
-    softmin_weights,
-)
-from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.kernels import EPS_NORM
 from cartoweave.utils.logging import logger
 
 @register("anchor.spring")
@@ -28,15 +17,10 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
         # 没给就不施力
         return 0.0, np.zeros_like(P), {}
 
-    k = float(cfg.get("anchor.k.spring", 10.0))
-    # [patch-yx-2025-09-05] fallback rest_offset_px from physics.quick.point_spring
-    q = cfg.get("physics", {}).get("quick", {})
-    r0_points = float(cfg.get("anchor.r0.points", q.get("point_spring", {}).get("rest_offset_px", 0.0)))  # [patch-yx-2025-09-05]
-    r0_lines = float(cfg.get("anchor.r0.lines", q.get("line_spring", {}).get("rest_offset_px", 0.0)))  # [patch-yx-2025-09-05]
-    r0_areas = float(cfg.get("anchor.r0.areas", q.get("area_spring", {}).get("rest_offset_px", 0.0)))  # [patch-yx-2025-09-05]
-    alpha = float(cfg.get("anchor.spring.alpha", 1.0))    # 弹簧形状参数（占位，可不用）
-
-    eps_n = float(cfg.get("eps.norm", EPS_NORM))
+    term_cfg = cfg.get("terms", {}).get("anchor", {}).get("spring", {})
+    k = float(term_cfg.get("k", 10.0))
+    r0 = float(term_cfg.get("r0", 0.0))
+    eps_n = float(cfg.get("solver", {}).get("internals", {}).get("eps", {}).get("proj", EPS_NORM))
     N = P.shape[0]
     A = np.asarray(A, float)
     assert A.shape[0] == N, f"anchors misaligned: {A.shape} vs P {P.shape}"
@@ -62,16 +46,11 @@ def term_anchor(scene, P: np.ndarray, cfg, phase="anchor"):
         assert ext_dir.shape[0] == N, f"ext_dir misaligned: {ext_dir.shape} vs P {P.shape}"
 
     for i in idxs:
-        lab = labels[i]
-        w, h = float(WH[i, 0]), float(WH[i, 1])
-
         px, py = P[i]
         ax, ay = A[i]
         dx = px - ax
         dy = py - ay
-        r = (dx*dx + dy*dy) ** 0.5
-
-        r0 = r0_points  # 你后续可根据类型切换 r0
+        r = (dx * dx + dy * dy) ** 0.5
 
         if r > 1e-12:
             # 简单 Hooke：E=0.5*k*(r-r0)^2，F = -k*(r-r0)*u
