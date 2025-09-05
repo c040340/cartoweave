@@ -10,8 +10,9 @@ def test_step_limit_injected_and_recorded(monkeypatch, P0, mask, scene, L):
         E,G,comps,_ = energy_and_grad(P0, scene, active_mask, params)
         recorder({"P":P0, "E":E, "G":G, "comps":comps, "mask":active_mask, "ls_iters":1, "alpha":0.5})
         return {"P_final":P0, "E_last":E, "converged":True, "stop_reason":"test", "iters":1}
-    import cartoweave.compute.optim as optim
-    monkeypatch.setattr(optim, "run_via_legacy_solver", fake_solver)
+    import cartoweave.compute.run as runmod
+    monkeypatch.setattr(runmod, "run_via_engine_solver", fake_solver, raising=True)
+    assert runmod.run_via_engine_solver is fake_solver
 
     params={"max_iter":2, "terms":{"anchor":{"spring":{"k":5.0}}}}
     sp = SolvePack(L=L, P0=P0, active_mask0=mask, scene=scene, params=params,
