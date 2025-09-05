@@ -17,6 +17,7 @@ def test_focus_huber_anisotropy():
         "focus.sigma.x": 50.0,   # x 方向更“紧”
         "focus.sigma.y": 150.0,  # y 方向更“宽”
         "focus.delta": 8.0,
+        "compute": {"weights": {"focus.attract": 1.0}},
     }
 
     # 在等距环上取两个点：沿 x 和沿 y

@@ -1,31 +1,39 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from typing import Any, Dict
-from .base import ComputePass, Context, Stage
+import numpy as np
+from .base import ComputePass
+from . import get_pass_cfg
 
 
 class StepLimitPass(ComputePass):
-    """Inject ``step_limit`` and ``damping`` into each stage's params."""
+    name = "StepLimitPass"
 
-    def __init__(self, max_step: float | None = None, damping: float | None = None):
-        self.max_step = max_step
-        self.damping = damping
-        self.stats: Dict[str, Any] = {
-            "applied_stages": 0,
-            "max_step": max_step,
-            "damping": damping,
-        }
+    def __init__(self, cfg: Dict[str, Any]):
+        conf = get_pass_cfg(cfg, "step_limit", {"max_step_norm": None})
+        self.max_step_norm = conf.get("max_step_norm")
+        self.stats = {"clamped_steps": 0, "max_observed_step_norm": 0.0}
 
-    def mutate_stage(self, stage: Stage):
-        """Modify ``stage.params`` in-place and record how many stages changed."""
-        changed = False
-        if self.max_step is not None:
-            stage.params = dict(stage.params)
-            stage.params["step_limit"] = float(self.max_step)
-            changed = True
-        if self.damping is not None:
-            stage.params = dict(stage.params)
-            stage.params["damping"] = float(self.damping)
-            changed = True
-        if changed:
-            self.stats["applied_stages"] += 1
+    def wrap_step(self, step_fn):
+        if not self.max_step_norm or self.max_step_norm <= 0:
+            return step_fn
+
+        maxn = float(self.max_step_norm)
+        stats = self.stats
+
+        def wrapped(P_old, P_prop, metrics):
+            dP = P_prop - P_old
+            n = float(np.linalg.norm(dP))
+            if n > stats["max_observed_step_norm"]:
+                stats["max_observed_step_norm"] = n
+            if n > maxn and n > 0:
+                scale = maxn / n
+                P_new = P_old + dP * scale
+                stats["clamped_steps"] += 1
+                if isinstance(metrics, dict):
+                    metrics["step_limit_clamped"] = True
+                    metrics["step_limit_scale"] = float(scale)
+                return P_new
+            return P_prop
+
+        return wrapped

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Any
 import numpy as np
 from .base import ComputePass
+from . import get_pass_cfg
 
 
 class NaNGuardPass(ComputePass):
@@ -13,17 +14,17 @@ class NaNGuardPass(ComputePass):
     recorded in ``stats``.
     """
 
-    def __init__(self, e_fallback: float = 0.0):
-        self.e_fallback = float(e_fallback)
+    def __init__(self):
         self.stats: Dict[str, Any] = {"nan_frames": 0, "inf_frames": 0, "fixed_frames": 0}
 
     def wrap_energy(self, energy_fn):
         """Check the output of ``energy_fn`` and zero-out non-finite values."""
 
-        ef = self.e_fallback
         stats = self.stats
 
         def _wrapped(P, scene, active_mask, cfg):
+            conf = get_pass_cfg(cfg, "nan_guard", {"e_fallback": 0.0})
+            ef = float(conf.get("e_fallback", 0.0))
             E, G, comps, meta = energy_fn(P, scene, active_mask, cfg)
             meta = dict(meta or {})
             hit_nan = False

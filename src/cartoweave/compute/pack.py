@@ -15,6 +15,9 @@ class SolvePack:
     # 只读场景对象（你的现有类型），不在 compute 内修改
     scene: object
 
+    # 统一配置（compute.*），由 bridge 翻译 legacy 键
+    cfg: Dict = field(default_factory=dict)
+
     # 求解模式与参数（透传给优化器/评价）
     mode: str = "lbfgs"
     params: Dict = field(default_factory=dict)
@@ -23,11 +26,20 @@ class SolvePack:
     energy_and_grad: Optional[EnergyFn] = None
 
     # 阶段/增强器配置（后续步骤使用）
-    schedule: Optional[List[Dict]] = None
+    stages: Optional[List[Dict]] = None
     passes: Optional[List] = None
 
     # 记录采样策略（后续步骤使用）
     capture: Dict = field(default_factory=lambda: {"every": 1, "limit": None, "final_always": True})
+
+    # backward-compat alias
+    @property
+    def schedule(self):
+        return self.stages
+
+    @schedule.setter
+    def schedule(self, value):
+        self.stages = value
 
     def validate(self) -> None:
         assert isinstance(self.L, int) and self.L > 0, "L must be positive int"
@@ -38,3 +50,4 @@ class SolvePack:
         ), "active_mask0 shape must be (L,)"
         assert self.P0.dtype.kind in "fc", "P0 must be float/complex (float expected)"
         # Inactive gradients are zeroed elsewhere; only check shapes here.
+        assert isinstance(self.cfg, dict), "cfg must be a dict"

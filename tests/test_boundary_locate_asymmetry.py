@@ -34,6 +34,7 @@ def _cfg_boundary(k=100.0, p=2.0, eps=0.3, pad=0.0, y_down=True):
         "focus.k.huber": 0.0, "focus.k.quad": 0.0,
         "area.k.embed": 0.0, "area.k.cross": 0.0, "area.k.softout": 0.0,
         "beta.softplus.dist": 3.0,
+        "compute": {"weights": {"boundary.wall": 1.0}},
     }
 
 def _piece_energy(s, k_wall, power, beta_d, eps_div, k_in):

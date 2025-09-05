@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from cartoweave.data.random import generate_scene, get_scene, config_hash
-from cartoweave.api import solve_frame
+from cartoweave import SolvePack, solve
 
 def _tmp_cache(tmp_path, name="scene_cache.npz"):
     return str(tmp_path / name)
@@ -59,6 +59,17 @@ def test_cache_roundtrip(tmp_path):
 def test_generate_to_solve_pipeline():
     """Full pipeline: generate a random scene and solve its layout."""
     scene = generate_scene(canvas_size=(480, 320), n_points=4, n_lines=1, n_areas=1, seed=0)
-    P, info = solve_frame(scene, cfg={}, mode="hybrid")
+    L = scene["labels_init"].shape[0]
+    sp = SolvePack(
+        L=L,
+        P0=scene["labels_init"],
+        active_mask0=np.ones(L, dtype=bool),
+        scene=scene,
+        cfg={"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}},
+        stages=[{"iters": 5, "solver": "lbfgs"}],
+        passes=["schedule", "capture"],
+    )
+    view = solve(sp)
+    P = view.last.P
     assert P.shape == scene["labels_init"].shape
     assert np.all(np.isfinite(P))

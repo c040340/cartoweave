@@ -23,13 +23,27 @@ dependencies = [
 readme = "README.md"
 license = {text = "MIT"}
 
+[project.scripts]
+cartoweave = "cartoweave.cli:main"
+[project.optional-dependencies]
+test = ["pytest"]
+
+
 [tool.ruff]
 line-length = 100
+target-version = "py39"
+select = ["E","F","I","B","UP","N","S","C4"]
+ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.9"
+ignore_missing_imports = true
+strict_optional = false
 warn_unused_ignores = true
 warn_redundant_casts = true
-strict_optional = true
-disallow_untyped_defs = true
-no_implicit_optional = true
+warn_unreachable = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cartoweave*"]
+exclude = ["archive*"]

@@ -8,9 +8,8 @@ def test_weights_scaling(P0, mask, scene, L):
     P = rng.standard_normal((L, 2)).astype(float)
 
     # 只开 pre_anchor：ll.disk
-    cfg0 = {"terms": {"ll": {"disk": {"k": 1.0}}}}
-    cfgw = {"terms": {"ll": {"disk": {"k": 1.0}}}}
-    cfgw.setdefault("solver", {}).setdefault("internals", {})["weights"] = {"ll.disk": 0.5}
+    cfg0 = {"compute": {"weights": {"ll.disk": 1.0}, "eps": {"numeric": 1e-12}}}
+    cfgw = {"compute": {"weights": {"ll.disk": 0.5}, "eps": {"numeric": 1e-12}}}
 
     E0, G0, C0, _ = energy_and_grad_full(P, scene, mask, cfg0)
     Ew, Gw, Cw, _ = energy_and_grad_full(P, scene, mask, cfgw)
@@ -29,10 +28,10 @@ def test_nan_guard_and_grad_clip_applied(P0, mask, scene, L, monkeypatch):
         comps = {"foo": -G.copy()}
         return float("nan"), G, comps, {}
     from cartoweave.compute import SolvePack, solve
+    cfg = {"compute": {"passes": {"grad_clip": {"max_norm": 1.0}, "capture": {"every": 1}}}}
     sp = SolvePack(L=L, P0=P0, active_mask0=mask, scene=scene, params={"max_iter":1},
-                   energy_and_grad=bad_energy)
-    sp.passes=["schedule", {"name":"grad_clip","args":{"max_norm":1.0}}, "nan_guard",
-               {"name":"capture","args":{"every":1}}]
+                   energy_and_grad=bad_energy, cfg=cfg)
+    sp.passes=["schedule", "grad_clip", "nan_guard", "capture"]
     vp = solve(sp)
     assert "pass_stats" in vp.summary
     ps = vp.summary["pass_stats"]

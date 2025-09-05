@@ -4,6 +4,16 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Union
 from .base import Context, Stage, ComputePass
+
+
+def get_pass_cfg(cfg: dict, name: str, defaults: dict | None = None) -> dict:
+    d = (cfg.get("compute", {}).get("passes", {}).get(name) or {})
+    if defaults:
+        out = dict(defaults)
+        out.update(d)
+        return out
+    return dict(d)
+
 from .schedule import SchedulePass
 from .capture import CapturePass
 from .weights import WeightsPass
@@ -21,11 +31,11 @@ REGISTRY = {
 }
 
 
-def build_passes(cfg_list: List[Union[str, Dict]] | None, default_capture_cfg: Dict) -> List[ComputePass]:
-    """Instantiate passes from configuration.
+def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[ComputePass]:
+    """Instantiate passes from specification.
 
     ``cfg_list`` may contain strings or ``{"name": ..., "args": ...}``
-    dictionaries. ``CapturePass`` is added with ``default_capture_cfg`` if not
+    dictionaries. ``CapturePass`` is added with defaults from ``cfg`` if not
     specified. ``SchedulePass`` is always present (single stage by default).
     """
     passes: List[ComputePass] = []
@@ -35,8 +45,14 @@ def build_passes(cfg_list: List[Union[str, Dict]] | None, default_capture_cfg: D
         cls = REGISTRY.get(name)
         if not cls:
             raise ValueError(f"Unknown pass: {name}")
-        needs_args = name in ("capture", "weights", "grad_clip", "nan_guard", "step_limit")
-        inst = cls(**(args or {})) if needs_args else cls()
+        if name == "weights":
+            inst = cls(args or {})
+        elif name == "step_limit":
+            inst = cls(cfg)
+        elif args:
+            inst = cls(**args)
+        else:
+            inst = cls()
         passes.append(inst)
         names.add(name)
 
@@ -53,5 +69,5 @@ def build_passes(cfg_list: List[Union[str, Dict]] | None, default_capture_cfg: D
         passes.insert(0, SchedulePass())
         names.add("schedule")
     if "capture" not in names:
-        passes.append(CapturePass(**default_capture_cfg))
+        passes.append(CapturePass())
     return passes

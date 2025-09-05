@@ -3,7 +3,10 @@ from cartoweave.compute.eval import energy_and_grad_full as eg
 
 def test_compute_aggregator_invariants(rng, L, scene, mask):
     P = rng.standard_normal((L,2)).astype(float)
-    cfg = {"terms":{"anchor":{"spring":{"k":10.0}}, "ll":{"disk":{"k":1.0}}}}
+    cfg = {
+        "terms": {"anchor": {"spring": {"k": 10.0}}, "ll": {"disk": {"k": 1.0}}},
+        "compute": {"weights": {"anchor.spring": 1.0, "ll.disk": 1.0}},
+    }
     E,G,comps,_ = eg(P, scene, mask, cfg)
     assert comps, "comps must exist"
     G_from = -sum(comps.values())

@@ -28,7 +28,10 @@ def test_ll_rect_action_reaction():
         points=np.zeros((0, 2)), lines=np.zeros((0, 2, 2)), areas=np.zeros((0, 6)),
         anchors=np.zeros((3, 2)),
     )
-    cfg = {"ll.geom": "rect", "ll.k.repulse": 200.0, "ll.k.inside": 50.0}
+    cfg = {
+        "ll.geom": "rect", "ll.k.repulse": 200.0, "ll.k.inside": 50.0,
+        "compute": {"weights": {"ll.rect": 1.0}},
+    }
 
     mask = np.ones(scene["labels_init"].shape[0], bool)
     E, G, comps, _ = energy_and_grad_full(scene["labels_init"], scene, mask, cfg)
@@ -53,6 +56,7 @@ def test_pl_rect_translation_invariance():
         anchors=np.zeros((2, 2)),
     )
     cfg = {"pl.k.repulse": 200.0, "pl.k.inside": 50.0}
+    cfg.setdefault("compute", {}).setdefault("weights", {})["pl.rect"] = 1.0
 
     P0 = scene["labels_init"]
     mask0 = np.ones(P0.shape[0], bool)

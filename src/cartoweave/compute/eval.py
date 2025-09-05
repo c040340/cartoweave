@@ -17,8 +17,7 @@ from typing import Dict, Tuple, Any, List
 import numpy as np
 
 from cartoweave.utils.checks import merge_sources
-from cartoweave.engine.forces import REGISTRY as _ENG_REG, enabled_terms as _eng_enabled
-from .forces import REGISTRY as _CMP_REG
+from .forces import REGISTRY as _CMP_REG, enabled_terms as _cmp_enabled
 
 Array2 = np.ndarray
 
@@ -30,7 +29,8 @@ def _as_active_ids(mask: np.ndarray) -> List[int]:
 
 def _clip_if_needed(F: Array2, cfg: dict) -> Array2:
     clamp_max = (
-        cfg.get("solver", {})
+        cfg.get("compute", {}).get("clamp", {}).get("optimize_force_max")
+        or cfg.get("solver", {})
         .get("tuning", {})
         .get("clamp", {})
         .get("optimize_force_max")
@@ -40,25 +40,6 @@ def _clip_if_needed(F: Array2, cfg: dict) -> Array2:
     cm = float(clamp_max)
     np.clip(F, -cm, cm, out=F)
     return F
-
-
-def _get_weights(cfg: dict):
-    return (
-        cfg.get("solver", {})
-        .get("internals", {})
-        .get("weights", {})
-    ) or {}
-
-
-def _weight_for(name: str, wmap: dict) -> float:
-    if name in wmap:
-        return float(wmap[name])
-    for k, v in wmap.items():
-        if k.endswith(".*") and name.startswith(k[:-2] + "."):
-            return float(v)
-        if "." not in k and name.startswith(k + "."):
-            return float(v)
-    return 1.0
 
 
 def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask: np.ndarray, cfg: dict):
@@ -100,16 +81,13 @@ def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask:
     g = np.zeros_like(P)      # ∇E
     comps: Dict[str, Array2] = {}
     sources_merged: Dict[str, Any] = {}
-    wmap = _get_weights(cfg)
-
     # —— 阶段 1：pre_anchor —— #
     Fsum_ext = np.zeros_like(P)
-    pre_terms = list(_eng_enabled(cfg, phase="pre_anchor"))
+    pre_terms = list(_cmp_enabled(cfg, phase="pre_anchor"))
     for name in pre_terms:
-        # 在 compute/forces 优先；否则回退引擎 term
-        fn = _CMP_REG.get(name) or _ENG_REG.get(name)
+        fn = _CMP_REG.get(name)
         if fn is None:
-            continue
+            raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
         E_i, F_i, src = fn(sc, P, cfg, phase="pre_anchor")
         if F_i is None:
             F_i = np.zeros_like(P)
@@ -118,21 +96,19 @@ def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask:
             raise ValueError(f"[TERM SHAPE MISMATCH] term={name} F={F_i.shape} P={P.shape}")
         F_i = _clip_if_needed(F_i, cfg)
 
-        w = _weight_for(name, wmap)
-        E_total += w * float(E_i)
-        Fi_w = w * F_i
-        comps[name] = Fi_w
-        Fsum_ext += Fi_w
+        E_total += float(E_i)
+        comps[name] = F_i
+        Fsum_ext += F_i
         if src:
             merge_sources(sources_merged, src)
 
     # —— 阶段 2：anchor —— #
     sc["_ext_dir"] = Fsum_ext.copy()
-    anchor_terms = list(_eng_enabled(cfg, phase="anchor"))
+    anchor_terms = list(_cmp_enabled(cfg, phase="anchor"))
     for name in anchor_terms:
-        fn = _CMP_REG.get(name) or _ENG_REG.get(name)
+        fn = _CMP_REG.get(name)
         if fn is None:
-            continue
+            raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
         E_i, F_i, src = fn(sc, P, cfg, phase="anchor")
         if F_i is None:
             F_i = np.zeros_like(P)
@@ -141,9 +117,8 @@ def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask:
             raise ValueError(f"[TERM SHAPE MISMATCH] term={name} F={F_i.shape} P={P.shape}")
         F_i = _clip_if_needed(F_i, cfg)
 
-        w = _weight_for(name, wmap)
-        E_total += w * float(E_i)
-        comps[name] = w * F_i
+        E_total += float(E_i)
+        comps[name] = F_i
         if src:
             merge_sources(sources_merged, src)
 

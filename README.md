@@ -1,21 +1,19 @@
 # CartoWeave
 
 CartoWeave is a modern map label layout engine designed for research and rapid
-experimentation. The project is split into several layers:
+experimentation. The legacy "engine" and "orchestrators" modules have been
+retired in favour of a compute-only pipeline with pluggable passes and solvers.
+Lightweight visualization helpers remain for inspecting intermediate results.
 
-* a low-level **engine** containing force terms and numerical solvers,
-* high-level **orchestrators** that schedule timeline-based runs, and
-* lightweight **visualization** helpers for inspecting intermediate results.
-
-Together these pieces make it easy to prototype new label placement strategies
+This new structure makes it easy to prototype new label placement strategies
 without rebuilding common infrastructure.
 
 ## Features
 
-* Pluggable force-based engine for point, line and area labels
+* Pluggable force terms for point, line and area labels
 * Example configurations for common layouts
-* Multiple solvers: L-BFGS, semi-Newton and a hybrid strategy
-* Scene-script orchestrator that runs multi-stage schedules across frames
+* Multiple solvers: L-BFGS and semi-Newton
+* Pass manager with scheduling, clipping and capture hooks
 * Random scene generator for demos and tests
 
 ## Installation
@@ -29,37 +27,47 @@ pip install -e .
 ## Quick start
 
 ```python
-from cartoweave.api import solve_frame
 import numpy as np
+from cartoweave import SolvePack, solve
 
 scene = {
-    "frame": 0,
+    "labels_init": np.zeros((1, 2), float),
+    "labels": [{"anchor_kind": "none"}],
     "frame_size": (1920, 1080),
-    "points": np.zeros((0, 2), dtype=float),
-    "lines": np.zeros((0, 4), dtype=float),
-    "areas": np.zeros((0, 8), dtype=float),
-    "labels_init": np.zeros((0, 2), dtype=float),
 }
 
-cfg = merge(default_cfg(), viz(show=False))
-P_opt, info = solve_frame(scene, cfg)
+cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}}
+sp = SolvePack(
+    L=1,
+    P0=scene["labels_init"],
+    active_mask0=np.ones(1, dtype=bool),
+    scene=scene,
+    cfg=cfg,
+    stages=[{"iters": 10, "solver": "lbfgs"}],
+    passes=["schedule", "capture"],
+)
+view = solve(sp)
+print(view.last.P)
 ```
 
-Run `python examples/minimal_fit.py` for a small working demo. The example also
-demonstrates the interactive viewer when ``viz.show`` is set to ``True``.
+Run `python examples/minimal_solve.py` for a small working demo.
+
+## Command-line usage
+
+```bash
+python -m cartoweave solve --config examples/configs/compute_min.json --scene examples/scenes/scene_min.json
+```
+
 
 ## Examples
 
-* `examples/minimal_fit.py` – minimal example of fitting a single frame
-* `examples` – more sample scripts showing how to build scenes and timelines
+* `examples/minimal_solve.py` – minimal example of solving a single frame
 
 ## Project layout
 
-* `cartoweave/api.py` – public API for solving a single frame or a timeline
-* `cartoweave/engine` – energy evaluation and numerical solvers
-* `cartoweave/orchestrators` – scene script and solve plan runners
+* `cartoweave/compute` – compute pipeline with forces, passes and solvers
 * `cartoweave/data` – random scene and timeline generators
-* `cartoweave/viz` – placeholders for future visualisation tools
+* `cartoweave/viz` – placeholders for visualisation tools
 * `tests` – unit tests and integration tests
 
 ## Testing
@@ -79,20 +87,16 @@ contributions under the same license. See the LICENSE file for details.
 
 # CartoWeave（中文）
 
-CartoWeave 是一个现代化的地图标注布局引擎，适用于科研和快速原型开发。项目由以下几部分组成：
-
-* 底层的 **engine**，包含各种力项和数值求解器；
-* 高层的 **orchestrators**，用于调度按时间线运行的多阶段流程；
-* 轻量级的 **visualization** 工具，帮助检查中间结果。
-
-这些组件组合在一起，可以让你在不重复造轮子的情况下快速尝试新的标注排版策略。
+CartoWeave 是一个现代化的地图标注布局引擎，适用于科研和快速原型开发。旧版的
+engine/orchestrators 模块已被移除，现在的框架专注于 compute 管线和可插拔的
+求解 passes，仍保留轻量级的可视化工具。
 
 ## 功能特性
 
-* 可插拔的基于力的引擎，支持点、线、面三类标注；
-* 预设的配置模板（如 `default_cfg`、`focus_only_cfg` 等），便于快速开始；
-* 多种求解器：L-BFGS、半牛顿法以及混合策略；
-* 按时间线运行的调度器，可执行多阶段的排版流程；
+* 可插拔的力项，支持点、线、面三类标注；
+* 预设的配置模板，便于快速开始；
+* 多种求解器：L-BFGS、半牛顿法；
+* PassManager 提供调度、裁剪和捕获等扩展点；
 * 随机场景生成器，方便进行演示和测试。
 
 ## 安装
@@ -106,20 +110,27 @@ pip install -e .
 ## 快速上手
 
 ```python
-from cartoweave.api import solve_frame
 import numpy as np
+from cartoweave import SolvePack, solve
 
 scene = {
-    "frame": 0,
+    "labels_init": np.zeros((1, 2), float),
+    "labels": [{"anchor_kind": "none"}],
     "frame_size": (1920, 1080),
-    "points": np.zeros((0, 2), dtype=float),
-    "lines": np.zeros((0, 4), dtype=float),
-    "areas": np.zeros((0, 8), dtype=float),
-    "labels_init": np.zeros((0, 2), dtype=float),
 }
 
-cfg = merge(default_cfg(), viz(show=False))
-P_opt, info = solve_frame(scene, cfg)
+cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}}
+sp = SolvePack(
+    L=1,
+    P0=scene["labels_init"],
+    active_mask0=np.ones(1, dtype=bool),
+    scene=scene,
+    cfg=cfg,
+    stages=[{"iters": 10, "solver": "lbfgs"}],
+    passes=["schedule", "capture"],
+)
+view = solve(sp)
+print(view.last.P)
 ```
 
 运行 `python examples/minimal_fit.py` 可以看到一个最小示例；如果将
@@ -132,9 +143,7 @@ P_opt, info = solve_frame(scene, cfg)
 
 ## 项目结构
 
-* `cartoweave/api.py` – 用于求解单帧或时间线的公共 API；
-* `cartoweave/engine` – 能量评估和数值求解器；
-* `cartoweave/orchestrators` – 多阶段时间线运行器；
+* `cartoweave/compute` – 核心计算管线，包含力项、passes 和求解器；
 * `cartoweave/data` – 随机场景和时间线生成器；
 * `cartoweave/viz` – 计划中的可视化工具；
 * `tests` – 单元测试与集成测试。

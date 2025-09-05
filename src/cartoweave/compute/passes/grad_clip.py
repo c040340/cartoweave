@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Dict, Any
 import numpy as np
 from .base import ComputePass
+from . import get_pass_cfg
+from cartoweave.compute.forces._common import get_eps
 
 
 class GradClipPass(ComputePass):
@@ -13,26 +15,26 @@ class GradClipPass(ComputePass):
     frames were affected and the strongest scale factor applied.
     """
 
-    def __init__(self, max_norm: float | None = None, max_abs: float | None = None, eps: float = 1e-12):
-        self.max_norm = float(max_norm) if max_norm is not None else None
-        self.max_abs = float(max_abs) if max_abs is not None else None
-        self.eps = float(eps)
+    def __init__(self):
         self.stats: Dict[str, Any] = {"clipped_frames": 0, "max_scale_down": 0.0}
 
     def wrap_energy(self, energy_fn):
         """Scale ``G`` and all component forces if thresholds are exceeded."""
 
-        mn, ma, eps = self.max_norm, self.max_abs, self.eps
         stats = self.stats
 
         def _wrapped(P, scene, active_mask, cfg):
+            conf = get_pass_cfg(cfg, "grad_clip", {"max_norm": None, "max_abs": None})
+            mn = conf.get("max_norm")
+            ma = conf.get("max_abs")
+            eps = get_eps(cfg)
+
             E, G, comps, meta = energy_fn(P, scene, active_mask, cfg)
             comps = dict(comps or {})
 
             if G is None:
                 G = np.zeros_like(P)
 
-            # Element-wise clipping
             if ma is not None:
                 np.clip(G, -ma, ma, out=G)
                 for k in list(comps.keys()):

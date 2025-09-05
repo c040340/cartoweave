@@ -1,0 +1,10 @@
+{
+  "compute": {
+    "eps": { "numeric": 1e-12 },
+    "weights": { "anchor.spring": 1.0 },
+    "passes": {
+      "capture": { "every": 1, "final_always": true },
+      "grad_clip": { "max_norm": null, "max_abs": null }
+    }
+  }
+}

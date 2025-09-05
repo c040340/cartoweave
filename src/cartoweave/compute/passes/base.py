@@ -33,14 +33,24 @@ class Context:
 class ComputePass:
     """Pass base class.
 
-    Subclasses may override hooks to plan stages, decide whether to capture a
-    frame, or wrap the energy function.
+    Subclasses may override hooks to plan/mutate stages, wrap the energy
+    function, wrap steps, or decide whether a frame should be captured.
+    All hooks are optional and default to pass-through behaviour.
     """
 
-    def plan_stages(self, ctx: Context) -> List[Stage]: ...
+    name: str = ""
 
-    def want_capture(self, ctx: Context, eval_index: int, frames_len: int) -> bool: ...
+    def plan_stages(self, ctx: Context, stages: List[Stage]):  # optional
+        return stages
 
-    def wrap_energy(self, energy_fn):
-        """Return a wrapped energy function or the original ``energy_fn``."""
+    def mutate_stage(self, ctx: Context, stage: Stage):  # optional
+        return stage
+
+    def wrap_energy(self, energy_fn):  # optional
         return energy_fn
+
+    def wrap_step(self, step_fn):  # optional
+        return step_fn
+
+    def want_capture(self, ctx: Context, eval_index: int, frames_len: int) -> bool:  # optional
+        return False

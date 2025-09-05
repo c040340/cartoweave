@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 from .base import Context, ComputePass
+from . import get_pass_cfg
 
 
 class CapturePass(ComputePass):
@@ -9,14 +10,18 @@ class CapturePass(ComputePass):
     Parameters mirror those used by :class:`SolvePack.capture`.
     """
 
-    def __init__(self, every: int = 1, limit=None, final_always: bool = True):
-        self.every = max(1, int(every))
-        self.limit = limit
-        self.final_always = bool(final_always)
+    def __init__(self):
+        self.final_always = True
+        self.stats = {"frames_captured": 0}
 
     def want_capture(self, ctx: Context, eval_index: int, frames_len: int) -> bool:
-        if self.limit is not None and isinstance(self.limit, int) and frames_len >= self.limit:
+        cfg = getattr(ctx.pack, "cfg", {})
+        conf = get_pass_cfg(cfg, "capture", {"every": 1, "final_always": True, "limit": None})
+        every = max(1, int(conf.get("every", 1)))
+        limit = conf.get("limit", None)
+        self.final_always = bool(conf.get("final_always", True))
+        if limit is not None and isinstance(limit, int) and frames_len >= limit:
             return False
-        if self.every <= 1:
+        if every <= 1:
             return True
-        return (eval_index % self.every) == 0
+        return (eval_index % every) == 0

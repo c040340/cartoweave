@@ -1,14 +1,12 @@
-"""Top-level public API for cartoweave.
+# -*- coding: utf-8 -*-
+"""CartoWeave public API (compute-only).
 
-Expose solver entry points and logging configuration utilities.
+Engine & orchestrators were removed. Use compute.* directly or the exports below.
 """
+from __future__ import annotations
 
-from .api import solve_frame, solve_plan, solve_scene_script
-from .utils.logging import configure_logging
+from .compute.pack import SolvePack  # noqa: F401
+from .compute.run import solve       # noqa: F401
+from .version import __version__     # noqa: F401
 
-__all__ = [
-    "solve_frame",
-    "solve_scene_script",
-    "solve_plan",
-    "configure_logging",
-]
+__all__ = ["SolvePack", "solve", "__version__"]

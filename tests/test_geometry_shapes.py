@@ -79,7 +79,7 @@ def test_no_flatten_patterns():
 
     files = [
         Path("src/cartoweave/data/random.py"),
-        Path("src/cartoweave/engine/forces/term_line_label.py"),
+        Path("src/cartoweave/compute/forces/line_label.py"),
         Path("src/cartoweave/labels.py"),
     ]
     pat = re.compile(r"\.flatten\(|\.ravel\(|reshape\(-1")

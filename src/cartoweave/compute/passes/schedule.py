@@ -18,12 +18,12 @@ class SchedulePass(ComputePass):
     pack-wide ``params`` and mask is produced.
     """
 
-    def plan_stages(self, ctx: Context) -> List[Stage]:
+    def plan_stages(self, ctx: Context, stages: List[Stage]) -> List[Stage]:
         pack = ctx.pack
         L = pack.L
         base_mask = pack.active_mask0
         base_params = dict(pack.params or {})
-        stages_cfg: List[Dict[str, Any]] = pack.schedule or [{}]
+        stages_cfg: List[Dict[str, Any]] = getattr(pack, "stages", None) or [{}]
 
         stages: List[Stage] = []
         for i, item in enumerate(stages_cfg):

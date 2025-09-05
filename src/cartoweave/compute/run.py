@@ -1,15 +1,20 @@
-"""Solve function coordinating passes and engine solvers."""
+"""Solve function coordinating passes and compute solvers."""
 from __future__ import annotations
 
 from typing import Dict, List, Any
 import numpy as np
+import time, platform, sys
 
 from .pack import SolvePack
 from .eval import energy_and_grad_full as _default_energy
 from .types import ViewPack, Frame, _grad_metrics, Array2
-from .optim import run_via_engine_solver
-from .passes import build_passes
+from .optim import run_solver
+from .passes.manager import PassManager
 from .passes.base import Context
+from cartoweave.config.bridge import translate_legacy_keys
+from .forces._common import get_eps
+from cartoweave.version import __version__ as _cw_ver
+from cartoweave.logging_util import get_logger
 
 
 def solve(pack: SolvePack) -> ViewPack:
@@ -17,12 +22,12 @@ def solve(pack: SolvePack) -> ViewPack:
 
     The workflow is:
 
-    ``SolvePack → passes.wrap_energy → engine solver → recorder → ViewPack``
+    ``SolvePack → passes.wrap_energy → compute solver → recorder → ViewPack``
 
     The function orchestrates passes that may wrap the energy function,
     mutate per-stage parameters, and decide whether each evaluation should be
-    captured. Solvers themselves live in :mod:`cartoweave.engine.solvers` and
-    are called via :func:`run_via_engine_solver`.
+    captured. Solvers are provided by :mod:`cartoweave.compute.optim` and
+    dispatched via :func:`run_solver`.
 
     The returned summary includes:
 
@@ -35,29 +40,26 @@ def solve(pack: SolvePack) -> ViewPack:
     available, step metrics such as ``step_norm``, ``dP_inf`` and ``dE``.
     """
     pack.validate()
+    cfg = translate_legacy_keys(pack.cfg)
+    pack.cfg = cfg
+    logger = get_logger("cartoweave.compute.run", cfg)
+    t0 = time.perf_counter()
     L = pack.L
     mode = "lbfgs" if pack.mode is None else str(pack.mode).lower()
 
-    # 构造 passes
-    passes = build_passes(pack.passes, pack.capture)
-
-    # 按顺序包裹能量函数
-    energy_fn = pack.energy_and_grad or _default_energy
-    for p in passes:
-        energy_fn = getattr(p, "wrap_energy", lambda f: f)(energy_fn)
-
+    # PassManager 构造与阶段规划
+    pm = PassManager(cfg, pack.passes)
+    passes = pm.passes
     capture_pass = next((p for p in passes if hasattr(p, "final_always")), None)
     ctx = Context(pack=pack, stages=[], eval_index=0, stage_index=0)
-    # 由 schedule 生成阶段
-    stages = passes[0].plan_stages(ctx)  # 第一个总是 schedule
+    stages = pm.plan_stages(ctx, pack.stages)
     ctx.stages = stages
 
-    # 允许 pass 对阶段参数做二次注入（step_limit 等）
-    for p in passes:
-        mutate = getattr(p, "mutate_stage", None)
-        if mutate:
-            for st in stages:
-                mutate(st)
+    # 包裹能量和步长
+    base_energy = pack.energy_and_grad or _default_energy
+    energy_fn = pm.wrap_energy(base_energy)
+    apply_step = pm.wrap_step(lambda P_old, P_prop, metrics: P_prop)
+    logger.info("solve.start", extra={"extra": {"stages": len(stages)}})
 
     frames: List[Frame] = []
     terms_used_set = set()
@@ -65,17 +67,21 @@ def solve(pack: SolvePack) -> ViewPack:
     last_P: Array2 | None = None
     last_E: float | None = None
     last_record: Dict[str, Any] | None = None
+    mask_popcount: List[int] = []
 
     # recorder 闭包：带入 capture、stage 索引
-    def make_recorder(stage_idx: int, stage_mask: np.ndarray):
+    def make_recorder(stage_idx: int, stage_mask: np.ndarray, P_start: Array2):
         def _rec(rec: Dict[str, Any]):
-            nonlocal ctx, frames, terms_used_set, last_P, last_E, last_record
-            P = rec.get("P", None)
-            if P is None:
+            nonlocal ctx, frames, terms_used_set, last_P, last_E, last_record, P_start
+            P_prop = rec.get("P", None)
+            if P_prop is None:
                 return
-            P = np.asarray(P)
-            if P.shape != (L, 2):
+            P_prop = np.asarray(P_prop)
+            if P_prop.shape != (L, 2):
                 return  # 本步仍然要求全长；子集帧先跳过
+
+            P_old = last_P if last_P is not None else P_start
+            P = apply_step(P_old, P_prop, rec)
 
             G = rec.get("G", rec.get("grad", None))
             if G is not None:
@@ -108,13 +114,9 @@ def solve(pack: SolvePack) -> ViewPack:
             if accept is not None:
                 metrics["accept"] = float(1.0 if accept else 0.0)
 
-            if last_P is not None:
-                dP = P - last_P
-                metrics["step_norm"] = float(np.linalg.norm(dP))
-                metrics["dP_inf"] = float(np.linalg.norm(dP, ord=np.inf))
-            else:
-                metrics["step_norm"] = 0.0
-                metrics["dP_inf"] = 0.0
+            dP = P - P_old
+            metrics["step_norm"] = float(np.linalg.norm(dP))
+            metrics["dP_inf"] = float(np.linalg.norm(dP, ord=np.inf))
 
             if last_E is not None and np.isfinite(E) and np.isfinite(last_E):
                 metrics["dE"] = float(E - last_E)
@@ -131,11 +133,10 @@ def solve(pack: SolvePack) -> ViewPack:
                 meta=meta,
             )
 
-            want = True
-            for p in passes:
-                want = p.want_capture(ctx, ctx.eval_index, len(frames)) and want
-            if want:
+            if pm.want_capture(ctx, ctx.eval_index, len(frames)):
                 frames.append(Frame(i=ctx.eval_index, stage=stage_idx, **frame_kwargs))
+                if capture_pass is not None:
+                    capture_pass.stats["frames_captured"] = capture_pass.stats.get("frames_captured", 0) + 1
 
             last_record = (frame_kwargs, stage_idx, ctx.eval_index)
             last_P = P
@@ -151,16 +152,25 @@ def solve(pack: SolvePack) -> ViewPack:
         ctx.stage_index = s_idx
         mode_stage = (st.solver or pack.mode or "lbfgs").lower()
         stage_solver_names.append(mode_stage)
-        result = run_via_engine_solver(
-            mode=mode_stage,
+        mask_popcount.append(int(st.mask.sum()))
+
+        def E_fn(P):
+            E, _, _, _ = energy_fn(P, pack.scene, st.mask, cfg)
+            return float(E)
+
+        def G_fn(P):
+            _, G, _, _ = energy_fn(P, pack.scene, st.mask, cfg)
+            return np.asarray(G, float)
+
+        result = run_solver(
+            mode_stage,
             P0=P_curr,
-            scene=pack.scene,
-            active_mask=st.mask,
+            energy_fn=E_fn,
+            grad_fn=G_fn,
             params=st.params or {},
-            energy_and_grad=energy_fn,
-            recorder=make_recorder(s_idx, st.mask),
+            callback=make_recorder(s_idx, st.mask, P_curr),
         )
-        P_final = np.asarray(result.get("P_final", P_curr))
+        P_final = np.asarray(result.get("P", P_curr))
         if P_final.shape == (L, 2):
             P_curr = P_final  # 作为下一阶段初值
 
@@ -182,7 +192,7 @@ def solve(pack: SolvePack) -> ViewPack:
 
     last = frames[-1]
     terms_used = sorted(terms_used_set)
-    # 汇总
+    eps = get_eps(cfg)
     iters = ctx.eval_index
     stop_reason = str(result.get("stop_reason", "unknown"))
     converged = bool(result.get("converged", stop_reason in ("gtol", "ftol")))
@@ -197,20 +207,21 @@ def solve(pack: SolvePack) -> ViewPack:
         "E_last": float(last.E),
         "g_inf_last": float(last.metrics.get("g_inf", np.nan)),
         "moved_ratio": float(
-            np.mean(np.linalg.norm(last.P - pack.P0, axis=1) > 1e-9)
+            np.mean(np.linalg.norm(last.P - pack.P0, axis=1) > eps)
         ),
         "stage_solvers": stage_solver_names,
+        "stages_params": [getattr(st, "params", dict(getattr(st, "__dict__", {}))) for st in stages],
+        "mask_popcount": mask_popcount,
+        "schema_version": "v1",
+        "runtime": {
+            "cartoweave": _cw_ver,
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+        },
     }
-
-    # 汇总各 pass 的统计信息
-    pass_stats = {}
-    for p in passes:
-        stats = getattr(p, "stats", None)
-        if stats:
-            pass_stats[p.__class__.__name__] = dict(stats)
-    if pass_stats:
-        summary["pass_stats"] = pass_stats
-    return ViewPack(
+    summary["time_ms"] = int((time.perf_counter() - t0) * 1000)
+    summary.setdefault("pass_stats", pm.collect_stats())
+    view = ViewPack(
         L=L,
         mode=mode,
         params_used=stages[-1].params if stages else (pack.params or {}),
@@ -219,3 +230,8 @@ def solve(pack: SolvePack) -> ViewPack:
         last=last,
         summary=summary,
     )
+    logger.info(
+        "solve.done",
+        extra={"extra": {"frames": view.summary.get("frames_captured", 0), "time_ms": summary["time_ms"]}},
+    )
+    return view
