@@ -1,12 +1,43 @@
 # -*- coding: utf-8 -*-
 """Shared dataclasses and helpers for the compute module."""
 
-from typing import Any, Callable, Dict, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 
-from cartoweave.contracts.viewpack import Frame, ViewPack
-
 Array2 = np.ndarray  # shape == (L, 2)
+
+
+# ---------------------------------------------------------------------------
+# Typed containers exposed by the compute module
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Frame:
+    """Single captured evaluation frame."""
+
+    P: Array2
+    comps: Dict[str, Array2]
+    E: float
+    Gnorm: float
+    stage_id: int
+    iter_id: int
+
+
+Event = Dict[str, Union[str, int, float, Dict[str, Union[str, int, float]]]]
+
+
+@dataclass
+class ViewPack:
+    """Result container returned by :func:`cartoweave.compute.run.solve`."""
+
+    frames: List[Frame]
+    events: List[Event]
+    last: Frame
+    summary: Dict[str, Any]
+
 
 # Energy callback signature: ``(P, scene, mask, cfg) -> (E, G, comps, meta)``
 EnergyFn = Callable[
@@ -18,8 +49,6 @@ EnergyFn = Callable[
 def _grad_metrics(G: Optional[Array2]) -> Dict[str, float]:
     """Return infinity and L2 norms of ``G`` if provided."""
 
-    import numpy as np
-
     if G is None:
         return {}
     return {
@@ -28,4 +57,12 @@ def _grad_metrics(G: Optional[Array2]) -> Dict[str, float]:
     }
 
 
-__all__ = ["Frame", "ViewPack", "Array2", "EnergyFn", "_grad_metrics"]
+__all__ = [
+    "Frame",
+    "ViewPack",
+    "Event",
+    "Array2",
+    "EnergyFn",
+    "_grad_metrics",
+]
+

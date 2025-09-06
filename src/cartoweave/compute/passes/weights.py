@@ -28,8 +28,7 @@ class WeightsPass(ComputePass):
 
         def _wrapped(P, labels, scene, active_mask, cfg):
             cfg2 = copy.deepcopy(cfg) if isinstance(cfg, dict) else {}
-            cfg2.setdefault("compute", {}).setdefault("weights", {})
-            cfg2["compute"]["weights"].update(self.weights)
+            cfg2.setdefault("weights", {}).update(self.weights)
             return energy_fn(P, labels, scene, active_mask, cfg2)
 
         return _wrapped

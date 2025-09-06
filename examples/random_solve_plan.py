@@ -24,9 +24,7 @@ def main() -> None:
     sp = build_solvepack_from_config(cfg, seed=0)
     sp.validate()
     scene = sp.scene0
-    print("points", np.asarray(scene["points"]).shape)
-    print("lines", len(scene["lines"]))
-    print("areas", len(scene["areas"]))
+    print("frame", scene.frame_size)
     print("labels", sp.L)
 
 

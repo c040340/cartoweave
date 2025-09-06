@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import numpy as np
 
-from cartoweave.contracts.viewpack import ViewPack
+from .types import ViewPack
 
 
 def to_old_payload(vp: ViewPack) -> Dict[str, Any]:
@@ -15,28 +15,22 @@ def to_old_payload(vp: ViewPack) -> Dict[str, Any]:
     """
     P_seq: List[np.ndarray] = []
     E_seq: List[float] = []
-    G_seq: List[np.ndarray] = []
+    G_seq: List[float] = []
     comps_seq: List[Dict[str, np.ndarray]] = []
-    mask_seq: List[np.ndarray] = []
     stage_seq: List[int] = []
 
     for f in vp.frames:
         P_seq.append(f.P)
         E_seq.append(f.E)
-        G_seq.append(f.G)
+        G_seq.append(getattr(f, "Gnorm", 0.0))
         comps_seq.append(f.comps)
-        mask_seq.append(f.mask)
-        stage_seq.append(f.stage)
+        stage_seq.append(getattr(f, "stage_id", 0))
 
     return {
         "P_seq": P_seq,
         "E_seq": E_seq,
         "G_seq": G_seq,
         "comps_seq": comps_seq,
-        "mask_seq": mask_seq,
         "stage_seq": stage_seq,
         "summary": dict(vp.summary),
-        "L": vp.L,
-        "mode": vp.mode,
-        "terms": vp.terms_used,
     }

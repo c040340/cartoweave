@@ -5,7 +5,6 @@ import numpy as np
 
 from .contracts.solvepack import SolvePack
 from .compute.run import solve
-from .config.bridge import translate_legacy_keys
 
 
 def _load_json(p: str):
@@ -21,7 +20,6 @@ def _dump_json(p: str, obj):
 
 def cmd_solve(args):
     cfg = _load_json(args.config) if args.config.endswith(".json") else _load_json(args.config)
-    cfg = translate_legacy_keys(cfg)
     scene = _load_json(args.scene)
 
     L = int(args.L) if args.L else len(scene.get("labels_init", [])) or 0
@@ -63,7 +61,7 @@ def make_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
 
     ps = sub.add_parser("solve", help="Run a solve from config + scene")
-    ps.add_argument("--config", required=True, help="config JSON (bridge supports legacy keys)")
+    ps.add_argument("--config", required=True, help="compute-only config JSON")
     ps.add_argument("--scene", required=True, help="scene JSON")
     ps.add_argument("--L", type=int, default=None, help="number of labels if not in scene")
     ps.add_argument("--iters", type=int, default=10, help="fallback iters if not in cfg")

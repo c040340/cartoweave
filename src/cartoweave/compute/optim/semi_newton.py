@@ -49,7 +49,7 @@ def run_semi_newton(
     params: Dict[str, Any],
     callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
-    """Finite-difference semi-Newton solver.
+    """Finite-difference semi-Newton optimiser.
 
     Parameters are similar to engine version but operate directly on compute
     callbacks. Only the basic algorithm is implemented to satisfy tests.

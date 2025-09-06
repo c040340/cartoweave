@@ -9,7 +9,7 @@ EnergyFn = Callable[[np.ndarray, Any, Any, np.ndarray, Dict[str, Any]],
                     Tuple[float, np.ndarray, Dict[str, Any]]]
 
 @dataclass
-class SolveContext:
+class LoopContext:
     labels: Any        # current LabelState list
     scene: Any         # current Scene
     active: np.ndarray # (N,) bool
@@ -35,7 +35,7 @@ def clip_by_inf(arr: np.ndarray, max_norm: float | None) -> np.ndarray:
         return arr
     return arr * (max_norm / a)
 
-def run_iters(P0: np.ndarray, ctx: SolveContext, energy_fn: EnergyFn,
+def run_iters(P0: np.ndarray, ctx: LoopContext, energy_fn: EnergyFn,
               report: bool = False) -> Tuple[np.ndarray, List[StepReport]]:
     """Run a minimal gradient loop with basic stopping criteria.
 
@@ -47,18 +47,18 @@ def run_iters(P0: np.ndarray, ctx: SolveContext, energy_fn: EnergyFn,
     P = P0.astype(float, copy=True)
     reps: List[StepReport] = []
     step = float(ctx.params.get("step", 1e-2) if ctx.params else 1e-2)
-    solver_cfg = {}
+    opt_cfg = {}
     if ctx.cfg:
-        solver_cfg = ctx.cfg.get("solver", {}) if isinstance(ctx.cfg, dict) else getattr(ctx.cfg, "solver", {})
-        if solver_cfg is None:
-            solver_cfg = {}
-    gtol = float(solver_cfg.get("gtol", 1e-6))
-    ftol = float(solver_cfg.get("ftol", 10.0 ** -9))
-    xtol = float(solver_cfg.get("xtol", 10.0 ** -9))
+        opt_cfg = ctx.cfg.get("solver", {}) if isinstance(ctx.cfg, dict) else getattr(ctx.cfg, "solver", {})
+        if opt_cfg is None:
+            opt_cfg = {}
+    gtol = float(opt_cfg.get("gtol", 1e-6))
+    ftol = float(opt_cfg.get("ftol", 10.0 ** -9))
+    xtol = float(opt_cfg.get("xtol", 10.0 ** -9))
     if ctx.params and ctx.params.get("max_step_norm") is not None:
         max_step_norm = ctx.params.get("max_step_norm")
     else:
-        max_step_norm = solver_cfg.get("max_step_norm")
+        max_step_norm = opt_cfg.get("max_step_norm")
 
     E_prev: float | None = None
     for it in range(ctx.iters):

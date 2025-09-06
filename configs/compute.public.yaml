@@ -1,0 +1,28 @@
+compute:
+  solver:
+    public:
+      mode: lbfgsb
+      use_warmup: true
+  passes:
+    capture: { every: 1, final_always: true }
+    grad_clip: { enable: false, norm_max: 1000.0 }
+    step_limit: { max_step_norm: null }
+  weights: {}
+
+
+data:
+  source: generate
+
+# if source == "generate":
+  generate:
+    num_points:  11        # >=0
+    num_lines:   1        # >=0
+    num_areas:   2        # >=0
+    num_labels:          # >=1 (optional; infer if missing)
+    num_steps:   19        # >=1 (required)
+    frame_size:  [1080, 1920]   # optional; default [1920.0,1080.0]
+    seed:        123      # optional
+
+# if source == "load":
+  load:
+    path: "path/to/snapshot.npz|.json"   # required

@@ -1,0 +1,7 @@
+compute:
+  solver:
+    tuning:
+      lbfgsb: { m: 10, maxiter: 300 }
+      stopping: { gtol: 1.0e-4 }
+      anti_jump: { step_cap_px: 30.0 }
+      warmup: { steps: 1 }

@@ -16,7 +16,6 @@ from __future__ import annotations
 from typing import Dict, Tuple, Any, List
 import numpy as np
 
-from cartoweave.utils.checks import merge_sources
 from .forces import REGISTRY as _CMP_REG, enabled_terms as _cmp_enabled
 
 Array2 = np.ndarray
@@ -25,60 +24,17 @@ Array2 = np.ndarray
 def _as_active_ids(mask: np.ndarray) -> List[int]:
     mask = np.asarray(mask, bool)
     return np.where(mask)[0].tolist()
-
-
-def _clip_if_needed(F: Array2, cfg: dict) -> Array2:
-    clamp_max = (
-        cfg.get("compute", {}).get("clamp", {}).get("optimize_force_max")
-        or cfg.get("solver", {})
-        .get("tuning", {})
-        .get("clamp", {})
-        .get("optimize_force_max")
-    )
-    if clamp_max is None:
-        return F
-    cm = float(clamp_max)
-    np.clip(F, -cm, cm, out=F)
-    return F
-
-
-def _energy_and_grad_full_compute(
+def energy_and_grad_full(
     P: Array2,
     labels: Any,
     scene: Dict[str, Any],
     active_mask: np.ndarray,
     cfg: dict,
-):
-    """Evaluate all enabled terms via the compute aggregator.
-
-    Parameters
-    ----------
-    P, active_mask
-        Current positions ``(L,2)`` and boolean mask. Inactive rows are zeroed
-        in the output.
-    labels, scene, cfg
-        Mutable label list and immutable scene/configuration for the current
-        behaviour state.
-
-    Returns
-    -------
-    E_total : float
-        Total energy after weighting.
-    g : Array2
-        Gradient satisfying ``g = -Σ comps``.
-    comps : Dict[str, Array2]
-        Per-term force fields after weighting. Weights are resolved by exact
-        key match, ``prefix.*`` or bare ``prefix``.
-    meta : dict
-        Aggregated source metadata.
-    """
+) -> Tuple[float, Array2, Dict[str, Array2]]:
+    """Aggregate energy and gradient across all enabled force terms"""
     P = np.asarray(P, float)
-    L = P.shape[0]
-    assert P.ndim == 2 and P.shape[1] == 2, f"P must be (L,2), got {P.shape}"
     active_mask = np.asarray(active_mask, bool)
-    assert active_mask.shape == (L,), f"active_mask shape must be (L,), got {active_mask.shape}"
 
-    # 场景副本（仅添加/覆盖 _active_ids 与 _ext_dir）
     sc = dict(scene or {})
     if labels is not None:
         sc["labels"] = labels
@@ -89,64 +45,45 @@ def _energy_and_grad_full_compute(
     sc["_active_ids_solver"] = ids
 
     E_total = 0.0
-    g = np.zeros_like(P)      # ∇E
+    g = np.zeros_like(P)
     comps: Dict[str, Array2] = {}
-    sources_merged: Dict[str, Any] = {}
-    # —— 阶段 1：pre_anchor —— #
+
+    # Phase 1: pre_anchor
     Fsum_ext = np.zeros_like(P)
-    pre_terms = list(_cmp_enabled(cfg, phase="pre_anchor"))
-    for name in pre_terms:
+    for name in _cmp_enabled(cfg, phase="pre_anchor"):
         fn = _CMP_REG.get(name)
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
-        E_i, F_i, src = fn(sc, P, cfg, phase="pre_anchor")
+        E_i, F_i, _ = fn(sc, P, cfg, phase="pre_anchor")
         if F_i is None:
             F_i = np.zeros_like(P)
         F_i = np.asarray(F_i, float)
-        if F_i.shape != P.shape:
-            raise ValueError(f"[TERM SHAPE MISMATCH] term={name} F={F_i.shape} P={P.shape}")
-        F_i = _clip_if_needed(F_i, cfg)
-
         E_total += float(E_i)
         comps[name] = F_i
         Fsum_ext += F_i
-        if src:
-            merge_sources(sources_merged, src)
 
-    # —— 阶段 2：anchor —— #
+    # Phase 2: anchor
     sc["_ext_dir"] = Fsum_ext.copy()
-    anchor_terms = list(_cmp_enabled(cfg, phase="anchor"))
-    for name in anchor_terms:
+    for name in _cmp_enabled(cfg, phase="anchor"):
         fn = _CMP_REG.get(name)
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
-        E_i, F_i, src = fn(sc, P, cfg, phase="anchor")
+        E_i, F_i, _ = fn(sc, P, cfg, phase="anchor")
         if F_i is None:
             F_i = np.zeros_like(P)
         F_i = np.asarray(F_i, float)
-        if F_i.shape != P.shape:
-            raise ValueError(f"[TERM SHAPE MISMATCH] term={name} F={F_i.shape} P={P.shape}")
-        F_i = _clip_if_needed(F_i, cfg)
-
         E_total += float(E_i)
         comps[name] = F_i
-        if src:
-            merge_sources(sources_merged, src)
 
-    # ∇E = - sum F
+    # ∇E = -ΣF
     for F_i in comps.values():
         g -= F_i
 
-    # 非活跃行为 0（双保险）
+    # mask inactive rows
     g[~active_mask] = 0.0
-    for k in list(comps.keys()):
-        Fi = comps[k]
+    for k, Fi in comps.items():
+        Fi = Fi.copy()
         Fi[~active_mask] = 0.0
         comps[k] = Fi
 
     return float(E_total), g, comps
-
-
-def energy_and_grad_full(P: Array2, labels, scene, active_mask, cfg) -> Tuple[float, Array2, Dict[str, Array2]]:
-    """Public entry point for compute-side energy evaluation."""
-    return _energy_and_grad_full_compute(P, labels, scene, active_mask, cfg)

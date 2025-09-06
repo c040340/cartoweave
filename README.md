@@ -27,16 +27,14 @@ pip install -e .
 ## Quick start
 
 ```python
-from cartoweave.data.api import build_solvepack_direct
+from cartoweave.data.api import build_solvepack_from_config
 from cartoweave.compute.run import solve
 
-sp = build_solvepack_direct(
-    frame_size=(1920, 1080),
-    n_labels=1,
-    steps={"kind": "none"},
-    seed=0,
-    solver_cfg={"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}},
-)
+cfg = {
+    "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},
+    "compute": {"weights": {"anchor.spring": 1.0}},
+}
+sp = build_solvepack_from_config(cfg, seed=0)
 view = solve(sp)
 print(view.last.P)
 ```
@@ -48,7 +46,6 @@ Run `python examples/minimal_solve.py` for a small working demo.
 ```python
 from cartoweave.data.api import (
     build_solvepack_from_config,
-    build_solvepack_direct,
     load_solvepack_from_file,
 )
 ```
@@ -164,16 +161,14 @@ pip install -e .
 ## 快速上手
 
 ```python
-from cartoweave.data.api import build_solvepack_direct
+from cartoweave.data.api import build_solvepack_from_config
 from cartoweave.compute.run import solve
 
-sp = build_solvepack_direct(
-    frame_size=(1920, 1080),
-    n_labels=1,
-    steps={"kind": "none"},
-    seed=0,
-    solver_cfg={"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}},
-)
+cfg = {
+    "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},
+    "compute": {"weights": {"anchor.spring": 1.0}},
+}
+sp = build_solvepack_from_config(cfg, seed=0)
 view = solve(sp)
 print(view.last.P)
 ```

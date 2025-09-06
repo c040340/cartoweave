@@ -1,456 +1,124 @@
-"""Pydantic models describing the configuration schema."""
+"""Pydantic models for compute configuration."""
 from __future__ import annotations
 
-from typing import Dict, Any, Literal, Mapping
+from typing import Dict
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    PositiveInt,
-    ValidationError,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class ComputeEps(BaseModel):
+class Eps(BaseModel):
+    div: float = Field(gt=0)
+    sqrt: float = Field(gt=0)
+    proj: float = Field(gt=0)
+
     model_config = ConfigDict(extra="forbid")
-    numeric: float = 1e-12
 
-class ComputePassCapture(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    every: int = 1
-    final_always: bool = True
 
-class ComputePassEarlyStop(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    enabled: bool = False
-    ftol: float | None = None
-    gtol: float | None = None
+class CapturePass(BaseModel):
+    every: int = Field(ge=1)
+    final_always: bool
 
-class ComputePassGradClip(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    max_abs: float | None = None
-    max_norm: float | None = None
 
-class ComputePassStepLimit(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    max_step_norm: float | None = None
 
-class ComputePassNanGuard(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    e_fallback: float = 0.0
+class GradClipPass(BaseModel):
+    enable: bool
+    norm_max: float = Field(gt=0)
 
-class ComputePasses(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    capture: ComputePassCapture = ComputePassCapture()
-    early_stop: ComputePassEarlyStop = ComputePassEarlyStop()
-    grad_clip: ComputePassGradClip = ComputePassGradClip()
-    step_limit: ComputePassStepLimit = ComputePassStepLimit()
-    nan_guard: ComputePassNanGuard = ComputePassNanGuard()
-    schedule: dict = Field(default_factory=dict)
 
-class ComputeConfig(BaseModel):
-    # 禁止未知字段，保持“干净整洁”
+
+class StepLimitPass(BaseModel):
+    max_step_norm: float | None = Field(default=None, gt=0)
+
     model_config = ConfigDict(extra="forbid")
-    eps: ComputeEps = ComputeEps()
-    passes: ComputePasses = ComputePasses()
-    weights: dict[str, float] = Field(default_factory=dict)
+
+
+class Passes(BaseModel):
+    capture: CapturePass
+    grad_clip: GradClipPass
+    step_limit: StepLimitPass
+
+    model_config = ConfigDict(extra="forbid")
+
 
 class SolverPublic(BaseModel):
-    mode: Literal["lbfgsb", "simple", "hybrid", "newton"] = "lbfgsb"
-    use_autocal: bool = False
-    use_warmup: bool = False
-    use_retry: bool = False
-    use_topk_sources: bool = False
-    profile: Literal[
-        "basic",
-        "fast",
-        "quality",
-        "balanced",
-        "stable",
-        "cinematic",
-    ] = "basic"
-    force_level: str | int = Field("medium")
+    mode: str
+    use_warmup: bool
 
     model_config = ConfigDict(extra="forbid")
 
 
-class MergeConfig(BaseModel):
-    mode: Literal["sum", "softmax", "logsumexp", "weighted"] = "sum"
-    temperature: float = 1.0
+class SolverTuningLBFGSB(BaseModel):
+    m: int = Field(ge=1)
+    maxiter: int = Field(ge=1)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class NormalizeConfig(BaseModel):
-    kind: Literal["l1", "l2", "max", "topk_norm"] = "l2"
+class SolverTuningStopping(BaseModel):
+    gtol: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class ThresholdConfig(BaseModel):
-    abs: float | None = Field(None, ge=0.0)
-    rel: float | None = Field(None, ge=0.0, le=1.0)
+class SolverTuningAntiJump(BaseModel):
+    step_cap_px: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class TopKConfig(BaseModel):
-    enable: bool = False
-    k: PositiveInt = Field(8, ge=1)
-    min_share: float = Field(0.0, ge=0.0, le=1.0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class LbfgsbConfig(BaseModel):
-    m: PositiveInt = Field(10, gt=0)
-    maxiter: PositiveInt = Field(100, ge=1)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class StoppingConfig(BaseModel):
-    gtol: float = Field(1e-5, gt=0.0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class WarmupConfig(BaseModel):
-    steps: int = Field(0, ge=0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class RetryConfig(BaseModel):
-    enable: bool = False
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class AntiJumpConfig(BaseModel):
-    step_cap_px: float | None = Field(30.0, ge=0.0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class ClampConfig(BaseModel):
-    optimize_force_max: float | None = Field(1e6, gt=0.0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class AnchorConfig(BaseModel):
-    k_spring: float = Field(5.0, ge=0.0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class TermConfig(BaseModel):
-    weight: float = Field(1.0, ge=0.0)
+class SolverTuningWarmup(BaseModel):
+    steps: int = Field(ge=1)
 
     model_config = ConfigDict(extra="forbid")
 
 
 class SolverTuning(BaseModel):
-    merge: MergeConfig = Field(default_factory=MergeConfig)
-    normalize: NormalizeConfig = Field(default_factory=NormalizeConfig)
-    threshold: ThresholdConfig = Field(default_factory=ThresholdConfig)
-    topk: TopKConfig = Field(default_factory=TopKConfig)
-    lbfgsb: LbfgsbConfig = Field(default_factory=LbfgsbConfig)
-    stopping: StoppingConfig = Field(default_factory=StoppingConfig)
-    clamp: ClampConfig = Field(default_factory=ClampConfig)
-    warmup: WarmupConfig = Field(default_factory=WarmupConfig)
-    retry: RetryConfig = Field(default_factory=RetryConfig)
-    anti_jump: AntiJumpConfig = Field(default_factory=AntiJumpConfig)
-    anchor: AnchorConfig = Field(default_factory=AnchorConfig)
-    terms: Dict[str, TermConfig] = Field(default_factory=dict)
+    lbfgsb: SolverTuningLBFGSB
+    stopping: SolverTuningStopping
+    anti_jump: SolverTuningAntiJump
+    warmup: SolverTuningWarmup
 
     model_config = ConfigDict(extra="forbid")
 
 
-class EpsConfig(BaseModel):
-    div: float = Field(1e-9, gt=0.0)
-    sqrt: float = Field(1e-9, gt=0.0)
-    proj: float = Field(1e-9, gt=0.0)
+class SolverInternalsClip(BaseModel):
+    force_abs_max: float = Field(gt=0)
+    energy_abs_max: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class ClipConfig(BaseModel):
-    force_abs_max: float = Field(1e6, gt=0.0)
-    energy_abs_max: float = Field(1e6, gt=0.0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class TemperatureConfig(BaseModel):
-    min: float = Field(1e-3, gt=0.0)
-    max: float = Field(10.0, gt=0.0)
-
-    @model_validator(mode="after")
-    def _check_bounds(cls, data: "TemperatureConfig") -> "TemperatureConfig":
-        if data.min > data.max:
-            raise ValueError("min must be <= max")
-        return data
+class SolverInternalsStability(BaseModel):
+    exp_clip: float
+    eps_norm: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
 
 class SolverInternals(BaseModel):
-    eps: EpsConfig = Field(default_factory=EpsConfig)
-    clip: ClipConfig = Field(default_factory=ClipConfig)
-    temperature: TemperatureConfig = Field(default_factory=TemperatureConfig)
-    finite_check: Literal["warn", "raise", "ignore"] = "warn"
-    stability: "StabilityConfig" = Field(default_factory=lambda: StabilityConfig())
+    clip: SolverInternalsClip
+    stability: SolverInternalsStability
 
     model_config = ConfigDict(extra="forbid")
 
 
-class StabilityConfig(BaseModel):
-    softplus_limit: float = 40.0
-    logsumexp_floor: float = -40.0
-    eps_sigma: float = 1.0e-3
-    eps_norm: float = 1.0e-12
-    exp_clip: float = 40.0
-    area_eps: float = 1.0e-12
+class Solver(BaseModel):
+    public: SolverPublic
+    tuning: SolverTuning
+    internals: SolverInternals
 
     model_config = ConfigDict(extra="forbid")
 
 
-class AnchorSpringCfg(BaseModel):
-    k: float = 6.0
-    r0: float = 12.0
-    damping: float = 0.0
-    max_norm_cap: float | None = None
-
-
-class FocusCfg(BaseModel):
-    k: float = 0.5
-    sigma: float = 40.0
-
-
-class BoundaryCfg(BaseModel):
-    k: float = 2.0
-    softness: float = 4.0
-
-
-class RepulseCfg(BaseModel):
-    k: float = 0.3
-    d0: float = 10.0
-    exponent: float = 2.0
-
-
-class InsideCfg(BaseModel):
-    k: float = 0.2
-    margin: float = 4.0
-
-
-class AreaCrossCfg(BaseModel):
-    k: float = 1.2
-    sigma: float = 6.0
-
-
-class AreaEmbedCfg(BaseModel):
-    k: float = 0.8
-    sigma: float = 6.0
-    edge_bias: float = 0.0
-
-
-class TermsCfg(BaseModel):
-    anchor: dict = Field(default_factory=lambda: {"spring": AnchorSpringCfg()})
-    focus: FocusCfg = FocusCfg()
-    boundary: BoundaryCfg = BoundaryCfg()
-    label_label_repulse: RepulseCfg = RepulseCfg()
-    line_label_repulse: RepulseCfg = RepulseCfg()
-    point_label_repulse: RepulseCfg = RepulseCfg()
-    label_label_inside: InsideCfg = InsideCfg()
-    line_label_inside: InsideCfg = InsideCfg()
-    point_label_inside: InsideCfg = InsideCfg()
-    area_cross: AreaCrossCfg = AreaCrossCfg()
-    area_embed: AreaEmbedCfg = AreaEmbedCfg()
+class Compute(BaseModel):
+    eps: Eps
+    passes: Passes
+    weights: Dict[str, float] = Field(default_factory=dict)
+    solver: Solver
 
     model_config = ConfigDict(extra="forbid")
 
 
-class RouteGenCfg(BaseModel):
-    mean_length_scale: float = 0.25
-    k_sigma_bound: int = 5
-    max_retry: int = 50
-    min_vertex_spacing_scale: float = 0.01
-    min_edge_margin_scale: float = 0.02
-    lower_bound_scale: float = 0.02
-    upper_bound_scale: float = 0.60
-
-
-class AreaGenCfg(BaseModel):
-    mean_area_scale: float = 0.05
-    k_sigma_bound: int = 5
-    max_retry: int = 50
-    min_vertex_spacing_scale: float = 0.01
-    min_edge_margin_scale: float = 0.02
-    lower_bound_scale: float = 0.01
-    upper_bound_scale: float = 0.50
-
-
-class DataRandomCounts(BaseModel):
-    n_points: int = 8
-    n_lines: int = 3
-    n_areas: int = 2
-
-
-class DataRandomFrame(BaseModel):
-    width: int = 1920
-    height: int = 1080
-
-
-class DataRandomCfg(BaseModel):
-    frame: DataRandomFrame = DataRandomFrame()
-    counts: DataRandomCounts = DataRandomCounts()
-    route_gen: RouteGenCfg = RouteGenCfg()
-    area_gen: AreaGenCfg = AreaGenCfg()
-
-
-class DataConfig(BaseModel):
-    random: DataRandomCfg = Field(default_factory=DataRandomCfg)
-
-
-class VizPanels(BaseModel):
-    layout: bool = True
-    forces: bool = True
-    info: bool = True
-    field: bool = True
-
-    model_config = ConfigDict(extra="allow")
-
-
-class VizForceView(BaseModel):
-    show_vectors: bool = True
-    clamp_force_max: float | None = 1000.0
-
-    model_config = ConfigDict(extra="allow")
-
-
-class VizPicker(BaseModel):
-    enable: bool = False
-
-    model_config = ConfigDict(extra="allow")
-
-
-class VizField(BaseModel):
-    mode: Literal["heatmap", "surface3d"] = "heatmap"
-    resolution: int = 128
-
-    model_config = ConfigDict(extra="allow")
-
-
-class VizSurface3D(BaseModel):
-    enable: bool = False
-
-    model_config = ConfigDict(extra="allow")
-
-
-class VizExport(BaseModel):
-    enable: bool = False
-
-    model_config = ConfigDict(extra="allow")
-
-
-class VizConfig(BaseModel):
-    panels: VizPanels = Field(default_factory=VizPanels)
-    colors: Dict[str, Any] = Field(default_factory=dict)
-    force_view: VizForceView = Field(default_factory=VizForceView)
-    picker: VizPicker = Field(default_factory=VizPicker)
-    field: VizField = Field(default_factory=VizField)
-    surface3d: VizSurface3D = Field(default_factory=VizSurface3D)
-    export: VizExport = Field(default_factory=VizExport)
-
-    model_config = ConfigDict(extra="allow")
-
-
-class SolverConfig(BaseModel):
-    public: SolverPublic = Field(default_factory=SolverPublic)
-    tuning: SolverTuning = Field(default_factory=SolverTuning)
-    internals: SolverInternals = Field(default_factory=SolverInternals)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class RootConfig(BaseModel):
-    solver: Dict[str, Any] = Field(default_factory=dict)
-    viz: VizConfig = Field(default_factory=VizConfig)
-    data: DataConfig = Field(default_factory=DataConfig)
-    terms: TermsCfg = Field(default_factory=TermsCfg)
-    compute: ComputeConfig | None = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
-def validate_config(cfg: Dict[str, Any]) -> None:
-    """Validate *cfg* against the configuration schema."""
-
-    # 允许“带点号键”的白名单前缀：
-    ALLOW_DOTTED_PREFIXES = (
-        "compute.weights",
-        "solver.internals.weights",
-        "solver.terms.weights",
-        "viz.",
-    )
-
-    def _allowed_dotted(full_key: str) -> bool:
-        # full_key 形如 "compute.weights.anchor.spring"
-        # 只要以白名单前缀开头就放行
-        return any(
-            full_key == p or full_key.startswith(p)
-            for p in ALLOW_DOTTED_PREFIXES
-        )
-
-    def _scan(data: Mapping[str, Any], path: str = "") -> None:
-        for key, value in data.items():
-            full_key = f"{path}.{key}" if path else key
-            # 若 key 含点号，但不在白名单前缀下，则报错
-            if "." in key and not _allowed_dotted(full_key):
-                raise ValueError(
-                    f"Invalid configuration: legacy dotted key '{full_key}'"
-                )
-            # 禁止已废弃的 term_weights
-            if full_key.endswith("term_weights"):
-                raise ValueError(
-                    "Invalid configuration: 'term_weights' is no longer supported"
-                )
-            if isinstance(value, Mapping):
-                _scan(value, full_key)
-
-    _scan(cfg)
-
-    # （可选但推荐）对 compute.weights 的值做一次数值类型校验
-    ws = ((cfg.get("compute", {}) or {}).get("weights", {}) or {})
-    for k, v in ws.items():
-        try:
-            float(v)
-        except Exception:
-            raise TypeError(f"compute.weights['{k}'] must be numeric, got {type(v).__name__}")
-
-    # 你原有的其它校验逻辑保持不动
-    topk = cfg.get("solver", {}).get("topk", {})
-    ms = topk.get("min_share")
-    if ms is not None and ms > 1.0:
-        raise ValueError("Invalid configuration: solver.topk.min_share > 1")
-    try:
-        RootConfig(**cfg)
-    except ValidationError as exc:  # pragma: no cover - exercised in tests
-        messages = []
-        for err in exc.errors():
-            path = ".".join(str(p) for p in err["loc"])
-            messages.append(f"{path}: {err['msg']}")
-        raise ValueError("Invalid configuration: " + "; ".join(messages))
-
-
-__all__ = [
-    "validate_config",
-    "VizConfig",
-    "DataRandomCfg",
-    "TermsCfg",
-]
-
+__all__ = ["Compute"]

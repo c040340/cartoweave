@@ -1,459 +1,128 @@
-"""Solve function coordinating passes and compute solvers."""
+"""Thin orchestrator wiring passes, optim loop and recorder."""
 from __future__ import annotations
 
-import platform
-import sys
-import time
-from typing import Any, Dict, List
+import logging
+from copy import deepcopy
+from dataclasses import dataclass
+from typing import Any, Callable
 
 import numpy as np
 
-from cartoweave.compute.passes.behavior_pass import (
-    RuntimeState,
-    apply_behavior_step,
-    copy_label,
-)
-from cartoweave.compute.solver.solve_layer import SolveContext, run_iters
-from cartoweave.config.bridge import translate_legacy_keys
+from cartoweave.compute.eval import energy_and_grad_full
+from cartoweave.compute.optim.loop import LoopContext as _EngineCtx
+from cartoweave.compute.optim.loop import run_iters as _run_iters
+from cartoweave.compute.passes.base import Context, Stage
+from cartoweave.compute.passes.manager import PassManager
+from cartoweave.compute.types import ViewPack
 from cartoweave.contracts.solvepack import SolvePack
-from cartoweave.contracts.viewpack import Frame, ViewPack
-from cartoweave.logging_util import get_logger
-from cartoweave.version import __version__ as _cw_ver
 
-from .eval import energy_and_grad_full
-from .forces._common import get_eps
-from .passes.base import Context
-from .passes.manager import PassManager
-from .types import Array2, _grad_metrics
+logger = logging.getLogger(__name__)
+
+Array2 = np.ndarray
 
 
-def solve_once(*, P, active, labels, scene, solver: str, params: Dict[str, Any]):
-    """Single-step optimizer wrapper.
+@dataclass
+class SolveContext:
+    """Minimal context passed to the optimisation loop."""
 
-    Casts arrays, builds a :class:`SolveContext` and invokes
-    :func:`run_iters` for ``iters`` steps of the chosen solver.
-    """
+    P: Array2
+    mask: np.ndarray
+    cfg: dict[str, Any]
+    scene: dict[str, Any]
+    labels: list[Any]
+    stage: Stage
 
-    P0 = np.asarray(P, dtype=float, copy=True)
-    active_mask = np.asarray(active, dtype=bool, copy=False)
 
-    iters = 1
-    if params:
-        iters = int(params.get("iters", params.get("max_iters", 1)))
+def solve_behaviors(pack: SolvePack) -> tuple[Array2, list[Any]]:
+    """Initialise state and labels from ``SolvePack``."""
 
-    scene_dict = scene.to_dict() if hasattr(scene, "to_dict") else scene
+    p = np.asarray(pack.P0, float).copy()
+    labels = [deepcopy(lbl) for lbl in pack.labels0]
+    return p, labels
 
-    ctx = SolveContext(
-        labels=labels,
-        scene=scene_dict,
-        active=active_mask,
-        cfg={"solver": params or {}},
-        iters=max(1, iters),
-        mode=solver,
-        params=params or {},
+
+def run_iters(
+    p0: Array2,
+    ctx: SolveContext,
+    energy_fn: Callable[[Array2, Any, Any, np.ndarray, dict[str, Any]], tuple[float, Array2, dict[str, Array2]]],
+) -> tuple[Array2, dict[str, Any]]:
+    """Dispatch to optimisation loop and collect metrics."""
+
+    mode = ctx.stage.solver or ctx.cfg.get("solver", {}).get("public", {}).get("mode", "lbfgsb")
+    tuning = ctx.cfg.get("solver", {}).get("tuning", {})
+    iters = ctx.stage.iters or tuning.get(mode, {}).get("maxiter", 1)
+    eng_ctx = _EngineCtx(
+        labels=ctx.labels,
+        scene=ctx.scene,
+        active=ctx.mask,
+        cfg=ctx.cfg,
+        iters=int(iters),
+        mode=mode,
+        params=getattr(ctx.stage, "params", {}) or {},
     )
-
-    P_new, _reports = run_iters(P0, ctx, energy_and_grad_full, report=False)
-    return P_new
-
-
-def solve_behaviors(pack: SolvePack) -> RuntimeState:
-    """
-    Apply behaviors sequentially and return current state.
-
-    This function MUST NOT run any optimization. It only mutates the state
-    according to cfg.behaviors (add/remove/mutate/anchors).
-    """
-    P = np.asarray(pack.P0, float).copy()
-    active = np.asarray(pack.active0, bool).copy()
-    labels = [copy_label(l) for l in pack.labels0]
-    state = RuntimeState(P=P, active=active, labels=labels)
-
-    for beh in (pack.cfg or {}).get("behaviors", []):
-        state = apply_behavior_step(pack, state, beh)
-
-    return state
+    p_new, reports = _run_iters(p0, eng_ctx, energy_fn, report=True)
+    e, g, comps = energy_fn(p_new, ctx.labels, ctx.scene, ctx.mask, ctx.cfg)
+    gnorm = float(np.linalg.norm(g)) if g is not None and g.size else 0.0
+    eps_norm = (
+        ctx.cfg.get("solver", {})
+        .get("internals", {})
+        .get("stability", {})
+        .get("eps_norm")
+    )
+    if eps_norm is not None:
+        gnorm = float(max(gnorm, float(eps_norm)))
+    return p_new, {
+        "E": e,
+        "G": g,
+        "gnorm": gnorm,
+        "iters": reports[-1].it + 1 if reports else 0,
+        "comps": comps,
+        "mode": mode,
+    }
 
 
 def solve(pack: SolvePack) -> ViewPack:
-    """Run the compute pipeline and return a :class:`ViewPack`.
+    """Entry point solving the compute pipeline."""
 
-    The workflow is:
-
-    ``SolvePack → passes.wrap_energy → compute solver → recorder → ViewPack``
-
-    The function orchestrates passes that may wrap the energy function,
-    mutate per-stage parameters, and decide whether each evaluation should be
-    captured. Solvers are provided by :mod:`cartoweave.compute.optim` and
-    dispatched via :func:`run_solver`.
-
-    The returned summary includes:
-
-    - ``evals`` / ``frames_captured`` – total evaluations and captured frames
-    - ``stage_solvers`` – solver used for each stage
-    - ``pass_stats`` – statistics reported by passes (when present)
-    - ``E0`` / ``E_last`` / ``g_inf_last`` / ``moved_ratio``
-
-    Each :class:`Frame` contains gradient norms (``g_inf``, ``g_norm``) and, if
-    available, step metrics such as ``step_norm``, ``dP_inf`` and ``dE``.
-    """
-    pack.validate()
-    cfg = translate_legacy_keys(pack.cfg)
-    pack.cfg = cfg
-    logger = get_logger("cartoweave.compute.run", cfg)
-
-    # Bootstrap current state from behaviors (no optimization here)
-    if (pack.cfg or {}).get("behaviors"):
-        _state = solve_behaviors(pack)
-        P_curr = np.asarray(_state.P, dtype=float, copy=True)
-        active_curr = np.asarray(_state.active, dtype=bool, copy=True)
-        labels_curr = _state.labels
-    else:
-        P_curr = np.asarray(pack.P0, dtype=float, copy=True)
-        active_curr = np.asarray(pack.active0, dtype=bool, copy=True)
-        labels_curr = pack.labels0
-
-    logger.debug("bootstrap: active=%d", int(active_curr.sum()))
-
-    t0 = time.perf_counter()
-    L = pack.L
-    mode = "lbfgs"
-
-    # PassManager 构造与阶段规划
+    p_curr, labels = solve_behaviors(pack)
+    active = np.asarray(pack.active0, bool)
+    cfg = pack.cfg["compute"]
     pm = PassManager(cfg, getattr(pack, "passes", None))
-    passes = pm.passes
-    capture_pass = next((p for p in passes if hasattr(p, "final_always")), None)
-    ctx = Context(pack=pack, stages=[], eval_index=0, stage_index=0)
-    stages = pm.plan_stages(ctx, getattr(pack, "stages", None))
-    ctx.stages = stages
+    ctx_pm = Context(pack=pack, stages=[], eval_index=0, stage_index=0)
+    stages = pm.plan_stages(ctx_pm, getattr(pack, "stages", None))
+    energy_fn = pm.wrap_energy(energy_and_grad_full)
+    step_fn = pm.wrap_step(lambda p_old, p_new, metrics: p_new)
+    recorder = pm.build_recorder()
+    scene_dict = pack.scene0.model_dump()
 
-    # 包裹能量和步长
-    base_energy = getattr(pack, "energy_and_grad", None) or energy_and_grad_full
-    # Allow legacy energy functions with signature (P, scene, active, cfg)
-    if base_energy is not energy_and_grad_full:
-        import inspect
-
-        try:
-            if len(inspect.signature(base_energy).parameters) == 4:
-                orig_energy = base_energy
-
-                def _legacy_energy(P, labels, scene, active, cfg):
-                    return orig_energy(P, scene, active, cfg)
-
-                base_energy = _legacy_energy
-        except Exception:
-            pass
-
-    def _energy_with_meta(P, labels, scene, active, cfg):
-        out = base_energy(P, labels, scene, active, cfg)
-        if isinstance(out, tuple) and len(out) == 3:
-            E, G, comps = out
-            return E, G, comps, {}
-        return out
-
-    energy_fn = pm.wrap_energy(_energy_with_meta)
-    apply_step = pm.wrap_step(lambda P_old, P_prop, metrics: P_prop)
-    logger.info("solve.start", extra={"extra": {"stages": len(stages)}})
-
-    frames: List[Frame] = []
-    terms_used_set = set()
-    stage_solver_names: List[str] = []
-    last_P: Array2 | None = None
-    last_E: float | None = None
-    last_record: Dict[str, Any] | None = None
-    mask_popcount: List[int] = []
-
-    # recorder 闭包：带入 capture、stage 索引
-    def make_recorder(stage_idx: int, stage_mask: np.ndarray, P_start: Array2):
-        def _rec(rec: Dict[str, Any]):
-            nonlocal ctx, frames, terms_used_set, last_P, last_E, last_record, P_start
-            P_prop = rec.get("P", None)
-            if P_prop is None:
-                return
-            P_prop = np.asarray(P_prop)
-            if P_prop.shape != (L, 2):
-                return  # 本步仍然要求全长；子集帧先跳过
-
-            P_old = last_P if last_P is not None else P_start
-            P = apply_step(P_old, P_prop, rec)
-
-            G = rec.get("G", rec.get("grad", None))
-            if G is not None:
-                G = np.asarray(G)
-                if G.shape != (L, 2):
-                    G = None
-
-            comps = rec.get("comps", {}) or {}
-            comps_full: Dict[str, Array2] = {}
-            for k, v in comps.items():
-                v = np.asarray(v)
-                if v.shape == (L, 2):
-                    comps_full[k] = v
-                    terms_used_set.add(k)
-
-            E = float(rec.get("E", rec.get("energy", np.nan)))
-            mask = rec.get("mask", stage_mask)
-            mask = np.asarray(mask)
-            mask = mask if mask.shape == (L,) else stage_mask
-
-            metrics = _grad_metrics(G)
-
-            ls_iters = rec.get("ls_iters", rec.get("line_search_iters", None))
-            if ls_iters is not None:
-                metrics["ls_iters"] = float(ls_iters)
-            alpha = rec.get("alpha", rec.get("step_size", None))
-            if alpha is not None:
-                metrics["alpha"] = float(alpha)
-            accept = rec.get("accept", rec.get("accepted", None))
-            if accept is not None:
-                metrics["accept"] = float(1.0 if accept else 0.0)
-
-            dP = P - P_old
-            metrics["step_norm"] = float(np.linalg.norm(dP))
-            metrics["dP_inf"] = float(np.linalg.norm(dP, ord=np.inf))
-
-            if last_E is not None and np.isfinite(E) and np.isfinite(last_E):
-                metrics["dE"] = float(E - last_E)
-
-            meta = rec.get("meta", {}) or {}
-
-            frame_kwargs = dict(
-                E=E,
-                P=P,
-                G=G if G is not None else np.zeros_like(P),
-                comps=comps_full,
-                mask=mask,
-                metrics=metrics,
-                meta=meta,
-            )
-
-            if pm.want_capture(ctx, ctx.eval_index, len(frames)):
-                frames.append(Frame(i=ctx.eval_index, stage=stage_idx, **frame_kwargs))
-                if capture_pass is not None:
-                    capture_pass.stats["frames_captured"] = capture_pass.stats.get("frames_captured", 0) + 1
-
-            last_record = (frame_kwargs, stage_idx, ctx.eval_index)
-            last_P = P
-            last_E = E
-            ctx.eval_index += 1
-
-        return _rec
-
-    # 串行跑各阶段
-    result: Dict[str, Any] = {}
-    for s_idx, st in enumerate(stages):
-        ctx.stage_index = s_idx
-
-        # read fields with tolerance for dataclass or dict
-        st_mask = getattr(st, "mask", None) if not isinstance(st, dict) else st.get("mask")
-        st_iters = getattr(st, "iters", None) if not isinstance(st, dict) else st.get("iters")
-        st_solver = getattr(st, "solver", None) if not isinstance(st, dict) else st.get("solver")
-        st_params = getattr(st, "params", None) if not isinstance(st, dict) else st.get("params")
-
-        # defaults from cfg
-        default_solver = (cfg.get("solver", {}) or {}).get("name") or "lbfgs"
-        default_iters = int((cfg.get("solver", {}) or {}).get("iters", 10))
-
-        # mask fallback
-        if st_mask is None:
-            stage_mask = active_curr
-        else:
-            stage_mask = np.asarray(st_mask, dtype=bool)
-            if stage_mask.shape != active_curr.shape or int(stage_mask.sum()) == 0:
-                stage_mask = active_curr
-
-        # iters/solver fallback
-        iters_stage = (
-            int(st_iters)
-            if isinstance(st_iters, (int, np.integer)) and st_iters > 0
-            else default_iters
-        )
-        solver_stage = (
-            st_solver or getattr(pack, "mode", None) or default_solver
-        ).lower()
-        params_stage = st_params or {}
-
-        stage_solver_names.append(solver_stage)
-        mask_popcount.append(int(stage_mask.sum()))
-
-        rec = make_recorder(s_idx, stage_mask, P_curr)
-        scene_dict = pack.scene0.to_dict()
-        # 把当前 labels_curr 作为 compute 的真值写回 scene（force 只看 scene['labels']）
-        scene_dict["labels"] = [
-            {
-                "kind": getattr(lab, "kind", None),
-                "WH": (getattr(lab, "WH", None).tolist() if getattr(lab, "WH", None) is not None else None),
-                "mode": (getattr(lab, "meta", {}) or {}).get("mode"),
-                "anchor": (
-                    {
-                        "kind": getattr(getattr(lab, "anchor", None), "kind", None),
-                        "index": getattr(getattr(lab, "anchor", None), "index", None),
-                        "t": getattr(getattr(lab, "anchor", None), "t", None),
-                    } if getattr(lab, "anchor", None) is not None else None
-                ),
-                "meta": (getattr(lab, "meta", {}) or {}),
-            }
-            for lab in labels_curr
-        ]
-        E0, G0, comps0, _ = energy_fn(P_curr, labels_curr, scene_dict, stage_mask, cfg)
-        rec({"P": P_curr, "G": G0, "comps": comps0, "E": E0})
-
-        ctx_stage = SolveContext(
-            labels=labels_curr,
-            scene=scene_dict,
-            active=stage_mask,
+    for sid, stage in enumerate(stages):
+        st_mask = pm.stage_mask(active, stage)
+        ctx = SolveContext(
+            P=p_curr,
+            mask=st_mask,
             cfg=cfg,
-            iters=iters_stage,
-            mode=solver_stage,
-            params=params_stage,
+            scene=scene_dict,
+            labels=labels,
+            stage=stage,
         )
-
-        def _energy_no_meta(P, labels, scene, active, cfg):
-            out = energy_and_grad_full(P, labels, scene, active, cfg)
-            if isinstance(out, tuple) and len(out) == 4:
-                E, G, comps, _ = out
-            else:
-                E, G, comps = out
-            return E, G, comps
-
-        from cartoweave.compute.optim import run_solver as _dispatch_solver
-
-        # 用 Pass 包裹过的 energy（注意用上前面构造好的 energy_fn）
-        def _E_wrapped(P_only: np.ndarray) -> float:
-            E, G, comps, _meta = energy_fn(P_only, labels_curr, scene_dict, stage_mask, cfg)
-            return float(E)
-
-        def _G_wrapped(P_only: np.ndarray) -> np.ndarray:
-            E, G, comps, _meta = energy_fn(P_only, labels_curr, scene_dict, stage_mask, cfg)
-            return np.asarray(G, float)
-
-        # 把 stage 的 iters 映射到求解器参数（兼容 lbfgs）
-        solver_params = dict(params_stage or {})
-        if iters_stage is not None and iters_stage > 0:
-            # L-BFGS 常用 maxiter；半隐式牛顿也收这个作为外层上限
-            solver_params.setdefault("maxiter", int(iters_stage))
-
-        # 让 step recorder 也吃到优化过程里的帧（可选）
-        def _callback(step_rec: dict[str, Any]):
-            # 允许 lbfgs/半牛顿在迭代时把 {"P":..., "G":..., "E":...} 回调出来
-            if isinstance(step_rec, dict):
-                rec(step_rec)
-
-        # 真正跑选定的求解器（lbfgs / semi_newton）
-        def _unwrap_P(res):
-            """Accept ndarray / OptimizeResult / dict / tuple and return np.ndarray x."""
-            # 1) scipy-like OptimizeResult / objects with .x
-            x = getattr(res, "x", None)
-            if x is not None:
-                return np.asarray(x, dtype=float)
-
-            # 2) dict-like returns
-            if isinstance(res, dict):
-                for k in ("x", "P", "params", "solution", "sol", "optimum"):
-                    if k in res:
-                        return np.asarray(res[k], dtype=float)
-
-            # 3) tuple returns: (x, info) / (status, x) / etc.
-            if isinstance(res, tuple) and len(res) > 0:
-                # 优先从第一个非标量 array-like 取
-                for item in res:
-                    if isinstance(item, (list, tuple, np.ndarray)):
-                        arr = np.asarray(item)
-                        if arr.ndim >= 1:
-                            return arr.astype(float)
-                # 或者按常见约定：第一个就是 x
-                return np.asarray(res[0], dtype=float)
-
-            # 4) 直接是 array-like
-            if isinstance(res, (list, tuple, np.ndarray)):
-                return np.asarray(res, dtype=float)
-
-            # 5) 失败兜底
-            raise TypeError(f"run_solver returned unsupported type: {type(res)}")
-
-        # --- 在调用求解器之前，存一份前态 ---
-        P_prev = np.asarray(P_curr, float).copy()
-
-        res = _dispatch_solver(
-            solver_stage, P_curr, _E_wrapped, _G_wrapped, solver_params, callback=_callback,
+        p_prop, metrics = run_iters(p_curr, ctx, energy_fn)
+        p_curr = step_fn(p_curr, p_prop, metrics)
+        recorder.capture_stage_end(
+            sid,
+            p_curr,
+            labels,
+            metrics,
+            st_mask,
+            final=(sid == len(stages) - 1),
         )
-        P_curr = _unwrap_P(res)
-        ctx.eval_index += int(solver_params.get("maxiter", iters_stage or 0))
-
-        # 位移统计（本 stage）
-        disp = float(np.linalg.norm(P_curr - P_prev))
-
-        E1, G1, comps1, _ = energy_fn(P_curr, labels_curr, scene_dict, stage_mask, cfg)
-        rec({"P": P_curr, "G": G1, "comps": comps1, "E": E1})
-        result = {"P": P_curr}
-
         logger.debug(
-            "stage[%d]: mask.sum=%d iters=%d solver=%s dP=%.6g",
-            s_idx,
-            int(stage_mask.sum()),
-            iters_stage,
-            solver_stage,
-            disp,
+            "stage=%d mode=%s iters=%d E=%.4g Gnorm=%.4g",
+            sid,
+            metrics.get("mode"),
+            metrics.get("iters", 0),
+            metrics.get("E", 0.0),
+            metrics.get("gnorm", 0.0),
         )
+        recorder.record_events(pm.pop_events())
 
-        # 若未记录最终一帧，则按需补齐
-        last_eval_idx = ctx.eval_index - 1
-        has_final = any(
-            f.stage == s_idx and f.i == last_eval_idx for f in frames
-        )
-        need_final = (capture_pass is not None and capture_pass.final_always) or not any(
-            f.stage == s_idx for f in frames
-        )
-        if need_final and not has_final and last_record is not None:
-            frame_kwargs, stage_rec, idx_rec = last_record
-            frames.append(Frame(i=idx_rec, stage=stage_rec, **frame_kwargs))
-
-    if not frames and last_record is not None:
-        frame_kwargs, stage_rec, idx_rec = last_record
-        frames.append(Frame(i=idx_rec, stage=stage_rec, **frame_kwargs))
-
-    last = frames[-1]
-    terms_used = sorted(terms_used_set)
-    eps = get_eps(cfg)
-    iters = ctx.eval_index
-    stop_reason = str(result.get("stop_reason", "unknown"))
-    converged = bool(result.get("converged", stop_reason in ("gtol", "ftol")))
-    summary = {
-        "evals": iters,
-        "frames_captured": len(frames),
-        "iters": iters,
-        "stages": len(stages),
-        "converged": converged,
-        "stop_reason": stop_reason,
-        "E0": float(frames[0].E),
-        "E_last": float(last.E),
-        "g_inf_last": float(last.metrics.get("g_inf", np.nan)),
-        "moved_ratio": float(
-            np.mean(np.linalg.norm(last.P - pack.P0, axis=1) > eps)
-        ),
-        "stage_solvers": stage_solver_names,
-        "stages_params": [getattr(st, "params", dict(getattr(st, "__dict__", {}))) for st in stages],
-        "mask_popcount": mask_popcount,
-        "schema_version": "v1",
-        "runtime": {
-            "cartoweave": _cw_ver,
-            "python": sys.version.split()[0],
-            "platform": platform.platform(),
-        },
-    }
-    summary["time_ms"] = int((time.perf_counter() - t0) * 1000)
-    summary.setdefault("pass_stats", pm.collect_stats())
-    view = ViewPack(
-        L=L,
-        mode=mode,
-        params_used=stages[-1].params if stages else (getattr(pack, "params", {}) or {}),
-        terms_used=terms_used,
-        frames=frames,
-        last=last,
-        summary=summary,
-    )
-    logger.info(
-        "solve.done",
-        extra={"extra": {"frames": view.summary.get("frames_captured", 0), "time_ms": summary["time_ms"]}},
-    )
-    return view
+    return recorder.to_viewpack(p_curr, labels)

@@ -20,7 +20,7 @@ class SchedulePass(ComputePass):
     def plan_stages(self, ctx: Context, stages: List[Stage]) -> List[Stage]:
         pack = ctx.pack
         L = pack.L
-        base_mask = pack.active_mask0
+        base_mask = np.asarray(getattr(pack, "active0", np.zeros(L, bool)), bool)
         base_params = dict(getattr(pack, "params", {}) or {})
         stages_cfg: List[Dict[str, Any]] = getattr(pack, "stages", None) or [{}]
 

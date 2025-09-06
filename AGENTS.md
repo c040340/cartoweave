@@ -56,6 +56,7 @@
 ### ConfigAgent — Config Loader / 配置代理
 - **Modules**: `config/schema.py`, `loader.py`
 - **Role**: Load, merge, and validate configs. / 加载、合并、校验配置。
+- **Config namespace**: only `compute.*` is recognised; legacy keys raise errors.
 
 ---
 
@@ -96,5 +97,5 @@ Contains `P`, `components`, `meta(stage_id, step_idx)`. / 记录每次能量评�
 - Standardize history schema to Parquet. / 历史记录结构标准化。
 - WebGL visualization. / 支持 WebGL 可视化。
 - Auto‑tuning force weights. / 自动调参。
-- Learnable terms. / 支持可学习力项。
+- Learnable terms / 支持可学习力项。
 

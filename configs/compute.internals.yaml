@@ -1,0 +1,8 @@
+compute:
+  eps: { div: 1e-9, sqrt: 1e-9, proj: 1e-9 }
+  solver:
+    internals:
+      clip: { force_abs_max: 1.0e6, energy_abs_max: 1.0e6 }
+      stability:
+        exp_clip: 40.0
+        eps_norm: 1.0e-12

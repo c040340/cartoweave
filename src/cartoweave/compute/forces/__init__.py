@@ -30,12 +30,7 @@ def enabled_terms(cfg: dict, *, phase: str) -> List[str]:
       - "pre_anchor": any term NOT starting with "anchor."
       - "anchor":     only terms starting with "anchor."
     """
-    ws = (
-        cfg.get("compute", {}).get("weights", {})
-        or cfg.get("solver", {}).get("internals", {}).get("weights", {})
-        or cfg.get("solver", {}).get("terms", {}).get("weights", {})
-        or {}
-    )
+    ws = cfg.get("weights", {}) or {}
     names = [k for k, v in ws.items() if float(v) > 0.0]
     if phase == "pre_anchor":
         return [n for n in names if not n.startswith("anchor.")]

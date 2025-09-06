@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 from pathlib import Path
-from cartoweave.config.loader import load_configs
+import yaml
 from cartoweave.viz.panels import draw_layout
 from cartoweave.viz.defaults import merge_defaults
 
@@ -13,8 +13,8 @@ def test_anchor_marker_size_from_yaml(tmp_path):
     orig = Path("configs/viz.yaml").read_text()
     viz_path = tmp_path / "viz.yaml"
     viz_path.write_text(orig.replace("anchor_marker_size: 4.0", "anchor_marker_size: 11.0"))
-    cfg = load_configs(viz_path=str(viz_path))
-    viz = merge_defaults(cfg["viz"])
+    viz_cfg = yaml.safe_load(viz_path.read_text())
+    viz = merge_defaults(viz_cfg)
     assert viz["layout"]["colors"]["points"] == "#2E86DE"
     fig, ax = plt.subplots()
     draw_layout(

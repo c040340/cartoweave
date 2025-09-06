@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
-"""CartoWeave public API (compute-only).
+"""CartoWeave public API.
 
-Engine & orchestrators were removed. Use compute.* directly or the exports below.
+The top level package only re-exports version and the SolvePack contract. The
+compute pipeline is intentionally not imported to keep module side effects
+minimal for schema tests.
 """
-from __future__ import annotations
 
 from .contracts.solvepack import SolvePack  # noqa: F401
-from .compute.run import solve       # noqa: F401
-from .version import __version__     # noqa: F401
+from .version import __version__  # noqa: F401
 
-__all__ = ["SolvePack", "solve", "__version__"]
+__all__ = ["SolvePack", "__version__"]

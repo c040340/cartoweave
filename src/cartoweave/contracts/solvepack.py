@@ -1,332 +1,201 @@
-"""Dataclasses defining the SolvePack v2 contract.
+"""Strict SolvePack schema using Pydantic models.
 
-This module intentionally keeps the structures light weight and Pythonic so
-that callers can assemble packs either from generated content or loaded
-snapshots.  The compute layer largely operates on dictionaries, therefore the
-objects below expose small helpers such as ``get`` so that they behave similarly
-to mappings when consumed by legacy code.
+This module defines a minimal contract used by the compute layer. The schema is
+not backwards compatible with the previous dataclass based implementation. Any
+unknown fields will raise validation errors.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Literal
+import math
+from typing import Any, Literal
 
-import numpy as np
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
-__all__ = [
-    "Kind",
-    "AnchorKind",
-    "AnchorSpec",
-    "LabelState",
-    "BehaviorOp",
-    "Behavior",
-    "Scene",
-    "SolvePack",
-    "validate",
-]
+# ---------------------------------------------------------------------------
+# Helper type aliases
+# ---------------------------------------------------------------------------
 
-# basic string enums -----------------------------------------------------------
-
-# ``Kind`` represents the label kind used by the compute layer.  ``"none"`` is
-# a valid placeholder for inactive labels.
-Kind = Literal["none", "point", "line", "area"]
-
-# Anchors are restricted to geometry primitives and do not include ``"none"``.
-AnchorKind = Literal["point", "line", "area"]
+XY = tuple[float, float]
+Polygon = list[XY]
+Polyline = list[XY]
 
 
 # ---------------------------------------------------------------------------
-#  Basic dataclasses
+# Scene model
 # ---------------------------------------------------------------------------
 
+class Scene(BaseModel):
+    """Static geometry of the scene."""
 
-@dataclass(slots=True)
-class AnchorSpec:
-    kind: str
-    index: int
-    t: Optional[float] = None
+    frame_size: XY
+    bounds: tuple[float, float, float, float] | None = None
+    padding: float | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("frame_size")
+    @classmethod
+    def _check_frame_size(cls, v: XY) -> XY:
+        if len(v) != 2 or any(not math.isfinite(x) or x <= 0 for x in v):
+            raise ValueError("frame_size must be positive finite (W,H)")
+        return v
+
+    @field_validator("bounds")
+    @classmethod
+    def _check_bounds(cls, v: tuple[float, float, float, float] | None):
+        if v is None:
+            return v
+        if len(v) != 4 or any(not math.isfinite(x) for x in v):
+            raise ValueError("bounds must be finite (xmin,ymin,xmax,ymax)")
+        return v
+
+    @field_validator("padding")
+    @classmethod
+    def _check_padding(cls, v: float | None) -> float | None:
+        if v is None:
+            return v
+        if not math.isfinite(v) or v < 0:
+            raise ValueError("padding must be >=0 and finite")
+        return v
 
 
-@dataclass(slots=True)
-class LabelState:
-    kind: str
-    WH: np.ndarray
-    anchor: AnchorSpec | None = None
-    meta: Dict[str, Any] = field(default_factory=dict)
+# ---------------------------------------------------------------------------
+# Label model
+# ---------------------------------------------------------------------------
+
+class Anchor(BaseModel):
+    mode: Literal["xy", "centroid", "line_midpoint", "bbox_center"]
+    xy: XY | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _check_xy(self):  # type: ignore[override]
+        if self.mode == "xy":
+            if self.xy is None:
+                raise ValueError("anchor.xy required when mode='xy'")
+            if len(self.xy) != 2 or any(not math.isfinite(x) for x in self.xy):
+                raise ValueError("anchor.xy must be finite (x,y)")
+        elif self.xy is not None:
+            raise ValueError("anchor.xy only allowed when mode='xy'")
+        return self
 
 
-@dataclass(slots=True)
-class BehaviorOp:
+class Label(BaseModel):
     id: int
-    set: Dict[str, Any]
+    kind: Literal["point", "line", "area"]
+    WH: XY | None = None
+    thickness: float | None = None
+    radius: float | None = None
+    polyline: Polyline | None = None
+    polygon: Polygon | None = None
+    anchor: Anchor
+    meta: dict[str, Any] = Field(default_factory=dict)
 
+    model_config = ConfigDict(extra="forbid")
 
-@dataclass(slots=True)
-class Behavior:
-    iters: int
-    ops: Dict[str, Any]
-    solver: str = "lbfgs"
-    params: Dict[str, Any] = field(default_factory=dict)
+    @field_validator("WH")
+    @classmethod
+    def _check_wh(cls, v: XY | None) -> XY | None:
+        if v is None:
+            return v
+        if len(v) != 2 or any(not math.isfinite(x) or x <= 0 for x in v):
+            raise ValueError("WH must be positive finite (W,H)")
+        return v
 
-    # ``BehaviorPass`` calls ``beh.get(...)`` on these objects.  Implement a
-    # tiny helper so dataclasses behave like dictionaries.
-    def get(self, key: str, default: Any | None = None) -> Any:
-        return getattr(self, key, default)
+    @field_validator("thickness", "radius")
+    @classmethod
+    def _check_positive(cls, v: float | None) -> float | None:
+        if v is None:
+            return v
+        if not math.isfinite(v) or v <= 0:
+            raise ValueError("values must be positive and finite")
+        return v
 
+    @field_validator("polyline", "polygon")
+    @classmethod
+    def _check_poly(cls, v: Polyline | Polygon | None, info):
+        if v is None:
+            return v
+        for xy in v:
+            if len(xy) != 2 or any(not math.isfinite(c) for c in xy):
+                raise ValueError(f"{info.field_name} must contain finite (x,y) pairs")
+        return v
 
-@dataclass(slots=True)
-class Scene:
-    points: np.ndarray
-    lines: List[np.ndarray]
-    areas: List[Dict[str, Any]]
-    frame_size: tuple[float, float]
-    labels: List[Dict[str, Any]] = field(default_factory=list)
-    WH: np.ndarray = field(default_factory=lambda: np.zeros((0, 2)))
-
-    # ``BehaviorPass`` accesses scene like a mapping.  ``to_dict`` plus ``get``
-    # keep compatibility while retaining the dataclass definition.
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "points": self.points,
-            "lines": self.lines,
-            "areas": self.areas,
-            "frame_size": self.frame_size,
-            "labels": self.labels,
-            "WH": self.WH,
-        }
-
-    def get(self, key: str, default: Any | None = None) -> Any:
-        return self.to_dict().get(key, default)
+    @model_validator(mode="after")
+    def _kind_requirements(self):  # type: ignore[override]
+        if self.kind == "point":
+            if self.polyline is not None or self.polygon is not None:
+                raise ValueError("point label must not have polyline/polygon")
+        elif self.kind == "line":
+            if not self.polyline or len(self.polyline) < 2:
+                raise ValueError("line label requires polyline with >=2 vertices")
+            if self.polygon is not None:
+                raise ValueError("line label must not have polygon")
+        elif self.kind == "area":
+            if not self.polygon or len(self.polygon) < 3:
+                raise ValueError("area label requires polygon with >=3 vertices")
+            if self.polyline is not None:
+                raise ValueError("area label must not have polyline")
+        return self
 
 
 # ---------------------------------------------------------------------------
-#  SolvePack and validation
+# SolvePack model
 # ---------------------------------------------------------------------------
 
-
-@dataclass(slots=True)
-class SolvePack:
-    N: int
-    P0: np.ndarray
-    active0: np.ndarray
-    labels0: List[LabelState]
+class SolvePack(BaseModel):
+    L: int
+    P0: list[XY]
+    labels0: list[Label]
+    active0: list[StrictBool]
     scene0: Scene
-    cfg: Dict[str, Any] = field(default_factory=dict)
+    cfg: dict[str, Any]
+    rng_seed: int | None = None
+    uid: str | None = None
+    created_at: str | None = None
 
-    # -- compatibility helpers -------------------------------------------------
-    @property
-    def L(self) -> int:  # pragma: no cover - legacy alias
-        return self.N
+    model_config = ConfigDict(extra="forbid")
 
-    @property
-    def active_mask0(self) -> np.ndarray:  # pragma: no cover - legacy alias
-        return self.active0
+    @field_validator("P0")
+    @classmethod
+    def _check_p0(cls, v: list[XY]) -> list[XY]:
+        for i, xy in enumerate(v):
+            if len(xy) != 2 or any(not math.isfinite(c) for c in xy):
+                raise ValueError(f"P0[{i}] must be finite (x,y), got {xy}")
+        return v
 
-    def validate(self) -> None:  # pragma: no cover - user convenience
-        validate(self)
+    @model_validator(mode="after")
+    def _check_lengths(self):  # type: ignore[override]
+        if self.L <= 0:
+            raise ValueError(f"L must be positive, got {self.L}")
+        if not (len(self.P0) == len(self.labels0) == len(self.active0) == self.L):
+            raise ValueError(
+                f"length mismatch: L={self.L} P0={len(self.P0)} "
+                f"labels0={len(self.labels0)} active0={len(self.active0)}"
+            )
+        for i, lbl in enumerate(self.labels0):
+            if lbl.id != i:
+                raise ValueError(
+                    f"labels0[{i}].id expected {i}, got {lbl.id}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _check_cfg(self):  # type: ignore[override]
+        if "solver" in self.cfg:
+            raise ValueError("cfg contains legacy key 'solver'")
+        if "terms" in self.cfg:
+            raise ValueError("cfg contains legacy key 'terms'")
+        keys = set(self.cfg.keys())
+        if keys != {"compute"}:
+            raise ValueError(f"cfg top-level keys must be {{'compute'}}, got {keys}")
+        return self
+
+    def validate(self) -> SolvePack:  # pragma: no cover - compatibility helper
+        """Explicit validation; simply returns ``self`` on success."""
+        return self
 
 
-def validate(pack: SolvePack) -> SolvePack:
-    """Validate shapes and basic integrity of a :class:`SolvePack` (v2)."""
-
-    # --------------------------
-    # base shapes (you already had)
-    # --------------------------
-    N = pack.N
-    if not isinstance(N, int) or N < 1:
-        raise ValueError(f"N must be a positive int, got {N!r}")
-
-    P0 = np.asarray(pack.P0, float)
-    if P0.shape != (N, 2):
-        raise ValueError(f"P0 must have shape (N,2), got {P0.shape}")
-    if not np.isfinite(P0).all():
-        raise ValueError("P0 contains non-finite values")
-
-    active0 = np.asarray(pack.active0, bool)
-    if active0.shape != (N,):
-        raise ValueError(f"active0 must have shape (N,), got {active0.shape}")
-
-    if len(pack.labels0) != N:
-        raise ValueError("labels0 length mismatch")
-
-    # --------------------------
-    # scene checks (be stricter)
-    # --------------------------
-    sc = pack.scene0
-    if not isinstance(sc, Scene):
-        raise ValueError("scene0 must be Scene")
-
-    pts = np.asarray(sc.points, float)
-    if pts.ndim != 2 or pts.shape[1] != 2:
-        raise ValueError("scene.points must be (M,2)")
-    if not np.isfinite(pts).all():
-        raise ValueError("scene.points contain non-finite")
-
-    # lines: each (m>=2, 2)
-    if not isinstance(sc.lines, list):
-        raise ValueError("scene.lines must be a list")
-    for j, ln in enumerate(sc.lines):
-        arr = np.asarray(ln, float)
-        if arr.ndim != 2 or arr.shape[1] != 2 or arr.shape[0] < 2:
-            raise ValueError(f"scene.lines[{j}] must be (m>=2,2), got {arr.shape}")
-        if not np.isfinite(arr).all():
-            raise ValueError(f"scene.lines[{j}] contains non-finite")
-
-    # areas: each dict with 'exterior' (k>=3,2); holes optional
-    if not isinstance(sc.areas, list):
-        raise ValueError("scene.areas must be a list")
-    for j, ar in enumerate(sc.areas):
-        if not isinstance(ar, dict) or "exterior" not in ar:
-            raise ValueError(f"scene.areas[{j}] must be dict with 'exterior'")
-        ext = np.asarray(ar["exterior"], float)
-        if ext.ndim != 2 or ext.shape[1] != 2 or ext.shape[0] < 3:
-            raise ValueError(f"scene.areas[{j}]['exterior'] must be (k>=3,2), got {ext.shape}")
-        if not np.isfinite(ext).all():
-            raise ValueError(f"scene.areas[{j}]['exterior'] contains non-finite")
-        holes = ar.get("holes", [])
-        if holes is not None:
-            if not isinstance(holes, list):
-                raise ValueError(f"scene.areas[{j}]['holes'] must be list or None")
-            for hidx, h in enumerate(holes):
-                h = np.asarray(h, float)
-                if h.ndim != 2 or h.shape[1] != 2 or h.shape[0] < 3:
-                    raise ValueError(f"scene.areas[{j}]['holes'][{hidx}] must be (k>=3,2)")
-                if not np.isfinite(h).all():
-                    raise ValueError(f"scene.areas[{j}]['holes'][{hidx}] contains non-finite")
-
-    # frame_size
-    fs = tuple(sc.frame_size)
-    if len(fs) != 2 or not all(np.isfinite(fs)) or fs[0] <= 0 or fs[1] <= 0:
-        raise ValueError(f"scene.frame_size must be positive 2-tuple, got {sc.frame_size}")
-
-    # optional scene.WH
-    if sc.WH.shape not in [(0, 2), (N, 2)]:
-        raise ValueError("scene.WH must be (N,2) or empty")
-    if sc.WH.size and (sc.WH < 0).any():
-        raise ValueError("scene.WH must be non-negative when provided")
-
-    counts = (len(pts), len(sc.lines), len(sc.areas))  # for anchor bounds
-
-    # --------------------------
-    # labels0 checks
-    # --------------------------
-    ALLOWED_KINDS = {"none", "point", "line", "area"}
-
-    for i, lbl in enumerate(pack.labels0):
-        if not isinstance(lbl, LabelState):
-            raise ValueError(f"labels0[{i}] must be LabelState")
-        # kind
-        if lbl.kind not in ALLOWED_KINDS:
-            raise ValueError(f"labels0[{i}].kind must be one of {ALLOWED_KINDS}, got {lbl.kind!r}")
-        # WH
-        wh = np.asarray(lbl.WH, float)
-        if wh.shape != (2,):
-            raise ValueError(f"labels0[{i}].WH must have shape (2,), got {wh.shape}")
-        if not np.isfinite(wh).all() or (wh < 0).any():
-            raise ValueError(f"labels0[{i}].WH must be finite and non-negative")
-        # anchor (optional)
-        if lbl.anchor is not None:
-            ak = getattr(lbl.anchor, "kind", None)
-            ai = getattr(lbl.anchor, "index", None)
-            if ak not in {"point", "line", "area"}:
-                raise ValueError(f"labels0[{i}].anchor.kind invalid: {ak!r}")
-            if not isinstance(ai, int) or ai < 0:
-                raise ValueError(f"labels0[{i}].anchor.index must be non-negative int")
-            if ak == "point" and ai >= counts[0]: raise ValueError(f"labels0[{i}].anchor.index out of range for points")
-            if ak == "line"  and ai >= counts[1]: raise ValueError(f"labels0[{i}].anchor.index out of range for lines")
-            if ak == "area"  and ai >= counts[2]: raise ValueError(f"labels0[{i}].anchor.index out of range for areas")
-
-    # --------------------------
-    # cfg / behaviors checks
-    # --------------------------
-    if not isinstance(pack.cfg, dict):
-        raise ValueError("cfg must be a dict")
-
-    # behavior policy defaults
-    behavior_cfg = pack.cfg.get("behavior", {})
-    if not isinstance(behavior_cfg, dict):
-        raise ValueError("cfg['behavior'] must be a dict")
-    for k in ["place_on_first_activation", "snap_on_kind_change"]:
-        if k in behavior_cfg and not isinstance(behavior_cfg[k], bool):
-            raise ValueError(f"cfg['behavior']['{k}'] must be bool")
-
-    # default_WH
-    dwh = behavior_cfg.get("default_WH", {"point": [8, 8], "line": [12, 6], "area": [40, 30]})
-    if not isinstance(dwh, dict) or not all(t in dwh for t in ("point","line","area")):
-        raise ValueError("cfg['behavior']['default_WH'] must have point/line/area")
-    for t in ("point","line","area"):
-        arr = np.asarray(dwh[t], float)
-        if arr.shape != (2,) or (arr < 0).any() or not np.isfinite(arr).all():
-            raise ValueError(f"cfg['behavior']['default_WH']['{t}'] must be length-2 non-negative")
-
-    # behaviors list
-    behs = pack.cfg.get("behaviors")
-    if not isinstance(behs, list):
-        raise ValueError("cfg['behaviors'] must be a list")
-    # ops must be dict-like with lists inside
-    for si, beh in enumerate(behs):
-        # Behavior dataclass or dict-equivalent (your v2 uses dict ops)
-        iters = getattr(beh, "iters", None)
-        solver = getattr(beh, "solver", None)
-        ops = getattr(beh, "ops", None)
-        params = getattr(beh, "params", {})
-
-        if not isinstance(iters, int) or iters < 1:
-            raise ValueError(f"behaviors[{si}].iters must be positive int")
-        if not isinstance(solver, str):
-            raise ValueError(f"behaviors[{si}].solver must be str")
-        if not isinstance(ops, dict):
-            raise ValueError(f"behaviors[{si}].ops must be dict")
-
-        act = ops.get("activate", [])
-        deact = ops.get("deactivate", [])
-        mut = ops.get("mutate", [])
-
-        if not isinstance(act, list) or not isinstance(deact, list) or not isinstance(mut, list):
-            raise ValueError(f"behaviors[{si}].ops.* must be lists")
-
-        # id bounds
-        for lid in list(act) + list(deact):
-            if not isinstance(lid, int) or lid < 0 or lid >= N:
-                raise ValueError(f"behaviors[{si}].ops id out of range: {lid}")
-
-        # mutate entries
-        for mi, m in enumerate(mut):
-            if not isinstance(m, dict):
-                raise ValueError(f"behaviors[{si}].ops.mutate[{mi}] must be dict")
-            if "id" not in m or "set" not in m:
-                raise ValueError(f"behaviors[{si}].ops.mutate[{mi}] must contain 'id' and 'set'")
-            lid = m["id"]
-            if not isinstance(lid, int) or lid < 0 or lid >= N:
-                raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].id out of range")
-            setv = m["set"]
-            if not isinstance(setv, dict):
-                raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set must be dict")
-
-            # optional kind
-            if "kind" in setv and setv["kind"] not in ALLOWED_KINDS:
-                raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.kind invalid")
-
-            # optional WH
-            if "WH" in setv:
-                arr = np.asarray(setv["WH"], float)
-                if arr.shape != (2,) or (arr < 0).any() or not np.isfinite(arr).all():
-                    raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.WH must be length-2 non-negative")
-
-            # optional anchor
-            if "anchor" in setv:
-                anc = setv["anchor"]
-                if not isinstance(anc, dict) or "kind" not in anc or "index" not in anc:
-                    raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.anchor must have kind/index")
-                ak, ai = anc["kind"], anc["index"]
-                if ak not in {"point","line","area"}:
-                    raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.anchor.kind invalid")
-                if not isinstance(ai, int) or ai < 0:
-                    raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.anchor.index must be non-negative int")
-                if ak == "point" and ai >= counts[0]: raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.anchor.index out of range for points")
-                if ak == "line"  and ai >= counts[1]: raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.anchor.index out of range for lines")
-                if ak == "area"  and ai >= counts[2]: raise ValueError(f"behaviors[{si}].ops.mutate[{mi}].set.anchor.index out of range for areas")
-
-    return pack
-
+__all__ = ["SolvePack", "Scene", "Label", "Anchor"]

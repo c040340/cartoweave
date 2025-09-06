@@ -7,7 +7,7 @@ from .base import Context, Stage, ComputePass
 
 
 def get_pass_cfg(cfg: dict, name: str, defaults: dict | None = None) -> dict:
-    d = (cfg.get("compute", {}).get("passes", {}).get(name) or {})
+    d = (cfg.get("passes", {}).get(name) or {})
     if defaults:
         out = dict(defaults)
         out.update(d)
@@ -20,6 +20,7 @@ from .weights import WeightsPass
 from .nan_guard import NaNGuardPass
 from .grad_clip import GradClipPass
 from .step_limit import StepLimitPass
+from .geom_preproc import GeomPreprocPass
 
 REGISTRY = {
     "schedule":   (SchedulePass, {}),
@@ -28,6 +29,7 @@ REGISTRY = {
     "grad_clip":  (GradClipPass, {"max_norm": None, "max_abs": None}),
     "step_limit": (StepLimitPass, {"max_step_norm": 1.5}),
     "capture":    (CapturePass, {"every": 1, "final_always": True}),
+    "geom_preproc": (GeomPreprocPass, {"tiny_eps": 1e-9}),
 }
 
 
@@ -66,6 +68,10 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
         cls, defaults = REGISTRY["schedule"]
         passes.insert(0, cls(**defaults))
         names.add("schedule")
+    if "geom_preproc" not in names:
+        cls, defaults = REGISTRY["geom_preproc"]
+        passes.insert(1, cls(**defaults))
+        names.add("geom_preproc")
     if "step_limit" not in names:
         cls, defaults = REGISTRY["step_limit"]
         passes.append(cls(**defaults))
