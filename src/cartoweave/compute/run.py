@@ -1,7 +1,7 @@
 """Solve function coordinating passes and compute solvers."""
 from __future__ import annotations
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 import numpy as np
 import time, platform, sys
 
@@ -9,13 +9,40 @@ from cartoweave.contracts.solvepack import SolvePack
 from cartoweave.contracts.viewpack import ViewPack, Frame
 from .eval import energy_and_grad_full
 from .types import _grad_metrics, Array2
-from cartoweave.compute.solver.solve_layer import run_iters, SolveContext
+from cartoweave.compute.solver.solve_layer import run_iters, SolveContext, StepReport
+from cartoweave.compute.passes.behavior_pass import BehaviorPass
 from .passes.manager import PassManager
 from .passes.base import Context
 from cartoweave.config.bridge import translate_legacy_keys
 from .forces._common import get_eps
 from cartoweave.version import __version__ as _cw_ver
 from cartoweave.logging_util import get_logger
+
+
+def solve_behaviors(pack: SolvePack, cfg: Dict[str, Any]) -> Tuple[np.ndarray, List[StepReport]]:
+    """Run behaviors sequentially using :class:`BehaviorPass` and ``run_iters``."""
+    bp = BehaviorPass(pack)
+    behaviors = cfg.get("behaviors", []) or []
+    P = pack.P0.copy()
+    reps_all: List[StepReport] = []
+    for k, beh in enumerate(behaviors):
+        P0, labels_k, active_k, scene_k = bp.begin_behavior(k, beh, P, cfg)
+        print(f"[e2e] behavior k={k} iters={int(beh.get('iters', 0))}")
+        ctx = SolveContext(
+            labels=labels_k,
+            scene=scene_k,
+            active=active_k,
+            cfg=cfg,
+            iters=int(beh.get("iters", 0)),
+            mode=str(beh.get("solver", "lbfgs")),
+            params=beh.get("params", {}),
+        )
+        P, reps = run_iters(P0, ctx, energy_and_grad_full, report=True)
+        for r in reps:
+            r.k = k
+        reps_all.extend(reps)
+        bp.end_behavior(k, P)
+    return P, reps_all
 
 
 def solve(pack: SolvePack) -> ViewPack:
@@ -72,7 +99,15 @@ def solve(pack: SolvePack) -> ViewPack:
                 base_energy = _legacy_energy
         except Exception:
             pass
-    energy_fn = pm.wrap_energy(base_energy)
+
+    def _energy_with_meta(P, labels, scene, active, cfg):
+        out = base_energy(P, labels, scene, active, cfg)
+        if isinstance(out, tuple) and len(out) == 3:
+            E, G, comps = out
+            return E, G, comps, {}
+        return out
+
+    energy_fn = pm.wrap_energy(_energy_with_meta)
     apply_step = pm.wrap_step(lambda P_old, P_prop, metrics: P_prop)
     logger.info("solve.start", extra={"extra": {"stages": len(stages)}})
 

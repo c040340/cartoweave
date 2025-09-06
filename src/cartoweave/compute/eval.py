@@ -144,28 +144,9 @@ def _energy_and_grad_full_compute(
         Fi[~active_mask] = 0.0
         comps[k] = Fi
 
-    meta = {"sources": sources_merged}
-    return float(E_total), g, comps, meta
+    return float(E_total), g, comps
 
 
-def energy_and_grad_full(
-    P: Array2,
-    labels=None,
-    scene=None,
-    active_mask=None,
-    cfg=None,
-):
-    """Public entry point for compute-side energy evaluation.
-
-    Historically this function accepted ``(P, scene, active_mask, cfg)``. It now
-    prefers ``(P, labels, scene, active_mask, cfg)`` but remains backward
-    compatible with the older form.
-    """
-
-    if cfg is None and isinstance(active_mask, dict) and isinstance(scene, np.ndarray):
-        cfg = active_mask
-        active_mask = scene
-        scene = labels
-        labels = scene.get("labels") if isinstance(scene, dict) else None
-
+def energy_and_grad_full(P: Array2, labels, scene, active_mask, cfg) -> Tuple[float, Array2, Dict[str, Array2]]:
+    """Public entry point for compute-side energy evaluation."""
     return _energy_and_grad_full_compute(P, labels, scene, active_mask, cfg)

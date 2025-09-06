@@ -10,7 +10,7 @@ from cartoweave.contracts.solvepack import SolvePack
 
 from . import config_io, file_io, labels_init
 from .build_random import assemble
-from .pack_utils import active_mask0_from_stages, steps_to_stages
+from .pack_utils import steps_to_behaviors
 
 __all__ = [
     "build_solvepack_from_config",
@@ -33,6 +33,19 @@ def _payload_from_params(params: Mapping[str, Any], rng: np.random.Generator) ->
     else:
         payload = assemble.generate_payload(params, rng)
     return payload
+
+
+def _fail_if_legacy(obj: Any) -> None:
+    if isinstance(obj, Mapping):
+        for k, v in obj.items():
+            if k in {"stages", "mask_override", "active_mask0_from_stages"}:
+                raise ValueError(
+                    "Legacy config detected: migrate to behavior-based pipeline (activate/deactivate/mutate)."
+                )
+            _fail_if_legacy(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            _fail_if_legacy(v)
 
 
 def _ensure_payload(payload: dict, params: Mapping[str, Any], rng: np.random.Generator) -> dict:
@@ -59,29 +72,69 @@ def _ensure_payload(payload: dict, params: Mapping[str, Any], rng: np.random.Gen
     return payload
 
 
-def _build_solvepack(payload: dict, steps_cfg: Mapping[str, Any], solver_cfg: dict | None, rng: np.random.Generator) -> SolvePack:
+def _validate_behaviors(behaviors: list[dict], n_labels: int) -> list[dict]:
+    out: list[dict] = []
+    for b in behaviors:
+        if not isinstance(b, Mapping):
+            raise ValueError("behavior must be dict")
+        ops = b.get("ops", {}) or {}
+        act = [int(i) for i in ops.get("activate", [])]
+        deact = [int(i) for i in ops.get("deactivate", [])]
+        mut = []
+        for m in ops.get("mutate", []):
+            mid = int(m.get("id"))
+            if not (0 <= mid < n_labels):
+                raise IndexError(f"mutate.id {mid} out of range")
+            mut.append({"id": mid, "set": m.get("set", {})})
+        for idx in act + deact:
+            if not (0 <= idx < n_labels):
+                raise IndexError(f"index {idx} out of range")
+        out.append(
+            {
+                "iters": int(b.get("iters", 0)),
+                "ops": {"activate": act, "deactivate": deact, "mutate": mut},
+                "solver": b.get("solver", "lbfgs"),
+                "params": b.get("params", {}),
+            }
+        )
+    return out
+
+
+def _build_solvepack(payload: dict, steps_cfg: Mapping[str, Any] | list | None, solver_cfg: dict | None, rng: np.random.Generator) -> SolvePack:
     n_labels = len(payload["labels"])
-    stages = steps_to_stages(steps_cfg, n_labels)
-    active_mask0 = active_mask0_from_stages(stages, n_labels)
+    behaviors: list[dict] = []
+    if steps_cfg:
+        if isinstance(steps_cfg, list):
+            behaviors = steps_cfg
+        elif isinstance(steps_cfg, Mapping) and steps_cfg.get("behaviors") is not None:
+            behaviors = steps_cfg.get("behaviors", [])
+        else:
+            behaviors = steps_to_behaviors(dict(steps_cfg), n_labels)
+    behaviors = _validate_behaviors(behaviors, n_labels)
+
+    active_mask0 = np.zeros(n_labels, dtype=bool)
     p0 = labels_init.compute_P0(payload, rng)
-    return SolvePack(
+    sp = SolvePack(
         n_labels,
         p0,
         active_mask0,
         scene=payload,
         cfg=solver_cfg or {},
-        stages=stages,
         passes=["schedule", "capture"],
     )
+    sp.cfg["behaviors"] = behaviors
+    return sp
 
 
 def build_solvepack_from_config(config: str | Mapping[str, Any], *, overrides: Mapping[str, Any] | None = None, seed: int | None = None) -> SolvePack:
     merged = config_io.load_and_merge(config, overrides or {})
+    _fail_if_legacy(merged)
     params = config_io.extract_data_params(merged)
     rng = np.random.default_rng(seed)
     payload = _payload_from_params(params, rng)
     payload = _ensure_payload(payload, params, rng)
-    return _build_solvepack(payload, params.get("steps", {}), merged.get("solver_cfg"), rng)
+    steps_cfg = params.get("steps") or merged.get("timeline") or merged.get("behaviors")
+    return _build_solvepack(payload, steps_cfg, merged.get("solver_cfg"), rng)
 
 
 def load_solvepack_from_file(path: str, *, solver_cfg: dict | None = None, seed: int | None = None) -> SolvePack:
@@ -93,7 +146,7 @@ def load_solvepack_from_file(path: str, *, solver_cfg: dict | None = None, seed:
         "anchors": {"policy": "auto", "modes": {}},
     }
     payload = _ensure_payload(payload, params, rng)
-    steps_cfg = payload.get("steps", {"kind": "none", "steps": None})
+    steps_cfg = payload.get("behaviors") or payload.get("steps")
     return _build_solvepack(payload, steps_cfg, solver_cfg, rng)
 
 
@@ -127,5 +180,5 @@ def build_solvepack_direct(*, frame_size: tuple[int, int], n_labels: int, n_poin
     rng = np.random.default_rng(seed)
     payload = assemble.generate_payload(params, rng)
     payload = _ensure_payload(payload, params, rng)
-    steps_cfg = params.get("steps", {"kind": "none", "steps": None})
+    steps_cfg = params.get("steps")
     return _build_solvepack(payload, steps_cfg, solver_cfg, rng)
