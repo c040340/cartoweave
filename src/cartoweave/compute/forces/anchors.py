@@ -18,6 +18,48 @@ from cartoweave.utils.shape import as_nx2
 from cartoweave.utils.logging import logger
 
 
+def _val(lab, key, default=None):
+    """通用字段读取：兼容 dict 和 LabelState。
+       - 支持 'kind' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
+    """
+    if isinstance(lab, dict):
+        if key == "mode":
+            return lab.get("mode") or (lab.get("meta") or {}).get("mode", default)
+        return lab.get(key, default)
+    # LabelState
+    if key == "mode":
+        m = getattr(lab, "meta", None)
+        return (m or {}).get("mode", default)
+    return getattr(lab, key, default)
+
+
+def _WH(lab):
+    """统一尺寸读取：返回 np.array([w, h])。"""
+    v = lab["WH"] if isinstance(lab, dict) else getattr(lab, "WH", None)
+    return np.asarray(v, dtype=float)
+
+
+def _anchor(lab):
+    """统一锚读取：返回 dict {'kind': ..., 'index': ..., 't': ...} 或 None。"""
+    if isinstance(lab, dict):
+        a = lab.get("anchor")
+        if a is None:
+            return None
+        return {
+            "kind": a.get("kind") if isinstance(a, dict) else None,
+            "index": a.get("index") if isinstance(a, dict) else None,
+            "t": a.get("t") if isinstance(a, dict) else None,
+        }
+    a = getattr(lab, "anchor", None)
+    if a is None:
+        return None
+    return {
+        "kind": getattr(a, "kind", None),
+        "index": getattr(a, "index", None),
+        "t": getattr(a, "t", None),
+    }
+
+
 @register("anchor.spring")
 def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     L = P.shape[0] if P is not None else 0
@@ -44,7 +86,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     active_ids = scene.get("_active_ids", list(range(N)))
     assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
     labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
-    modes = [lab.get("mode") for lab in labels]
+    modes = [_val(lab, "mode") for lab in labels]
     mask = np.array([m != "circle" for m in modes], dtype=bool)
     idxs = np.nonzero(mask)[0]
     skip_circle = int(np.count_nonzero(~mask))

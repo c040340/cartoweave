@@ -278,6 +278,23 @@ def solve(pack: SolvePack) -> ViewPack:
 
         rec = make_recorder(s_idx, stage_mask, P_curr)
         scene_dict = pack.scene0.to_dict()
+        # 把当前 labels_curr 作为 compute 的真值写回 scene（force 只看 scene['labels']）
+        scene_dict["labels"] = [
+            {
+                "kind": getattr(lab, "kind", None),
+                "WH": (getattr(lab, "WH", None).tolist() if getattr(lab, "WH", None) is not None else None),
+                "mode": (getattr(lab, "meta", {}) or {}).get("mode"),
+                "anchor": (
+                    {
+                        "kind": getattr(getattr(lab, "anchor", None), "kind", None),
+                        "index": getattr(getattr(lab, "anchor", None), "index", None),
+                        "t": getattr(getattr(lab, "anchor", None), "t", None),
+                    } if getattr(lab, "anchor", None) is not None else None
+                ),
+                "meta": (getattr(lab, "meta", {}) or {}),
+            }
+            for lab in labels_curr
+        ]
         E0, G0, comps0, _ = energy_fn(P_curr, labels_curr, scene_dict, stage_mask, cfg)
         rec({"P": P_curr, "G": G0, "comps": comps0, "E": E0})
 
