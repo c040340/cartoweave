@@ -14,7 +14,9 @@ class NaNGuardPass(ComputePass):
     recorded in ``stats``.
     """
 
-    def __init__(self):
+    def __init__(self, on_nan: str = "zero", on_inf: str = "clip"):
+        self.on_nan = on_nan
+        self.on_inf = on_inf
         self.stats: Dict[str, Any] = {"nan_frames": 0, "inf_frames": 0, "fixed_frames": 0}
 
     def wrap_energy(self, energy_fn):
@@ -23,7 +25,7 @@ class NaNGuardPass(ComputePass):
         stats = self.stats
 
         def _wrapped(P, scene, active_mask, cfg):
-            conf = get_pass_cfg(cfg, "nan_guard", {"e_fallback": 0.0})
+            conf = get_pass_cfg(cfg, "nan_guard", {"e_fallback": 0.0, "on_nan": self.on_nan, "on_inf": self.on_inf})
             ef = float(conf.get("e_fallback", 0.0))
             E, G, comps, meta = energy_fn(P, scene, active_mask, cfg)
             meta = dict(meta or {})

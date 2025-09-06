@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from typing import Sequence, Union
-from .kernels import softabs, EPS_ABS, EPS_NORM
+from .kernels import softabs, softplus, sigmoid, smoothmax, EPS_ABS, EPS_NORM
 
 Array = np.ndarray
 
@@ -28,6 +28,62 @@ def poly_signed_area(poly_xy: np.ndarray) -> float:
 
 def rect_half_extent_along_dir(w: float, h: float, nx: float, ny: float, eps_abs: float = EPS_ABS) -> float:
     return 0.5*w*softabs(nx, eps_abs) + 0.5*h*softabs(ny, eps_abs)
+
+
+def segment_rect_gate(
+    A, B, C, wh,
+    min_gap=0.0,
+    alpha=8.0,       # normal softplus sharpness
+    eta=6.0,         # tangent sigmoid scale
+    cap_scale=1.0,   # u_cap = cap_scale*max(w/2, h/2)
+    g_min_int=0.1,   # floor when projection falls within segment
+    kappa=8.0,       # how strongly 'inside-segment' lifts the floor
+    beta=8.0,        # smoothmax sharpness
+):
+    """
+    Continuous gate g∈(0,1] approximating the old boolean:
+    - Normal gate from soft penetration margin p_n = softplus((r_n+min_gap) - |s|, alpha)
+    - Tangent gate from sigmoid on |u| vs u_cap
+    - Floor 'g_min_int' when the projection is interior, via a smooth interiorness weight.
+    Returns: (p_n, g, extra_dict) where p_n≥0, g∈(0,1].
+    """
+    Ax, Ay = float(A[0]), float(A[1])
+    Bx, By = float(B[0]), float(B[1])
+    Cx, Cy = float(C[0]), float(C[1])
+    w, h = float(wh[0]), float(wh[1])
+
+    dx, dy = (Bx - Ax), (By - Ay)
+    L2 = dx*dx + dy*dy
+    L = math.sqrt(max(L2, 1e-12))
+    ux, uy = (dx / L, dy / L)
+    nx, ny = (-uy, ux)
+
+    qx, qy = (Cx - Ax), (Cy - Ay)
+    s = qx*nx + qy*ny
+    u = qx*ux + qy*uy
+
+    abs_s = softabs(s, EPS_ABS)
+    abs_u = softabs(u, EPS_ABS)
+
+    r_n = rect_half_extent_along_dir(w, h, nx, ny)
+    p_n = softplus((r_n + min_gap) - abs_s, alpha)
+
+    u_cap = cap_scale * max(w*0.5, h*0.5)
+    g_tan = sigmoid(-(abs_u - u_cap) / max(eta, 1e-9))
+
+    t = (u / max(L, 1e-12) + 0.5)
+    abs_2t1 = softabs(2.0*t - 1.0, EPS_ABS)
+    bell = 1.0 - abs_2t1
+    pi_in = sigmoid(kappa * bell)
+
+    g_floor = g_min_int * pi_in
+    g = smoothmax(g_tan, g_floor, beta=beta)
+
+    extras = dict(
+        L=L, s=s, u=u, r_n=r_n, u_cap=u_cap, g_tan=g_tan,
+        pi_in=pi_in, t=t, ux=ux, uy=uy, nx=nx, ny=ny,
+    )
+    return p_n, g, extras
 
 
 def polylines_to_segments(lines: Union[Sequence[Array], Array], eps: float = 1e-12) -> Array:

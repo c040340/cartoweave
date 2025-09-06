@@ -15,7 +15,9 @@ class GradClipPass(ComputePass):
     frames were affected and the strongest scale factor applied.
     """
 
-    def __init__(self):
+    def __init__(self, max_norm: float | None = None, max_abs: float | None = None):
+        self.max_norm = max_norm
+        self.max_abs = max_abs
         self.stats: Dict[str, Any] = {"clipped_frames": 0, "max_scale_down": 0.0}
 
     def wrap_energy(self, energy_fn):
@@ -24,7 +26,7 @@ class GradClipPass(ComputePass):
         stats = self.stats
 
         def _wrapped(P, scene, active_mask, cfg):
-            conf = get_pass_cfg(cfg, "grad_clip", {"max_norm": None, "max_abs": None})
+            conf = get_pass_cfg(cfg, "grad_clip", {"max_norm": self.max_norm, "max_abs": self.max_abs})
             mn = conf.get("max_norm")
             ma = conf.get("max_abs")
             eps = get_eps(cfg)

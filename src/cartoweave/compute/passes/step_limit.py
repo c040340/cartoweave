@@ -1,17 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-from typing import Any, Dict
 import numpy as np
 from .base import ComputePass
-from . import get_pass_cfg
 
 
 class StepLimitPass(ComputePass):
     name = "StepLimitPass"
 
-    def __init__(self, cfg: Dict[str, Any]):
-        conf = get_pass_cfg(cfg, "step_limit", {"max_step_norm": None})
-        self.max_step_norm = conf.get("max_step_norm")
+    def __init__(self, max_step_norm: float | None = 1.5):
+        self.max_step_norm = max_step_norm
         self.stats = {"clamped_steps": 0, "max_observed_step_norm": 0.0}
 
     def wrap_step(self, step_fn):

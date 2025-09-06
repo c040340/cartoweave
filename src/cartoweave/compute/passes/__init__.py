@@ -22,12 +22,12 @@ from .grad_clip import GradClipPass
 from .step_limit import StepLimitPass
 
 REGISTRY = {
-    "schedule": SchedulePass,
-    "capture":  CapturePass,
-    "weights":  WeightsPass,
-    "nan_guard": NaNGuardPass,
-    "grad_clip": GradClipPass,
-    "step_limit": StepLimitPass,
+    "schedule":   (SchedulePass, {}),
+    "weights":    (WeightsPass, {}),
+    "nan_guard":  (NaNGuardPass, {"on_nan": "zero", "on_inf": "clip"}),
+    "grad_clip":  (GradClipPass, {"max_norm": None, "max_abs": None}),
+    "step_limit": (StepLimitPass, {"max_step_norm": 1.5}),
+    "capture":    (CapturePass, {"every": 1, "final_always": True}),
 }
 
 
@@ -42,17 +42,14 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
     names = set()
 
     def _mk(name: str, args: Dict | None):
-        cls = REGISTRY.get(name)
-        if not cls:
+        entry = REGISTRY.get(name)
+        if not entry:
             raise ValueError(f"Unknown pass: {name}")
-        if name == "weights":
-            inst = cls(args or {})
-        elif name == "step_limit":
-            inst = cls(cfg)
-        elif args:
-            inst = cls(**args)
-        else:
-            inst = cls()
+        cls, defaults = entry
+        kwargs = dict(defaults or {})
+        if args:
+            kwargs.update(args)
+        inst = cls(**kwargs)
         passes.append(inst)
         names.add(name)
 
@@ -66,8 +63,14 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
             raise ValueError("pass config must be str or dict")
 
     if "schedule" not in names:
-        passes.insert(0, SchedulePass())
+        cls, defaults = REGISTRY["schedule"]
+        passes.insert(0, cls(**defaults))
         names.add("schedule")
+    if "step_limit" not in names:
+        cls, defaults = REGISTRY["step_limit"]
+        passes.append(cls(**defaults))
+        names.add("step_limit")
     if "capture" not in names:
-        passes.append(CapturePass())
+        cls, defaults = REGISTRY["capture"]
+        passes.append(cls(**defaults))
     return passes

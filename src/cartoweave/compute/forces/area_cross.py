@@ -1,20 +1,25 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+import os
 import math
 import numpy as np
 from . import register
 from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
-from cartoweave.utils.kernels import softplus, sigmoid, softabs, EPS_DIST, EPS_NORM, EPS_ABS
-from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+from cartoweave.utils.kernels import softplus, sigmoid, smoothmax, softabs, EPS_DIST, EPS_NORM, EPS_ABS
+from cartoweave.utils.geometry import poly_signed_area, segment_rect_gate
 from cartoweave.utils.shape import as_nx2
 from cartoweave.utils.logging import logger
 
+"""Boolean AABB pre-gate replaced by continuous gate built from normal soft
+penetration and tangent sigmoid with smooth floor; parameters (min_gap, alpha,
+eta, cap_scale, g_min_int) unchanged."""
 
-def segment_intersects_rect(ax, ay, bx, by, cx, cy, w, h, pad=0.0) -> bool:
-    x1, x2 = sorted([ax, bx])
-    y1, y2 = sorted([ay, by])
-    rx1, rx2 = (cx - w * 0.5 - pad), (cx + w * 0.5 + pad)
-    ry1, ry2 = (cy - h * 0.5 - pad), (cy + h * 0.5 + pad)
+
+def _legacy_aabb_gate(ax, ay, bx, by, cx, cy, w, h, pad=0.0):
+    x1, x2 = (ax, bx) if ax <= bx else (bx, ax)
+    y1, y2 = (ay, by) if ay <= by else (by, ay)
+    rx1, rx2 = cx - w * 0.5 - pad, cx + w * 0.5 + pad
+    ry1, ry2 = cy - h * 0.5 - pad, cy + h * 0.5 + pad
     return not (x2 < rx1 or x1 > rx2 or y2 < ry1 or y1 > ry2)
 
 
@@ -48,10 +53,14 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     p0_lc = float(cfg.get("area.cross.sat_p0", 2.0))
     g_min_int = float(cfg.get("area.cross.gate_min_interior", 0.6))
     eps_abs = float(cfg.get("eps.abs", EPS_ABS))
+    kappa = float(cfg.get("area.cross.kappa", 8.0))
+    beta_smax = float(cfg.get("area.cross.beta_smax", 8.0))
 
     F = np.zeros_like(P, float)
     E = 0.0
     S = [[] for _ in range(P.shape[0])]
+
+    use_legacy_gate = bool(cfg.get("area.cross.use_legacy_gate", False) or os.getenv("AREA_CROSS_USE_LEGACY_GATE"))
 
     for i in idxs:
         lab = labels[i]
@@ -59,7 +68,6 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
         own_idx = int(lab.get("anchor_index", -1)) if lab.get("anchor_kind") == "area" else -1
         if w_i <= 0.0 and h_i <= 0.0:
             continue
-        hx, hy = 0.5 * w_i, 0.5 * h_i
         cx, cy = float(P[i, 0]), float(P[i, 1])
         for ai, A in enumerate(areas):
             if ai == own_idx:
@@ -77,38 +85,76 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             for k in range(n):
                 ax, ay = float(arr[k, 0]), float(arr[k, 1])
                 bx, by = float(arr[(k + 1) % n, 0]), float(arr[(k + 1) % n, 1])
-                qx, qy, t, tx, ty = project_point_to_segment(cx, cy, ax, ay, bx, by)
-                nx_in, ny_in = (-ty, tx) if ccw else (ty, -tx)
-                dx, dy = (cx - qx), (cy - qy)
-                s = nx_in * dx + ny_in * dy
-                u = tx * dx + ty * dy
+                if ccw:
+                    A_seg, B_seg = (ax, ay), (bx, by)
+                else:
+                    A_seg, B_seg = (bx, by), (ax, ay)
+                p_n, g_soft, ex = segment_rect_gate(
+                    A=A_seg,
+                    B=B_seg,
+                    C=(cx, cy),
+                    wh=(w_i, h_i),
+                    min_gap=min_gap,
+                    alpha=alpha_sp,
+                    eta=eta_tan,
+                    cap_scale=cap_scale,
+                    g_min_int=g_min_int,
+                    kappa=kappa,
+                    beta=beta_smax,
+                )
+                s = ex["s"]
+                u = ex["u"]
+                L = ex["L"]
+                nx_in, ny_in = ex["nx"], ex["ny"]
+                tx, ty = ex["ux"], ex["uy"]
+                g_tan = ex["g_tan"]
+                pi_in = ex["pi_in"]
+                t = ex["t"]
+                g_floor = g_min_int * pi_in
+
+                if use_legacy_gate:
+                    hit = _legacy_aabb_gate(ax, ay, bx, by, cx, cy, w_i, h_i, pad=min_gap)
+                    g = 1.0 if hit else g_soft
+                else:
+                    hit = False
+                    g = g_soft
+
                 abs_u = softabs(u, eps_abs)
                 abs_s = softabs(s, eps_abs)
-                r_n = hx * softabs(nx_in, eps_abs) + hy * softabs(ny_in, eps_abs)
-                p = softplus((r_n + min_gap) - abs_s, alpha_sp)
-                u_cap = cap_scale * max(hx, hy)
-                g = sigmoid(-(abs_u - u_cap) / max(eta_tan, eps))
-                if segment_intersects_rect(ax, ay, bx, by, cx, cy, w_i, h_i, pad=min_gap):
-                    g = 1.0
-                elif 0.0 < t < 1.0:
-                    g = max(g, g_min_int)
-                x_gp = g * p
+
+                x_gp = g * p_n
                 if use_lc:
                     denom = max(p0_lc, eps)
                     t0 = x_gp / denom
-                    E_k = k_cross * (denom * (abs(t0) + math.log1p(math.exp(-2.0 * abs(t0))) - math.log(2.0)))
+                    E_k = k_cross * (
+                        denom * (abs(t0) + math.log1p(math.exp(-2.0 * abs(t0))) - math.log(2.0))
+                    )
                     dEdx = k_cross * math.tanh(t0)
                 else:
                     E_k = 0.5 * k_cross * (x_gp * x_gp)
                     dEdx = k_cross * x_gp
-                coeff_u = u / max(abs_u, eps)
-                gprime = g * (1.0 - g) * (-1.0 / max(eta_tan, eps)) * coeff_u
-                dgx, dgy = gprime * tx, gprime * ty
+
+                if use_legacy_gate and hit:
+                    dgx = dgy = 0.0
+                else:
+                    coeff_u = u / max(abs_u, eps)
+                    g_tan_prime = g_tan * (1.0 - g_tan) * (-1.0 / max(eta_tan, eps)) * coeff_u
+                    abs_2t1 = softabs(2.0 * t - 1.0, eps_abs)
+                    coeff_2t1 = (2.0 * t - 1.0) / max(abs_2t1, eps)
+                    dpi_dt = pi_in * (1.0 - pi_in) * kappa * (-2.0 * coeff_2t1)
+                    dpi_du = dpi_dt * (1.0 / max(L, eps))
+                    g_floor_prime = g_min_int * dpi_du
+                    sigma = sigmoid(beta_smax * (g_tan - g_floor))
+                    dg_du = sigma * g_tan_prime + (1.0 - sigma) * g_floor_prime
+                    dgx, dgy = dg_du * tx, dg_du * ty
+
                 coeff_s = s / max(abs_s, eps)
-                sig_az = sigmoid(alpha_sp * ((r_n + min_gap) - abs_s))
-                dpx, dpy = sig_az * (-coeff_s) * nx_in, sig_az * (-coeff_s) * ny_in
-                dx_dc_x = p * dgx + g * dpx
-                dx_dc_y = p * dgy + g * dpy
+                sig_az = sigmoid(alpha_sp * ((ex["r_n"] + min_gap) - abs_s))
+                dpx = sig_az * (-coeff_s) * nx_in
+                dpy = sig_az * (-coeff_s) * ny_in
+
+                dx_dc_x = p_n * dgx + g * dpx
+                dx_dc_y = p_n * dgy + g * dpy
                 fx_k = -(dEdx * dx_dc_x)
                 fy_k = -(dEdx * dx_dc_y)
                 fx_sum += fx_k

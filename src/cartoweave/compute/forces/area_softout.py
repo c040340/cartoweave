@@ -8,6 +8,7 @@ from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
     softabs,
+    softclip,
     EPS_DIST,
     EPS_NORM,
     EPS_ABS,
@@ -105,13 +106,14 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             if m_eff >= 0.0:
                 r_in = softplus(m_eff, alpha_sp)
                 s_in = sigmoid(alpha_sp * m_eff)
-                t_in = max(min(lambda_in * m_eff, 80.0), -80.0)
+                # Hard clip replaced with softclip (C¹), keeps legacy rails (~[-80,80])
+                t_in = softclip(lambda_in * m_eff, -80.0, 80.0, beta=8.0)
                 decay_in = math.exp(-t_in)
                 fmag = k_push * r_in * s_in * (decay_in ** 2)
                 E += 0.5 * k_push * (r_in * decay_in) * (r_in * decay_in)
                 mag = r_in * decay_in
             else:
-                t_out = max(min(lambda_out * m_eff, 80.0), -80.0)
+                t_out = softclip(lambda_out * m_eff, -80.0, 80.0, beta=8.0)
                 decay_out = math.exp(t_out)
                 fmag = k_push * (gamma_out ** 2) * lambda_out * (decay_out ** 2)
                 E += 0.5 * k_push * (gamma_out * decay_out) * (gamma_out * decay_out)
