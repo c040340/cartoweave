@@ -27,30 +27,75 @@ pip install -e .
 ## Quick start
 
 ```python
-import numpy as np
-from cartoweave import SolvePack, solve
+from cartoweave.data.api import build_solvepack_direct
+from cartoweave.compute.run import solve
 
-scene = {
-    "labels_init": np.zeros((1, 2), float),
-    "labels": [{"anchor_kind": "none"}],
-    "frame_size": (1920, 1080),
-}
-
-cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}}
-sp = SolvePack(
-    L=1,
-    P0=scene["labels_init"],
-    active_mask0=np.ones(1, dtype=bool),
-    scene=scene,
-    cfg=cfg,
-    stages=[{"iters": 10, "solver": "lbfgs"}],
-    passes=["schedule", "capture"],
+sp = build_solvepack_direct(
+    frame_size=(1920, 1080),
+    n_labels=1,
+    steps={"kind": "none"},
+    seed=0,
+    solver_cfg={"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}},
 )
 view = solve(sp)
 print(view.last.P)
 ```
 
 Run `python examples/minimal_solve.py` for a small working demo.
+
+## Data API
+
+```python
+from cartoweave.data.api import (
+    build_solvepack_from_config,
+    build_solvepack_direct,
+    load_solvepack_from_file,
+)
+```
+
+Canonical YAML snippet:
+
+```yaml
+data:
+  source: random
+  path: ""
+  regen: false
+
+  frame: { width: 1280, height: 800 }
+
+  counts:
+    labels: 16
+    points: 6
+    lines: 4
+    areas: 2
+
+  random:
+    route_gen:
+      segment_len_scale: 0.06
+      inset_margin_scale: 0.05
+      min_vertex_spacing_scale: 0.03
+    area_gen:
+      inset_margin_scale: 0.06
+      min_edge_spacing_scale: 0.03
+
+  anchors:
+    policy: auto
+    modes:
+      line: projected
+      area: projected_edge
+
+  steps:
+    kind: sequential
+    steps: 16
+```
+
+### Steps
+
+- `steps.kind="none"` ⇒ single stage (no actions).
+- `steps.kind="sequential"`:
+  - if `steps == labels` ⇒ one label per step;
+  - if `steps < labels` ⇒ first `steps-1` add one label each; last stage activates all remaining.
+- `steps.kind="grouped"`: via `group_sizes` or explicit `groups`.
 
 ## Command-line usage
 
@@ -75,7 +120,7 @@ python -m cartoweave solve --config examples/configs/compute_min.json --scene ex
 ## Project layout
 
 * `cartoweave/compute` – compute pipeline with forces, passes and solvers
-* `cartoweave/data` – random scene and timeline generators
+* `cartoweave/data` – random scene utilities and data API
 * `cartoweave/viz` – placeholders for visualisation tools
 * `tests` – unit tests and integration tests
 
@@ -119,36 +164,27 @@ pip install -e .
 ## 快速上手
 
 ```python
-import numpy as np
-from cartoweave import SolvePack, solve
+from cartoweave.data.api import build_solvepack_direct
+from cartoweave.compute.run import solve
 
-scene = {
-    "labels_init": np.zeros((1, 2), float),
-    "labels": [{"anchor_kind": "none"}],
-    "frame_size": (1920, 1080),
-}
-
-cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}}
-sp = SolvePack(
-    L=1,
-    P0=scene["labels_init"],
-    active_mask0=np.ones(1, dtype=bool),
-    scene=scene,
-    cfg=cfg,
-    stages=[{"iters": 10, "solver": "lbfgs"}],
-    passes=["schedule", "capture"],
+sp = build_solvepack_direct(
+    frame_size=(1920, 1080),
+    n_labels=1,
+    steps={"kind": "none"},
+    seed=0,
+    solver_cfg={"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}},
 )
 view = solve(sp)
 print(view.last.P)
 ```
 
-运行 `python examples/minimal_fit.py` 可以看到一个最小示例；如果将
+运行 `python examples/minimal_solve.py` 可以看到一个最小示例；如果将
 ``viz.show`` 设为 ``True``，还能体验交互式查看器。
 
 ## 示例
 
-* `examples/minimal_fit.py` – 拟合单帧的最小示例
-* `examples` – 更多展示场景和时间线构建方式的脚本
+* `examples/minimal_solve.py` – 拟合单帧的最小示例
+* `examples` – 更多展示场景和步骤配置方式的脚本
 
 ### 求解器稳定性默认值
 - 默认情况下保持 L-BFGS 完全平滑：
@@ -162,7 +198,7 @@ print(view.last.P)
 ## 项目结构
 
 * `cartoweave/compute` – 核心计算管线，包含力项、passes 和求解器；
-* `cartoweave/data` – 随机场景和时间线生成器；
+* `cartoweave/data` – 随机场景与数据 API；
 * `cartoweave/viz` – 计划中的可视化工具；
 * `tests` – 单元测试与集成测试。
 

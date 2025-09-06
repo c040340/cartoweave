@@ -2,10 +2,10 @@
 
 The original project uses a rather feature rich viewer implemented in a large
 script.  For the purposes of the exercises in this repository we only require
-something lightweight that exposes the essential ideas – a timeline of label
-positions, per‑label force breakdown and an optional scalar field visualised as
-either a heatmap or a 3‑D surface.  This module intentionally keeps the code
-compact and easy to follow.
+something lightweight that exposes the essential ideas – a sequence of steps of
+label positions, per‑label force breakdown and an optional scalar field
+visualised as either a heatmap or a 3‑D surface.  This module intentionally
+keeps the code compact and easy to follow.
 """
 
 from __future__ import annotations
@@ -152,11 +152,11 @@ def interactive_view(
     ``viz.panels.field`` and ``viz.field.mode``.  ``field_cmap`` controls the
     colour map used for either representation.
 
-    ``boundaries`` and ``actions`` describe high level actions in the timeline.
-    When action information is available (either explicit ``actions`` or
-    ``boundaries`` describing iteration ranges) an additional slider lets the
-    user switch between actions while constraining the iteration slider to the
-    corresponding range.
+    ``boundaries`` and ``actions`` describe high level actions in the step
+    sequence.  When action information is available (either explicit
+    ``actions`` or ``boundaries`` describing iteration ranges) an additional
+    slider lets the user switch between actions while constraining the iteration
+    slider to the corresponding range.
     """
 
     traj = np.asarray(traj, dtype=float)
@@ -352,7 +352,7 @@ def interactive_view(
     # Layout of the figure
     # ------------------------------------------------------------------
     # The overall view is split into a tall main area and a slim bar at the
-    # bottom that hosts the iteration slider and timeline actions.
+    # bottom that hosts the iteration slider and step actions.
     fig = plt.figure(figsize=(22, 10))
     outer = fig.add_gridspec(
         2, 1, height_ratios=[28, 1],

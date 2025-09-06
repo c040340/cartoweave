@@ -1,0 +1,31 @@
+data:
+  source: random
+  path: ""
+  regen: false
+
+  frame: { width: 1080, height: 1920 }
+
+  counts:
+    labels: 16
+    points: 6
+    lines: 4
+    areas: 2
+
+  random:
+    route_gen:
+      segment_len_scale: 0.06
+      inset_margin_scale: 0.05
+      min_vertex_spacing_scale: 0.03
+    area_gen:
+      inset_margin_scale: 0.06
+      min_edge_spacing_scale: 0.03
+
+  anchors:
+    policy: auto
+    modes:
+      line: projected
+      area: projected_edge
+
+  steps:
+    kind: sequential
+    steps: 25
