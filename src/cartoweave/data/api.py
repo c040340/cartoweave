@@ -1,184 +1,104 @@
+"""Top-level entry points for building :class:`SolvePack` objects."""
+
 from __future__ import annotations
 
-from collections.abc import Mapping
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Dict, Mapping, Any
+import json
+import yaml
 
 import numpy as np
 
-from cartoweave.contracts.solvepack import SolvePack
+from cartoweave.contracts.solvepack import (
+    SolvePack,
+    validate,
+    Scene,
+    LabelState,
+)
 
-from . import config_io, file_io, labels_init
-from .build_random import assemble
-from .pack_utils import steps_to_behaviors
+from .generate import generate_scene, generate_labels, generate_behaviors
+from .io import load_snapshot
 
 __all__ = [
     "build_solvepack_from_config",
-    "load_solvepack_from_file",
     "build_solvepack_direct",
+    "load_solvepack_from_file",
 ]
 
 
-def _payload_from_params(params: Mapping[str, Any], rng: np.random.Generator) -> dict:
-    source = params.get("source", "random")
-    if source == "file":
-        path = params.get("path", "")
-        regen = params.get("regen", False)
-        if path and Path(path).exists() and not regen:
-            payload = file_io.load_scene(path)
-        else:
-            payload = assemble.generate_payload(params, rng)
-            if path:
-                file_io.save_scene(path, payload)
+# ---------------------------------------------------------------------------
+#  Builders
+# ---------------------------------------------------------------------------
+
+
+def _ensure_scene_labels(scene: Scene, labels0: list[LabelState]) -> None:
+    scene.labels = [
+        {"kind": lbl.kind, "anchor": asdict(lbl.anchor) if lbl.anchor else None, "meta": lbl.meta}
+        for lbl in labels0
+    ]
+    scene.WH = np.stack([lbl.WH for lbl in labels0], axis=0) if labels0 else np.zeros((0, 2))
+
+
+def build_solvepack_from_config(config: Mapping[str, Any] | str, seed: int | None = None) -> SolvePack:
+    """Construct a :class:`SolvePack` from a merged configuration or YAML path."""
+
+    if isinstance(config, (str, Path)):
+        with open(config, "r", encoding="utf-8") as f:
+            cfg: Dict[str, Any] = yaml.safe_load(f)
     else:
-        payload = assemble.generate_payload(params, rng)
-    return payload
+        cfg = dict(config)
 
+    data_cfg = cfg.get("data", {})
+    source = data_cfg.get("source")
 
-def _fail_if_legacy(obj: Any) -> None:
-    if isinstance(obj, Mapping):
-        for k, v in obj.items():
-            if k in {"stages", "mask_override", "active_mask0_from_stages"}:
-                raise ValueError(
-                    "Legacy config detected: migrate to behavior-based pipeline (activate/deactivate/mutate)."
-                )
-            _fail_if_legacy(v)
-    elif isinstance(obj, list):
-        for v in obj:
-            _fail_if_legacy(v)
-
-
-def _ensure_payload(payload: dict, params: Mapping[str, Any], rng: np.random.Generator) -> dict:
-    geom = {
-        "points": payload.get("points", np.zeros((0, 2), float)),
-        "lines": payload.get("lines", []),
-        "areas": payload.get("areas", []),
-        "frame_size": payload.get(
-            "frame_size", (params["frame"]["width"], params["frame"]["height"])
-        ),
-    }
-    if "labels" not in payload:
-        n_labels = params["counts"]["labels"]
-        anchors = params.get("anchors", {})
-        payload["labels"] = assemble.assign_labels(
-            geom,
-            n_labels,
-            anchors.get("policy", "auto"),
-            anchors.get("modes", {}),
-            rng,
+    if source == "generate":
+        g = data_cfg.get("generate", {})
+        frame = tuple(g.get("frame_size", [1920.0, 1080.0]))
+        seed = int(g.get("seed", seed or 0))
+        scene = generate_scene(
+            int(g.get("num_points", 0)),
+            int(g.get("num_lines", 0)),
+            int(g.get("num_areas", 0)),
+            frame_size=frame,
+            seed=seed,
         )
-    if "WH" not in payload:
-        payload["WH"] = assemble.measure_WH(len(payload["labels"]), rng)
-    return payload
+        N = int(g.get("num_labels", max(1, g.get("num_points", 0) + g.get("num_lines", 0) + g.get("num_areas", 0))))
+        P0, active0, labels0 = generate_labels(N, scene, cfg.get("behavior"))
+        behaviors = generate_behaviors(N, int(g.get("num_steps", 1)), scene, cfg.get("behavior"), "round_robin", seed)
+    elif source == "load":
+        path = data_cfg.get("load", {}).get("path")
+        scene, P0, active0, labels0, behaviors = load_snapshot(str(path))
+        N = P0.shape[0]
+    else:
+        raise ValueError("data.source must be 'generate' or 'load'")
 
+    _ensure_scene_labels(scene, labels0)
 
-def _validate_behaviors(behaviors: list[dict], n_labels: int) -> list[dict]:
-    out: list[dict] = []
-    for b in behaviors:
-        if not isinstance(b, Mapping):
-            raise ValueError("behavior must be dict")
-        ops = b.get("ops", {}) or {}
-        act = [int(i) for i in ops.get("activate", [])]
-        deact = [int(i) for i in ops.get("deactivate", [])]
-        mut = []
-        for m in ops.get("mutate", []):
-            mid = int(m.get("id"))
-            if not (0 <= mid < n_labels):
-                raise IndexError(f"mutate.id {mid} out of range")
-            mut.append({"id": mid, "set": m.get("set", {})})
-        for idx in act + deact:
-            if not (0 <= idx < n_labels):
-                raise IndexError(f"index {idx} out of range")
-        out.append(
-            {
-                "iters": int(b.get("iters", 0)),
-                "ops": {"activate": act, "deactivate": deact, "mutate": mut},
-                "solver": b.get("solver", "lbfgs"),
-                "params": b.get("params", {}),
-            }
-        )
-    return out
-
-
-def _build_solvepack(payload: dict, steps_cfg: Mapping[str, Any] | list | None, solver_cfg: dict | None, rng: np.random.Generator) -> SolvePack:
-    n_labels = len(payload["labels"])
-    behaviors: list[dict] = []
-    if steps_cfg:
-        if isinstance(steps_cfg, list):
-            behaviors = steps_cfg
-        elif isinstance(steps_cfg, Mapping) and steps_cfg.get("behaviors") is not None:
-            behaviors = steps_cfg.get("behaviors", [])
-        else:
-            behaviors = steps_to_behaviors(dict(steps_cfg), n_labels)
-    behaviors = _validate_behaviors(behaviors, n_labels)
-
-    active_mask0 = np.zeros(n_labels, dtype=bool)
-    p0 = labels_init.compute_P0(payload, rng)
-    sp = SolvePack(
-        n_labels,
-        p0,
-        active_mask0,
-        scene=payload,
-        cfg=solver_cfg or {},
-        passes=["schedule", "capture"],
+    cfg.setdefault(
+        "behavior",
+        {
+            "place_on_first_activation": True,
+            "snap_on_kind_change": False,
+            "default_WH": {"point": [8, 8], "line": [12, 6], "area": [40, 30]},
+            "anchor_policy": "round_robin",
+        },
     )
-    sp.cfg["behaviors"] = behaviors
-    return sp
+    cfg.setdefault("solver", {"gtol": 1e-6, "ftol": 1e-9, "xtol": 1e-9})
+    cfg["behaviors"] = behaviors
+
+    pack = SolvePack(N=N, P0=P0, active0=active0, labels0=labels0, scene0=scene, cfg=cfg)
+    validate(pack)
+    return pack
 
 
-def build_solvepack_from_config(config: str | Mapping[str, Any], *, overrides: Mapping[str, Any] | None = None, seed: int | None = None) -> SolvePack:
-    merged = config_io.load_and_merge(config, overrides or {})
-    _fail_if_legacy(merged)
-    params = config_io.extract_data_params(merged)
-    rng = np.random.default_rng(seed)
-    payload = _payload_from_params(params, rng)
-    payload = _ensure_payload(payload, params, rng)
-    steps_cfg = params.get("steps") or merged.get("timeline") or merged.get("behaviors")
-    return _build_solvepack(payload, steps_cfg, merged.get("solver_cfg"), rng)
+# Legacy helpers kept for backwards compatibility --------------------------------
 
 
-def load_solvepack_from_file(path: str, *, solver_cfg: dict | None = None, seed: int | None = None) -> SolvePack:
-    rng = np.random.default_rng(seed)
-    payload = file_io.load_scene(path)
-    params = {
-        "frame": {"width": payload.get("frame_size", (1, 1))[0], "height": payload.get("frame_size", (1, 1))[1]},
-        "counts": {"labels": len(payload.get("labels", []))},
-        "anchors": {"policy": "auto", "modes": {}},
-    }
-    payload = _ensure_payload(payload, params, rng)
-    steps_cfg = payload.get("behaviors") or payload.get("steps")
-    return _build_solvepack(payload, steps_cfg, solver_cfg, rng)
+def load_solvepack_from_file(*args, **kwargs):  # pragma: no cover - legacy API
+    raise NotImplementedError("Use build_solvepack_from_config in v2")
 
 
-def build_solvepack_direct(*, frame_size: tuple[int, int], n_labels: int, n_points: int = 0, n_lines: int = 0, n_areas: int = 0, route_gen: dict | None = None, area_gen: dict | None = None, anchors_policy: dict | str | None = None, anchor_modes: dict | None = None, steps: dict | str | None = None, seed: int | None = None, solver_cfg: dict | None = None) -> SolvePack:
-    route_defaults = config_io._route_defaults()
-    area_defaults = config_io._area_defaults()
-    rgen = route_defaults | (route_gen or {})
-    agen = area_defaults | (area_gen or {})
-    params = {
-        "source": "random",
-        "frame": {"width": int(frame_size[0]), "height": int(frame_size[1])},
-        "counts": {
-            "labels": int(n_labels),
-            "points": int(n_points),
-            "lines": int(n_lines),
-            "areas": int(n_areas),
-        },
-        "random": {
-            "route_gen": rgen,
-            "area_gen": agen,
-        },
-        "anchors": {
-            "policy": anchors_policy if anchors_policy is not None else "auto",
-            "modes": anchor_modes or {},
-        },
-    }
-    if isinstance(steps, str):
-        params["steps"] = {"kind": steps, "steps": None}
-    elif steps is not None:
-        params["steps"] = dict(steps)
-    rng = np.random.default_rng(seed)
-    payload = assemble.generate_payload(params, rng)
-    payload = _ensure_payload(payload, params, rng)
-    steps_cfg = params.get("steps")
-    return _build_solvepack(payload, steps_cfg, solver_cfg, rng)
+def build_solvepack_direct(*args, **kwargs):  # pragma: no cover - legacy API
+    raise NotImplementedError("Use build_solvepack_from_config in v2")
+

@@ -1,8 +1,3 @@
-data:
-  random:
-    route_gen: { k_sigma_bound: 5, max_retry: 50 }
-    area_gen:  { k_sigma_bound: 5, max_retry: 50 }
-
 solver:
   internals:
     eps: { div: 1e-9, sqrt: 1e-9, proj: 1e-9 }

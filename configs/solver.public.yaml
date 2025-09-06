@@ -8,21 +8,21 @@ solver:
   force_level: medium
 
 data:
-  random:
-    frame: { width: 1080, height: 1920 }
-    counts: { n_points: 8, n_lines: 3, n_areas: 2 }
-    route_gen:
-      mean_length_scale: 0.25
-      min_vertex_spacing_scale: 0.01
-      min_edge_margin_scale: 0.02
-      lower_bound_scale: 0.02
-      upper_bound_scale: 0.60
-    area_gen:
-      mean_area_scale: 0.05
-      min_vertex_spacing_scale: 0.01
-      min_edge_margin_scale: 0.02
-      lower_bound_scale: 0.01
-      upper_bound_scale: 0.50
+  source: generate
+
+# if source == "generate":
+  generate:
+    num_points:  11        # >=0
+    num_lines:   1        # >=0
+    num_areas:   2        # >=0
+    num_labels:          # >=1 (optional; infer if missing)
+    num_steps:   19        # >=1 (required)
+    frame_size:  [1080, 1920]   # optional; default [1920.0,1080.0]
+    seed:        123      # optional
+
+# if source == "load":
+  load:
+    path: "path/to/snapshot.npz|.json"   # required
 
 terms:
   anchor:

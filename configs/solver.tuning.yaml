@@ -12,8 +12,3 @@ solver:
 terms:
   anchor:
     spring: { k: 5.0 }
-
-data:
-  random:
-    route_gen:
-      mean_length_scale: 0.30

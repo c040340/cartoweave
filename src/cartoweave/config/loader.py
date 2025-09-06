@@ -87,12 +87,60 @@ def _inject_legacy_term_keys(cfg: Dict[str, Any]) -> None:
         cfg["area.k.embed"] = ae.get("k")
 
 
+def _validate_data_cfg(cfg: Dict[str, Any]) -> None:
+    data = cfg.get("data")
+    if data is None:
+        return
+    allowed_top = {"source", "generate", "load"}
+    unknown = set(data.keys()) - allowed_top
+    if unknown:
+        raise ValueError(f"unknown data keys: {sorted(unknown)}")
+    source = data.get("source")
+    if source not in {"generate", "load"}:
+        raise ValueError("data.source must be 'generate' or 'load'")
+    if source == "generate":
+        gen = data.get("generate", {})
+        allowed_gen = {
+            "num_points",
+            "num_lines",
+            "num_areas",
+            "num_labels",
+            "num_steps",
+            "frame_size",
+            "seed",
+        }
+        unknown = set(gen.keys()) - allowed_gen
+        if unknown:
+            raise ValueError(f"unknown data.generate keys: {sorted(unknown)}")
+        for k in ["num_points", "num_lines", "num_areas"]:
+            if not isinstance(gen.get(k), int) or gen[k] < 0:
+                raise ValueError(f"data.generate.{k} must be int>=0")
+        if "num_labels" in gen and (not isinstance(gen["num_labels"], int) or gen["num_labels"] < 1):
+            raise ValueError("data.generate.num_labels must be int>=1")
+        if not isinstance(gen.get("num_steps"), int) or gen["num_steps"] < 1:
+            raise ValueError("data.generate.num_steps must be int>=1")
+        fs = gen.get("frame_size", [1920.0, 1080.0])
+        if not (isinstance(fs, (list, tuple)) and len(fs) == 2):
+            raise ValueError("data.generate.frame_size must be [W,H]")
+    else:  # load
+        load = data.get("load", {})
+        allowed_load = {"path"}
+        unknown = set(load.keys()) - allowed_load
+        if unknown:
+            raise ValueError(f"unknown data.load keys: {sorted(unknown)}")
+        path = load.get("path")
+        if not path or not isinstance(path, str):
+            raise ValueError("data.load.path is required")
+
+
 def load_configs(
+    profile: str | None = None,
+    overrides: Optional[Dict[str, Any]] = None,
+    *,
     internals_path: str = "configs/solver.internals.yaml",
     tuning_path: str = "configs/solver.tuning.yaml",
     public_path: str = "configs/solver.public.yaml",
     viz_path: str = "configs/viz.yaml",
-    overrides: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Load configuration files and return a merged mapping."""
 
@@ -119,17 +167,20 @@ def load_configs(
     cfg = deep_update(cfg, tuning_cfg)
     cfg = deep_update(cfg, {"viz": viz_cfg})
 
-    override_profile = (
-        overrides.get("solver", {}).get("profile") if overrides else None
-    )
-    profile = override_profile or cfg.get("solver", {}).get("profile")
-    preset = _PROFILE_PRESETS.get(str(profile), {})
+    if profile:
+        prof_cfg = _read_yaml(profile)
+        cfg = deep_update(cfg, prof_cfg)
+
+    override_profile = overrides.get("solver", {}).get("profile") if overrides else None
+    prof_name = override_profile or cfg.get("solver", {}).get("profile")
+    preset = _PROFILE_PRESETS.get(str(prof_name), {})
     if preset:
         cfg["solver"] = deep_update(cfg.get("solver", {}), preset)
 
     if overrides:
         cfg = deep_update(cfg, overrides)
 
+    _validate_data_cfg(cfg)
     validate_config(cfg)
     _inject_legacy_term_keys(cfg)
     return cfg
