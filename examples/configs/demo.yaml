@@ -4,5 +4,5 @@ data:
     num_points: 2
     num_lines: 1
     num_areas: 1
-    num_labels: 4
+    num_labels: 7
     num_steps: 9
