@@ -127,6 +127,28 @@ class SolvePack:
         # stages
         _check_stages(self.stages, self.L)
 
+        # --- anchor index range checks (recommended) ---
+        labels = self.scene["labels"]
+        pts    = np.asarray(self.scene["points"])
+        lines  = self.scene["lines"]
+        areas  = self.scene["areas"]
+
+        for i, lm in enumerate(labels):
+            kind = lm.get("anchor_kind")
+            idx  = lm.get("anchor_index")
+            if kind == "point":
+                if not (0 <= idx < len(pts)):
+                    _fail(f"labels[{i}].anchor_index out of range for points: {idx} not in [0,{len(pts)})")
+            elif kind == "line":
+                if not (0 <= idx < len(lines)):
+                    _fail(f"labels[{i}].anchor_index out of range for lines: {idx} not in [0,{len(lines)})")
+            elif kind == "area":
+                if not (0 <= idx < len(areas)):
+                    _fail(f"labels[{i}].anchor_index out of range for areas: {idx} not in [0,{len(areas)})")
+            elif kind == "none":
+                # unanchored label; no index check
+                pass
+
     def validate(self) -> None:
         """Backward-compatible no-op; validation happens in __post_init__."""
         return None
