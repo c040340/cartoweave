@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse, json
+import numpy as np
 
 from cartoweave.config.loader import load_configs
 from cartoweave.data.api import build_solvepack_from_config
+from cartoweave.compute.run import solve_behaviors
 
 
 def main() -> None:
@@ -118,6 +120,13 @@ def main() -> None:
                   f"activate={act}, deactivate={deact}, mutate_first=[{msum_txt}]")
 
     print("[e2e] pack ready (pre-solve)")
+    state = solve_behaviors(pack)
+    print(
+        "[e2e] post-solve: active =",
+        int(state.active.sum()),
+        " | P L2 =",
+        float(np.linalg.norm(state.P)),
+    )
 
 
 if __name__ == "__main__":

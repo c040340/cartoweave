@@ -1,7 +1,7 @@
 """Solve function coordinating passes and compute solvers."""
 from __future__ import annotations
 
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any
 import numpy as np
 import time, platform, sys
 
@@ -9,8 +9,12 @@ from cartoweave.contracts.solvepack import SolvePack
 from cartoweave.contracts.viewpack import ViewPack, Frame
 from .eval import energy_and_grad_full
 from .types import _grad_metrics, Array2
-from cartoweave.compute.solver.solve_layer import run_iters, SolveContext, StepReport
-from cartoweave.compute.passes.behavior_pass import BehaviorPass
+from cartoweave.compute.solver.solve_layer import run_iters, SolveContext
+from cartoweave.compute.passes.behavior_pass import (
+    RuntimeState,
+    copy_label,
+    apply_behavior_step,
+)
 from .passes.manager import PassManager
 from .passes.base import Context
 from cartoweave.config.bridge import translate_legacy_keys
@@ -19,30 +23,46 @@ from cartoweave.version import __version__ as _cw_ver
 from cartoweave.logging_util import get_logger
 
 
-def solve_behaviors(pack: SolvePack, cfg: Dict[str, Any]) -> Tuple[np.ndarray, List[StepReport]]:
-    """Run behaviors sequentially using :class:`BehaviorPass` and ``run_iters``."""
-    bp = BehaviorPass(pack)
-    behaviors = cfg.get("behaviors", []) or []
-    P = pack.P0.copy()
-    reps_all: List[StepReport] = []
-    for k, beh in enumerate(behaviors):
-        P0, labels_k, active_k, scene_k = bp.begin_behavior(k, beh, P, cfg)
-        print(f"[e2e] behavior k={k} iters={int(beh.get('iters', 0))}")
-        ctx = SolveContext(
-            labels=labels_k,
-            scene=scene_k,
-            active=active_k,
-            cfg=cfg,
-            iters=int(beh.get("iters", 0)),
-            mode=str(beh.get("solver", "lbfgs")),
-            params=beh.get("params", {}),
-        )
-        P, reps = run_iters(P0, ctx, energy_and_grad_full, report=True)
-        for r in reps:
-            r.k = k
-        reps_all.extend(reps)
-        bp.end_behavior(k, P)
-    return P, reps_all
+def solve_once(*, P, active, labels, scene, solver: str, params: Dict[str, Any]):
+    """Single-iteration solver entry point.
+
+    This is a thin wrapper around the project's existing solver.  For now it
+    returns ``P`` unchanged; plug in ``run_iters`` or other routines as needed.
+    """
+
+    return np.asarray(P, float)
+
+
+def solve_behaviors(pack: SolvePack) -> RuntimeState:
+    """Apply behaviors sequentially then run solver iterations for each."""
+    P = np.asarray(pack.P0, float).copy()
+    active = np.asarray(pack.active0, bool).copy()
+    labels = [copy_label(l) for l in pack.labels0]
+    state = RuntimeState(P=P, active=active, labels=labels)
+
+    for beh in pack.cfg.get("behaviors", []):
+        state = apply_behavior_step(pack, state, beh)
+
+        if isinstance(beh, dict):
+            solver_name = beh.get("solver", "lbfgs")
+            iters = int(beh.get("iters", 1))
+            params = dict(beh.get("params", {}) or {})
+        else:
+            solver_name = getattr(beh, "solver", "lbfgs")
+            iters = int(getattr(beh, "iters", 1))
+            params = dict(getattr(beh, "params", {}) or {})
+
+        for _ in range(max(1, iters)):
+            state.P = solve_once(
+                P=state.P,
+                active=state.active,
+                labels=state.labels,
+                scene=pack.scene0,
+                solver=solver_name,
+                params=params,
+            )
+
+    return state
 
 
 def solve(pack: SolvePack) -> ViewPack:

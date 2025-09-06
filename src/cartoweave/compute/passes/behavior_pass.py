@@ -1,100 +1,118 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple, Dict, Any
-import copy
+from typing import List, Dict, Any
 import numpy as np
 
-from cartoweave.contracts.solvepack import SolvePack
-try:  # backward compatible type hints
-    from cartoweave.contracts.solvepack import Behavior, LabelState  # type: ignore
-except Exception:  # pragma: no cover - fallback for older contracts
-    Behavior = Dict[str, Any]  # type: ignore
-    LabelState = Dict[str, Any]  # type: ignore
-
+from cartoweave.contracts.solvepack import (
+    SolvePack,
+    LabelState,
+    AnchorSpec,
+    Behavior,
+)
 from cartoweave.compute.geom.anchor import anchor_xy
 
 
 @dataclass
-class _State:
+class RuntimeState:
+    P: np.ndarray
+    active: np.ndarray
     labels: List[LabelState]
-    active: np.ndarray  # (N,) bool
+
+
+def copy_label(lbl: LabelState) -> LabelState:
+    return LabelState(
+        kind=str(lbl.kind),
+        WH=np.asarray(lbl.WH, float).copy(),
+        anchor=AnchorSpec(lbl.anchor.kind, int(lbl.anchor.index)) if getattr(lbl, "anchor", None) else None,
+        meta=dict(getattr(lbl, "meta", {}) or {}),
+    )
+
+
+def apply_behavior_step(pack: SolvePack, state: RuntimeState, behavior: Behavior) -> RuntimeState:
+    cfg = dict(pack.cfg.get("behavior", {}))
+    place_on_first = bool(cfg.get("place_on_first_activation", True))
+    snap_on_kind_change = bool(cfg.get("snap_on_kind_change", False))
+    line_mode = cfg.get("line_anchor_mode", "midpoint")
+    area_mode = cfg.get("area_anchor_mode", "centroid")
+
+    ops: Dict[str, Any] = behavior.ops if isinstance(behavior.ops, dict) else {}
+    acts = list(ops.get("activate", []) or [])
+    deact = list(ops.get("deactivate", []) or [])
+    muts = list(ops.get("mutate", []) or [])
+
+    for i in acts:
+        if not state.active[i]:
+            state.active[i] = True
+            if place_on_first:
+                anc = state.labels[i].anchor
+                xy = anchor_xy(pack.scene0, anc, line_mode, area_mode) if anc else None
+                if xy is not None:
+                    state.P[i] = np.asarray(xy, float)
+
+    for m in muts:
+        i = int(m.get("id"))
+        setv = dict(m.get("set", {}) or {})
+        lbl = state.labels[i]
+        prev_kind = lbl.kind
+
+        if "kind" in setv:
+            lbl.kind = str(setv["kind"])
+        if "WH" in setv:
+            wh = np.asarray(setv["WH"], float)
+            if wh.shape == (2,):
+                lbl.WH = wh
+        if "anchor" in setv:
+            a = setv["anchor"]
+            if isinstance(a, dict) and "kind" in a and "index" in a:
+                lbl.anchor = AnchorSpec(str(a["kind"]), int(a["index"]))
+        if "meta" in setv and isinstance(setv["meta"], dict):
+            lbl.meta.update(setv["meta"])
+
+        if snap_on_kind_change and lbl.kind != prev_kind and lbl.anchor is not None:
+            xy = anchor_xy(pack.scene0, lbl.anchor, line_mode, area_mode)
+            if xy is not None:
+                state.P[i] = np.asarray(xy, float)
+
+    for i in deact:
+        state.active[i] = False
+
+    return state
 
 
 class BehaviorPass:
+    """Compatibility wrapper for legacy tests.
+
+    This mimics the old ``begin_behavior``/``end_behavior`` API using the new
+    :class:`RuntimeState` utilities.
+    """
+
     def __init__(self, pack: SolvePack):
-        labels_raw = pack.scene0.get("labels", [])
-        WH = np.asarray(pack.scene0.get("WH", np.zeros((len(labels_raw), 2))), float)
-        labels: List[LabelState] = []
-        for i, lm in enumerate(labels_raw):
-            anchor = lm.get("anchor")
-            if anchor is None:
-                anchor = {"kind": lm.get("anchor_kind"), "index": lm.get("anchor_index")}
-            labels.append(
-                {
-                    "kind": lm.get("kind"),
-                    "WH": WH[i].tolist() if i < len(WH) else None,
-                    "anchor": anchor,
-                    "meta": lm.get("meta", {}),
-                }
-            )
-        self._state = _State(labels=copy.deepcopy(labels), active=pack.active_mask0.copy())
-        self.scene0 = pack.scene0
+        self.pack = pack
+        P = np.asarray(pack.P0, float).copy()
+        active = np.asarray(pack.active0, bool).copy()
+        labels = [copy_label(l) for l in pack.labels0]
+        self.state = RuntimeState(P=P, active=active, labels=labels)
 
-    def begin_behavior(self, k: int, beh: Behavior, P_prev_star: np.ndarray, cfg: Dict[str, Any]) -> Tuple[np.ndarray, List[LabelState], np.ndarray, Any]:
-        P_k0 = np.asarray(P_prev_star, float).copy()
-        labels = self._state.labels
-        active = self._state.active
-        ops = beh.get("ops", {}) or {}
-        activate = ops.get("activate", [])
-        deactivate = ops.get("deactivate", [])
-        mutate = ops.get("mutate", [])
-
-        beh_cfg = cfg.get("behavior", {}) if isinstance(cfg, dict) else {}
-        place_first = bool(beh_cfg.get("place_on_first_activation"))
-        snap_kind_change = bool(beh_cfg.get("snap_on_kind_change"))
-
-        for idx in activate:
-            if 0 <= idx < active.size:
-                first = not bool(active[idx])
-                active[idx] = True
-                if first and place_first:
-                    anc = labels[idx].get("anchor")
-                    if anc:
-                        xy = anchor_xy(anc, self.scene0)
-                        if xy is not None:
-                            P_k0[idx] = xy
-
-        for idx in deactivate:
-            if 0 <= idx < active.size:
-                active[idx] = False
-
-        for m in mutate:
-            idx = m.get("id")
-            if idx is None or not (0 <= idx < len(labels)):
-                continue
-            changes = m.get("set", {}) or {}
-            lbl = labels[idx]
-            if "WH" in changes and changes["WH"] is not None:
-                lbl["WH"] = changes["WH"]
-            if "anchor" in changes and changes["anchor"] is not None:
-                lbl["anchor"] = changes["anchor"]
-            if "meta" in changes and changes["meta"] is not None:
-                lbl["meta"] = changes["meta"]
-            if "kind" in changes:
-                old_kind = lbl.get("kind")
-                lbl["kind"] = changes["kind"]
-                if snap_kind_change and changes["kind"] != old_kind:
-                    anc = lbl.get("anchor")
-                    if anc:
-                        xy = anchor_xy(anc, self.scene0)
-                        if xy is not None:
-                            P_k0[idx] = xy
-
-        self._state.labels = labels
-        self._state.active = active
-        scene_k = self.scene0
-        return P_k0, copy.deepcopy(labels), active.copy(), scene_k
+    def begin_behavior(self, k: int, beh: Behavior, P_prev_star: np.ndarray, cfg: Dict[str, Any]):
+        self.state.P = np.asarray(P_prev_star, float).copy()
+        self.state = apply_behavior_step(self.pack, self.state, beh)
+        return (
+            self.state.P.copy(),
+            [copy_label(l) for l in self.state.labels],
+            self.state.active.copy(),
+            self.pack.scene0,
+        )
 
     def end_behavior(self, k: int, P_star: np.ndarray):
+        self.state.P = np.asarray(P_star, float).copy()
         return None
+
+
+__all__ = [
+    "RuntimeState",
+    "copy_label",
+    "apply_behavior_step",
+    "BehaviorPass",
+]
+
