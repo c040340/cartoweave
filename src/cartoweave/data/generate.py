@@ -13,6 +13,9 @@ from cartoweave.contracts.solvepack import (
     Behavior,
     BehaviorOp,
 )
+from cartoweave.data.primitives.lines import generate_polyline_by_length
+from cartoweave.data.primitives.polygons import generate_polygon_by_area
+from cartoweave.data.sampling.helpers import frame_metrics
 
 __all__ = [
     "generate_scene",
@@ -34,32 +37,53 @@ def generate_scene(
     frame_size: Tuple[float, float] = (1920.0, 1080.0),
     seed: int = 0,
 ) -> Scene:
-    """Generate a simple synthetic scene.
+    """Generate a synthetic scene.
 
-    The repository ships with sophisticated random scene builders under
-    ``data/build_random``.  For the purposes of this refactor a lightweight
-    fallback based on uniform sampling suffices; should those utilities be
-    present they can easily be swapped in.
+    The implementation favours the more robust generators shipped with the
+    project (``data.primitives``) and falls back to simple random geometry when
+    those fail for any reason.
     """
 
     rng = np.random.default_rng(seed)
     W, H = float(frame_size[0]), float(frame_size[1])
+    diag, area_total = frame_metrics((W, H))
 
     points = rng.uniform([0, 0], [W, H], size=(int(num_points), 2))
 
     lines: List[np.ndarray] = []
+    seg_len0 = 0.05 * diag
+    min_spacing = 0.02 * diag
+    inset = 0.05 * diag
     for _ in range(int(num_lines)):
-        start = rng.uniform([0, 0], [W, H], size=2)
-        end = rng.uniform([0, 0], [W, H], size=2)
-        lines.append(np.vstack([start, end]))
+        try:
+            target_len = seg_len0 * rng.uniform(4.0, 6.0)
+            line = generate_polyline_by_length(
+                rng, (W, H), target_len, min_spacing, inset, seg_len0
+            )
+            lines.append(line)
+        except Exception:  # pragma: no cover - robust generators may fail
+            start = rng.uniform([0, 0], [W, H], size=2)
+            end = rng.uniform([0, 0], [W, H], size=2)
+            lines.append(np.vstack([start, end]))
 
     areas: List[Dict[str, np.ndarray]] = []
+    area_inset = 0.05 * diag
+    edge_spacing = 0.02 * diag
     for _ in range(int(num_areas)):
-        cx, cy = rng.uniform([0, 0], [W, H])
-        w, h = rng.uniform(0.05, 0.2, size=2) * np.array([W, H])
-        x0, y0 = max(0.0, cx - w / 2), max(0.0, cy - h / 2)
-        x1, y1 = min(W, cx + w / 2), min(H, cy + h / 2)
-        exterior = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=float)
+        try:
+            exterior = generate_polygon_by_area(
+                rng,
+                (W, H),
+                0.02 * area_total,
+                area_inset,
+                edge_spacing,
+            )
+        except Exception:  # pragma: no cover - fallback rectangle
+            cx, cy = rng.uniform([0, 0], [W, H])
+            w, h = rng.uniform(0.05, 0.2, size=2) * np.array([W, H])
+            x0, y0 = max(0.0, cx - w / 2), max(0.0, cy - h / 2)
+            x1, y1 = min(W, cx + w / 2), min(H, cy + h / 2)
+            exterior = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=float)
         areas.append({"exterior": exterior, "holes": []})
 
     return Scene(points=points, lines=lines, areas=areas, frame_size=(W, H))

@@ -23,8 +23,8 @@ class _State:
 
 class BehaviorPass:
     def __init__(self, pack: SolvePack):
-        labels_raw = pack.scene.get("labels", [])
-        WH = np.asarray(pack.scene.get("WH", np.zeros((len(labels_raw), 2))), float)
+        labels_raw = pack.scene0.get("labels", [])
+        WH = np.asarray(pack.scene0.get("WH", np.zeros((len(labels_raw), 2))), float)
         labels: List[LabelState] = []
         for i, lm in enumerate(labels_raw):
             anchor = lm.get("anchor")
@@ -39,7 +39,7 @@ class BehaviorPass:
                 }
             )
         self._state = _State(labels=copy.deepcopy(labels), active=pack.active_mask0.copy())
-        self.scene0 = pack.scene
+        self.scene0 = pack.scene0
 
     def begin_behavior(self, k: int, beh: Behavior, P_prev_star: np.ndarray, cfg: Dict[str, Any]) -> Tuple[np.ndarray, List[LabelState], np.ndarray, Any]:
         P_k0 = np.asarray(P_prev_star, float).copy()

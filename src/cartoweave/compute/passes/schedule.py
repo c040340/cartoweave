@@ -11,7 +11,6 @@ class SchedulePass(ComputePass):
     Each stage item may specify:
 
     - ``iters`` – overrides ``max_iter`` for the engine solver
-    - ``mask_override`` – boolean mask ANDed with the pack's base mask
     - ``params`` – dict merged into the pack's ``params``
 
     When ``SolvePack.schedule`` is empty, a single stage using the
@@ -22,27 +21,21 @@ class SchedulePass(ComputePass):
         pack = ctx.pack
         L = pack.L
         base_mask = pack.active_mask0
-        base_params = dict(pack.params or {})
+        base_params = dict(getattr(pack, "params", {}) or {})
         stages_cfg: List[Dict[str, Any]] = getattr(pack, "stages", None) or [{}]
 
         stages: List[Stage] = []
         for i, item in enumerate(stages_cfg):
             iters = item.get("iters", None)
-            mask_over = item.get("mask_override", None)
-            if mask_over is not None:
-                mask = np.asarray(mask_over, dtype=bool)
-                assert mask.shape == (L,), "mask_override shape must be (L,)"
-                mask = np.logical_and(base_mask, mask)
-            else:
-                mask = base_mask
+            mask = base_mask
 
             p = dict(base_params)
-            # 支持 item["params"] 或直接把其它键并入（除了 iters/mask_override）
+            # 支持 item["params"] 或直接把其它键并入（除了 iters）
             extra = item.get("params", {})
             if isinstance(extra, dict):
                 p.update(extra)
             for k, v in item.items():
-                if k not in ("iters", "mask_override", "params", "solver"):
+                if k not in ("iters", "params", "solver"):
                     p[k] = v  # 容忍直接写参数在顶层
 
             # 若指定 iters，则覆盖 max_iter（旧求解器通常识别这个键）

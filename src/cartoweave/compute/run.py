@@ -205,13 +205,13 @@ def solve(pack: SolvePack) -> ViewPack:
         mask_popcount.append(int(st.mask.sum()))
 
         rec = make_recorder(s_idx, st.mask, P_curr)
-        labels_all = pack.scene.get("labels")
-        E0, G0, comps0, _ = energy_fn(P_curr, labels_all, pack.scene, st.mask, cfg)
+        labels_all = pack.scene0.get("labels")
+        E0, G0, comps0, _ = energy_fn(P_curr, labels_all, pack.scene0, st.mask, cfg)
         rec({"P": P_curr, "G": G0, "comps": comps0, "E": E0})
 
         ctx_stage = SolveContext(
             labels=labels_all,
-            scene=pack.scene,
+            scene=pack.scene0,
             active=st.mask,
             cfg=cfg,
             iters=int(st.iters or 0),
@@ -226,7 +226,7 @@ def solve(pack: SolvePack) -> ViewPack:
         P_curr, _ = run_iters(P_curr, ctx_stage, _energy_no_meta, report=False)
         ctx.eval_index += ctx_stage.iters
 
-        E1, G1, comps1, _ = energy_fn(P_curr, labels_all, pack.scene, st.mask, cfg)
+        E1, G1, comps1, _ = energy_fn(P_curr, labels_all, pack.scene0, st.mask, cfg)
         rec({"P": P_curr, "G": G1, "comps": comps1, "E": E1})
         result = {"P": P_curr}
 

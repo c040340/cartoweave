@@ -10,11 +10,13 @@ to mappings when consumed by legacy code.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 import numpy as np
 
 __all__ = [
+    "Kind",
+    "AnchorKind",
     "AnchorSpec",
     "LabelState",
     "BehaviorOp",
@@ -23,6 +25,15 @@ __all__ = [
     "SolvePack",
     "validate",
 ]
+
+# basic string enums -----------------------------------------------------------
+
+# ``Kind`` represents the label kind used by the compute layer.  ``"none"`` is
+# a valid placeholder for inactive labels.
+Kind = Literal["none", "point", "line", "area"]
+
+# Anchors are restricted to geometry primitives and do not include ``"none"``.
+AnchorKind = Literal["point", "line", "area"]
 
 
 # ---------------------------------------------------------------------------
@@ -103,19 +114,7 @@ class SolvePack:
     scene0: Scene
     cfg: Dict[str, Any] = field(default_factory=dict)
 
-    # plumbing fields expected by the compute layer
-    mode: str = "lbfgs"
-    params: Dict[str, Any] = field(default_factory=dict)
-    energy_and_grad: Any | None = None
-    stages: List[Dict[str, Any]] = field(default_factory=lambda: [{"iters": 6}])
-    passes: List[str] = field(default_factory=lambda: ["schedule", "capture"])
-
     # -- compatibility helpers -------------------------------------------------
-    @property
-    def scene(self) -> Dict[str, Any]:
-        """Return the scene as a plain mapping for legacy consumers."""
-        return self.scene0.to_dict()
-
     @property
     def L(self) -> int:  # pragma: no cover - legacy alias
         return self.N

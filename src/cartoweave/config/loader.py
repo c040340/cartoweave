@@ -115,7 +115,8 @@ def _validate_data_cfg(cfg: Dict[str, Any]) -> None:
         for k in ["num_points", "num_lines", "num_areas"]:
             if not isinstance(gen.get(k), int) or gen[k] < 0:
                 raise ValueError(f"data.generate.{k} must be int>=0")
-        if "num_labels" in gen and (not isinstance(gen["num_labels"], int) or gen["num_labels"] < 1):
+        nl = gen.get("num_labels")
+        if nl is not None and (not isinstance(nl, int) or nl < 1):
             raise ValueError("data.generate.num_labels must be int>=1")
         if not isinstance(gen.get("num_steps"), int) or gen["num_steps"] < 1:
             raise ValueError("data.generate.num_steps must be int>=1")

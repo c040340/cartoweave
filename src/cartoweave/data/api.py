@@ -20,11 +20,7 @@ from cartoweave.contracts.solvepack import (
 from .generate import generate_scene, generate_labels, generate_behaviors
 from .io import load_snapshot
 
-__all__ = [
-    "build_solvepack_from_config",
-    "build_solvepack_direct",
-    "load_solvepack_from_file",
-]
+__all__ = ["build_solvepack_from_config"]
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +59,11 @@ def build_solvepack_from_config(config: Mapping[str, Any] | str, seed: int | Non
             frame_size=frame,
             seed=seed,
         )
-        N = int(g.get("num_labels", max(1, g.get("num_points", 0) + g.get("num_lines", 0) + g.get("num_areas", 0))))
+        nl = g.get("num_labels")
+        if nl is None:
+            N = max(1, g.get("num_points", 0) + g.get("num_lines", 0) + g.get("num_areas", 0))
+        else:
+            N = int(nl)
         P0, active0, labels0 = generate_labels(N, scene, cfg.get("behavior"))
         behaviors = generate_behaviors(N, int(g.get("num_steps", 1)), scene, cfg.get("behavior"), "round_robin", seed)
     elif source == "load":
