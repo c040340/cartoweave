@@ -26,10 +26,10 @@ class WeightsPass(ComputePass):
     def wrap_energy(self, energy_fn):
         """Attach weight mapping to the config before evaluation."""
 
-        def _wrapped(P, scene, active_mask, cfg):
+        def _wrapped(P, labels, scene, active_mask, cfg):
             cfg2 = copy.deepcopy(cfg) if isinstance(cfg, dict) else {}
             cfg2.setdefault("compute", {}).setdefault("weights", {})
             cfg2["compute"]["weights"].update(self.weights)
-            return energy_fn(P, scene, active_mask, cfg2)
+            return energy_fn(P, labels, scene, active_mask, cfg2)
 
         return _wrapped

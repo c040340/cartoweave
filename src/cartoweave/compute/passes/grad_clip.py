@@ -25,13 +25,13 @@ class GradClipPass(ComputePass):
 
         stats = self.stats
 
-        def _wrapped(P, scene, active_mask, cfg):
+        def _wrapped(P, labels, scene, active_mask, cfg):
             conf = get_pass_cfg(cfg, "grad_clip", {"max_norm": self.max_norm, "max_abs": self.max_abs})
             mn = conf.get("max_norm")
             ma = conf.get("max_abs")
             eps = get_eps(cfg)
 
-            E, G, comps, meta = energy_fn(P, scene, active_mask, cfg)
+            E, G, comps, meta = energy_fn(P, labels, scene, active_mask, cfg)
             comps = dict(comps or {})
 
             if G is None:

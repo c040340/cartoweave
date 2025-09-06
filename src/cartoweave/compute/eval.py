@@ -42,7 +42,13 @@ def _clip_if_needed(F: Array2, cfg: dict) -> Array2:
     return F
 
 
-def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask: np.ndarray, cfg: dict):
+def _energy_and_grad_full_compute(
+    P: Array2,
+    labels: Any,
+    scene: Dict[str, Any],
+    active_mask: np.ndarray,
+    cfg: dict,
+):
     """Evaluate all enabled terms via the compute aggregator.
 
     Parameters
@@ -50,8 +56,9 @@ def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask:
     P, active_mask
         Current positions ``(L,2)`` and boolean mask. Inactive rows are zeroed
         in the output.
-    scene, cfg
-        Immutable scene data and configuration.
+    labels, scene, cfg
+        Mutable label list and immutable scene/configuration for the current
+        behaviour state.
 
     Returns
     -------
@@ -73,6 +80,10 @@ def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask:
 
     # 场景副本（仅添加/覆盖 _active_ids 与 _ext_dir）
     sc = dict(scene or {})
+    if labels is not None:
+        sc["labels"] = labels
+    else:
+        sc.setdefault("labels", [])
     ids = _as_active_ids(active_mask)
     sc["_active_ids"] = ids
     sc["_active_ids_solver"] = ids
@@ -137,7 +148,24 @@ def _energy_and_grad_full_compute(P: Array2, scene: Dict[str, Any], active_mask:
     return float(E_total), g, comps, meta
 
 
-def energy_and_grad_full(P: Array2, scene, active_mask: np.ndarray, cfg: dict):
-    """Public entry point for compute-side energy evaluation."""
+def energy_and_grad_full(
+    P: Array2,
+    labels=None,
+    scene=None,
+    active_mask=None,
+    cfg=None,
+):
+    """Public entry point for compute-side energy evaluation.
 
-    return _energy_and_grad_full_compute(P, scene, active_mask, cfg)
+    Historically this function accepted ``(P, scene, active_mask, cfg)``. It now
+    prefers ``(P, labels, scene, active_mask, cfg)`` but remains backward
+    compatible with the older form.
+    """
+
+    if cfg is None and isinstance(active_mask, dict) and isinstance(scene, np.ndarray):
+        cfg = active_mask
+        active_mask = scene
+        scene = labels
+        labels = scene.get("labels") if isinstance(scene, dict) else None
+
+    return _energy_and_grad_full_compute(P, labels, scene, active_mask, cfg)

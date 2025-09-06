@@ -40,8 +40,10 @@ class PassManager:
         return out
 
     # ---------- wrapping ----------
-    def wrap_energy(self, energy_fn: Callable[[np.ndarray, Any, np.ndarray, Dict[str, Any]], Tuple[float, np.ndarray, Dict[str, np.ndarray], Dict[str, Any]]]) \
-            -> Callable[[np.ndarray, Any, np.ndarray, Dict[str, Any]], Tuple[float, np.ndarray, Dict[str, np.ndarray], Dict[str, Any]]]:
+    def wrap_energy(
+        self,
+        energy_fn: Callable[[np.ndarray, Any, Any, np.ndarray, Dict[str, Any]], Tuple[float, np.ndarray, Dict[str, np.ndarray], Dict[str, Any]]],
+    ) -> Callable[[np.ndarray, Any, Any, np.ndarray, Dict[str, Any]], Tuple[float, np.ndarray, Dict[str, np.ndarray], Dict[str, Any]]]:
         wrapped = energy_fn
         for p in self.passes:
             fn = getattr(p, "wrap_energy", None)

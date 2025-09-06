@@ -7,9 +7,9 @@ import time, platform, sys
 
 from cartoweave.contracts.solvepack import SolvePack
 from cartoweave.contracts.viewpack import ViewPack, Frame
-from .eval import energy_and_grad_full as _default_energy
+from .eval import energy_and_grad_full
 from .types import _grad_metrics, Array2
-from .optim import run_solver
+from cartoweave.compute.solver.solve_layer import run_iters, SolveContext
 from .passes.manager import PassManager
 from .passes.base import Context
 from cartoweave.config.bridge import translate_legacy_keys
@@ -57,7 +57,21 @@ def solve(pack: SolvePack) -> ViewPack:
     ctx.stages = stages
 
     # 包裹能量和步长
-    base_energy = pack.energy_and_grad or _default_energy
+    base_energy = pack.energy_and_grad or energy_and_grad_full
+    # Allow legacy energy functions with signature (P, scene, active, cfg)
+    if base_energy is not energy_and_grad_full:
+        import inspect
+
+        try:
+            if len(inspect.signature(base_energy).parameters) == 4:
+                orig_energy = base_energy
+
+                def _legacy_energy(P, labels, scene, active, cfg):
+                    return orig_energy(P, scene, active, cfg)
+
+                base_energy = _legacy_energy
+        except Exception:
+            pass
     energy_fn = pm.wrap_energy(base_energy)
     apply_step = pm.wrap_step(lambda P_old, P_prop, metrics: P_prop)
     logger.info("solve.start", extra={"extra": {"stages": len(stages)}})
@@ -155,25 +169,31 @@ def solve(pack: SolvePack) -> ViewPack:
         stage_solver_names.append(mode_stage)
         mask_popcount.append(int(st.mask.sum()))
 
-        def E_fn(P):
-            E, _, _, _ = energy_fn(P, pack.scene, st.mask, cfg)
-            return float(E)
+        rec = make_recorder(s_idx, st.mask, P_curr)
+        labels_all = pack.scene.get("labels")
+        E0, G0, comps0, _ = energy_fn(P_curr, labels_all, pack.scene, st.mask, cfg)
+        rec({"P": P_curr, "G": G0, "comps": comps0, "E": E0})
 
-        def G_fn(P):
-            _, G, _, _ = energy_fn(P, pack.scene, st.mask, cfg)
-            return np.asarray(G, float)
-
-        result = run_solver(
-            mode_stage,
-            P0=P_curr,
-            energy_fn=E_fn,
-            grad_fn=G_fn,
+        ctx_stage = SolveContext(
+            labels=labels_all,
+            scene=pack.scene,
+            active=st.mask,
+            cfg=cfg,
+            iters=int(st.iters or 0),
+            mode=mode_stage,
             params=st.params or {},
-            callback=make_recorder(s_idx, st.mask, P_curr),
         )
-        P_final = np.asarray(result.get("P", P_curr))
-        if P_final.shape == (L, 2):
-            P_curr = P_final  # 作为下一阶段初值
+
+        def _energy_no_meta(P, labels, scene, active, cfg):
+            E, G, comps, _ = energy_and_grad_full(P, labels, scene, active, cfg)
+            return E, G, comps
+
+        P_curr, _ = run_iters(P_curr, ctx_stage, _energy_no_meta, report=False)
+        ctx.eval_index += ctx_stage.iters
+
+        E1, G1, comps1, _ = energy_fn(P_curr, labels_all, pack.scene, st.mask, cfg)
+        rec({"P": P_curr, "G": G1, "comps": comps1, "E": E1})
+        result = {"P": P_curr}
 
         # 若未记录最终一帧，则按需补齐
         last_eval_idx = ctx.eval_index - 1
