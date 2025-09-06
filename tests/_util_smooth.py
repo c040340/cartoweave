@@ -76,7 +76,8 @@ def get_energy_grad_callable() -> Callable[[Dict[str, Any], np.ndarray, Dict[str
 
     def _call(scene: Dict[str, Any], P: np.ndarray, cfg: Dict[str, Any]):
         mask = np.ones(P.shape[0], bool)
-        E, G, _, _ = energy_and_grad_full(P, scene, mask, cfg or {})
+        labels = scene["labels"]
+        E, G, _ = energy_and_grad_full(P, labels, scene, mask, cfg or {})
         return float(E), G
 
     return _call

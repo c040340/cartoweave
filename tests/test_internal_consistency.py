@@ -12,15 +12,21 @@
 
 import numpy as np
 from cartoweave.compute.eval import energy_and_grad_full
+import pytest
 
 def test_sumF_plus_grad_zero_anchor_ll_boundary():
     # 构造一个小场景；WH/anchors 的数量匹配 labels
+    labels = [{"anchor_kind": "none"} for _ in range(2)]
     scene = dict(
-        frame=0, frame_size=(400, 300),
+        frame=0,
+        frame_size=(400, 300),
         labels_init=np.array([[200., 150.], [212., 152.]], float),
         WH=np.array([[60., 24.], [60., 24.]], float),
+        labels=labels,
         anchors=np.array([[180., 150.], [220., 150.]], float),
-        points=np.zeros((0, 2)), lines=np.zeros((0, 2, 2)), areas=np.zeros((0, 6)),
+        points=np.zeros((0, 2)),
+        lines=np.zeros((0, 2, 2)),
+        areas=np.zeros((0, 6)),
     )
     cfg = {
         "terms": {"anchor": {"spring": {"k": 10.0}}},
@@ -29,7 +35,7 @@ def test_sumF_plus_grad_zero_anchor_ll_boundary():
     }
 
     mask = np.ones(scene["labels_init"].shape[0], bool)
-    E, G, comps, _ = energy_and_grad_full(scene["labels_init"], scene, mask, cfg)
+    E, G, comps = energy_and_grad_full(scene["labels_init"], labels, scene, mask, cfg)
 
     Fsum = np.zeros_like(G)
     for V in comps.values():

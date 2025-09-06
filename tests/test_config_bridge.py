@@ -1,13 +1,16 @@
-def test_bridge_populates_compute_namespace():
-    from cartoweave.config.bridge import translate_legacy_keys
+import pytest
+from cartoweave.config.bridge import translate_legacy_keys
 
+
+def test_bridge_populates_compute_namespace():
     cfg = {
         "solver": {
             "terms": {"weights": {"pl.rect": 1.0}},
             "eps": {"numeric": 1e-10},
         }
     }
-    out = translate_legacy_keys(cfg)
+    with pytest.warns(DeprecationWarning):
+        out = translate_legacy_keys(cfg)
     assert out["compute"]["weights"]["pl.rect"] == 1.0
     assert out["compute"]["eps"]["numeric"] == 1e-10
     p = out["compute"]["passes"]

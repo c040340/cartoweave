@@ -24,23 +24,20 @@ def test_lbfgs_quadratic_smoke():
     assert np.isfinite(res.get("E", np.inf))
 
 
-def test_integration_schedule_and_capture(scene):
-    import numpy as np
-    from cartoweave.contracts.solvepack import SolvePack
-    from cartoweave.compute.run import solve
+from cartoweave.data.api import build_solvepack_from_config
+from cartoweave.compute.run import solve
 
-    L = len(scene["labels"])
-    P0 = np.zeros((L, 2), float)
-    scene = {**scene, "labels_init": np.zeros((L, 2), float)}
-    cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}}
-    sp = SolvePack(
-        L=L,
-        P0=P0,
-        active_mask0=np.ones(L, dtype=bool),
-        scene=scene,
-        cfg=cfg,
-        stages=[{"iters": 3, "solver": "lbfgs"}, {"iters": 2, "solver": "lbfgs"}],
-        passes=["schedule", "capture"],
-    )
+
+def test_integration_schedule_and_capture():
+    cfg = {
+        "data": {
+            "source": "generate",
+            "generate": {"num_points": 3, "num_lines": 0, "num_areas": 0, "num_steps": 1},
+        },
+        "compute": {"passes": {"capture": {"every": 1}, "step_limit": {"max_step_norm": 1.5}}},
+        "behaviors": [{"solver": "lbfgs", "iters": 2}],
+    }
+    sp = build_solvepack_from_config(cfg, seed=0)
     view = solve(sp)
-    assert view.summary["frames_captured"] >= 1
+    assert view.summary.get("frames_captured", 0) >= 1
+    assert "pass_stats" in view.summary

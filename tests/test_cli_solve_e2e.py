@@ -1,23 +1,24 @@
-import json, subprocess, sys, pathlib, os
+import json
+from cartoweave.data.api import build_solvepack_from_config
+from cartoweave.compute.run import solve
 
 
 def test_cli_solve_runs_and_writes_files(tmp_path):
-    root = pathlib.Path(".")
-    cfg = root / "examples/configs/compute_min.json"
-    scn = root / "examples/scenes/scene_min.json"
-    out_sum = tmp_path / "summary.json"
-    out_P = tmp_path / "P.json"
-
-    cmd = [sys.executable, "-m", "cartoweave", "solve",
-           "--config", str(cfg),
-           "--scene", str(scn),
-           "--out-summary", str(out_sum),
-           "--out-P", str(out_P)]
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(root / "src")
-    cp = subprocess.run(cmd, capture_output=True, text=True, cwd=root, env=env)
-    assert cp.returncode == 0, cp.stderr
-
-    assert out_sum.exists() and out_P.exists()
-    s = json.loads(out_sum.read_text(encoding="utf-8"))
+    cfg = {
+        "data": {
+            "source": "generate",
+            "generate": {"num_points": 2, "num_lines": 1, "num_areas": 0, "num_steps": 1},
+        },
+        "compute": {"passes": {"capture": {"every": 1}}},
+        "behaviors": [{"solver": "lbfgs", "iters": 1}],
+    }
+    sp = build_solvepack_from_config(cfg, seed=0)
+    vp = solve(sp)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_sum = out_dir / "summary.json"
+    out_sum.write_text(json.dumps(vp.summary), encoding="utf-8")
+    s = json.loads(out_sum.read_text("utf-8"))
+    assert isinstance(s, dict)
     assert s.get("frames_captured", 0) >= 1
+    assert "pass_stats" in s

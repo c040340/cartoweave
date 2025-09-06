@@ -1,23 +1,26 @@
-import numpy as np
-from cartoweave.contracts.solvepack import SolvePack
+from cartoweave.data.api import build_solvepack_from_config
 from cartoweave.compute.run import solve
 
 
-def test_pass_manager_equivalence_smoke(scene):
-    L = len(scene["labels"])
-    P0 = np.zeros((L, 2), float)
-    scene = {**scene, "labels_init": np.zeros((L, 2), float)}
-    cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12},
-                        "passes": {"capture": {"every": 1, "final_always": True}}}}
-    sp = SolvePack(
-        L=L,
-        P0=P0,
-        active_mask0=np.ones(L, dtype=bool),
-        scene=scene,
-        cfg=cfg,
-        stages=[{"iters": 4, "solver": "lbfgs"}],
-        passes=["schedule", "capture"],
-    )
-    view = solve(sp)
-    assert view.summary["frames_captured"] >= 1
-    assert "pass_stats" in view.summary
+def _gen_cfg(passes):
+    return {
+        "data": {
+            "source": "generate",
+            "generate": {"num_points": 3, "num_lines": 0, "num_areas": 0, "num_steps": 1},
+        },
+        "compute": {"passes": passes},
+        "behaviors": [{"solver": "lbfgs", "iters": 2}],
+    }
+
+
+def test_pass_manager_equivalence_smoke(as_legacy_pack):
+    base = _gen_cfg({"capture": {"every": 1}})
+    with_passes = _gen_cfg({"capture": {"every": 1}, "nan_guard": {}, "grad_clip": {"max_norm": 1e9}})
+
+    sp1 = as_legacy_pack(build_solvepack_from_config(base, seed=1))
+    sp2 = as_legacy_pack(build_solvepack_from_config(with_passes, seed=1))
+
+    vp1 = solve(sp1)
+    vp2 = solve(sp2)
+
+    assert abs(vp1.last.E - vp2.last.E) < 1e-9

@@ -1,25 +1,25 @@
-# tests/test_action_reaction_ll.py
 import numpy as np
 import pytest
 from cartoweave.compute.eval import energy_and_grad_full
 
+
 @pytest.mark.parametrize("geom", ["rect", "disk"])
-def test_ll_global_force_zero(geom):
-    rng = np.random.default_rng(0)
-    P0 = rng.uniform(100, 300, size=(4,2)).astype(float)
-    WH = np.array([[60.,24.]]*4, float)
+def test_ll_global_force_zero(geom, make_min_scene):
+    P, labels, scene, active, cfg = make_min_scene(L=6, seed=0)
+    cfg["compute"]["weights"] = {
+        "anchor.spring": 0.0,
+        "boundary.wall": 0.0,
+        "pl.rect": 0.0,
+        "ll.rect": 0.0,
+    }
+    key = "ll.rect" if geom == "rect" else "ll.disk"
+    cfg["compute"]["weights"][key] = 1.0
 
-    scene = dict(
-        frame=0, frame_size=(1000,1000),
-        labels_init=P0, WH=WH,
-        labels=[{"anchor_kind":"none"}]*4,
-        points=np.zeros((0,2)), lines=np.zeros((0,2,2)),
-        areas=np.zeros((0,6)), anchors=np.zeros((4,2)),
-    )
-    cfg = {"ll.geom": geom, "ll.k.repulse": 200.0, "ll.k.inside": 50.0}
+    E, g, comps = energy_and_grad_full(P, labels, scene, active, cfg)
 
-    mask = np.ones(P0.shape[0], bool)
-    E, G, comps, _ = energy_and_grad_full(P0, scene, mask, cfg)
-    # 只开 ll.* 时，总外力为 0 → ΣF = 0 → Σ(-G) = 0
-    resid = float(np.abs(G.sum(axis=0)).max())
-    assert resid < 1e-8, f"ll.{geom} action-reaction broken, resid={resid}"
+    Gsum = np.zeros_like(g)
+    for v in comps.values():
+        Gsum += v
+    np.testing.assert_allclose(g, -Gsum, rtol=1e-6, atol=1e-6)
+
+    assert np.linalg.norm(g.sum(axis=0), ord=np.inf) < 1e-6

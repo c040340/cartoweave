@@ -1,17 +1,24 @@
-from cartoweave.contracts.solvepack import SolvePack
-from cartoweave.compute import solve
-from cartoweave.compute.eval import energy_and_grad_full
-from cartoweave.compute.viewpack_utils import to_old_payload
-import numpy as np
+from cartoweave.data.api import build_solvepack_from_config
+from cartoweave.compute.run import solve
 
-def test_viewpack_and_mapping(P0, mask, scene, L):
-    cfg = {"compute": {"passes": {"capture": {"every": 1}}}}
-    sp = SolvePack(L=L, P0=P0, active_mask0=mask, scene=scene,
-                   params={"max_iter":3, "terms":{"anchor":{"spring":{"k":5.0}}}},
-                   energy_and_grad=energy_and_grad_full, cfg=cfg)
-    sp.passes=["schedule", "capture"]
+
+def test_viewpack_basic():
+    cfg = {
+        "data": {
+            "source": "generate",
+            "generate": {
+                "num_points": 2,
+                "num_lines": 0,
+                "num_areas": 0,
+                "num_steps": 1,
+            },
+        },
+        "compute": {"passes": {"capture": {"every": 1}}},
+        "behaviors": [{"solver": "lbfgs", "iters": 1}],
+    }
+    sp = build_solvepack_from_config(cfg, seed=0)
     vp = solve(sp)
-    assert vp.frames and vp.last and "E_last" in vp.summary
-    old = to_old_payload(vp)
-    for k in ("P_seq","E_seq","G_seq","comps_seq","mask_seq","stage_seq","summary"):
-        assert k in old
+    assert isinstance(vp.frames, list) and len(vp.frames) >= 1
+    assert vp.last is vp.frames[-1]
+    assert "pass_stats" in vp.summary
+    assert isinstance(vp.terms_used, list)
