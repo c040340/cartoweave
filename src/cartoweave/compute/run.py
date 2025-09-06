@@ -316,9 +316,72 @@ def solve(pack: SolvePack) -> ViewPack:
                 E, G, comps = out
             return E, G, comps
 
-        P_prev = P_curr.copy()
-        P_curr, _ = run_iters(P_curr, ctx_stage, _energy_no_meta, report=False)
-        ctx.eval_index += iters_stage
+        from cartoweave.compute.optim import run_solver as _dispatch_solver
+
+        # 用 Pass 包裹过的 energy（注意用上前面构造好的 energy_fn）
+        def _E_wrapped(P_only: np.ndarray) -> float:
+            E, G, comps, _meta = energy_fn(P_only, labels_curr, scene_dict, stage_mask, cfg)
+            return float(E)
+
+        def _G_wrapped(P_only: np.ndarray) -> np.ndarray:
+            E, G, comps, _meta = energy_fn(P_only, labels_curr, scene_dict, stage_mask, cfg)
+            return np.asarray(G, float)
+
+        # 把 stage 的 iters 映射到求解器参数（兼容 lbfgs）
+        solver_params = dict(params_stage or {})
+        if iters_stage is not None and iters_stage > 0:
+            # L-BFGS 常用 maxiter；半隐式牛顿也收这个作为外层上限
+            solver_params.setdefault("maxiter", int(iters_stage))
+
+        # 让 step recorder 也吃到优化过程里的帧（可选）
+        def _callback(step_rec: dict[str, Any]):
+            # 允许 lbfgs/半牛顿在迭代时把 {"P":..., "G":..., "E":...} 回调出来
+            if isinstance(step_rec, dict):
+                rec(step_rec)
+
+        # 真正跑选定的求解器（lbfgs / semi_newton）
+        def _unwrap_P(res):
+            """Accept ndarray / OptimizeResult / dict / tuple and return np.ndarray x."""
+            # 1) scipy-like OptimizeResult / objects with .x
+            x = getattr(res, "x", None)
+            if x is not None:
+                return np.asarray(x, dtype=float)
+
+            # 2) dict-like returns
+            if isinstance(res, dict):
+                for k in ("x", "P", "params", "solution", "sol", "optimum"):
+                    if k in res:
+                        return np.asarray(res[k], dtype=float)
+
+            # 3) tuple returns: (x, info) / (status, x) / etc.
+            if isinstance(res, tuple) and len(res) > 0:
+                # 优先从第一个非标量 array-like 取
+                for item in res:
+                    if isinstance(item, (list, tuple, np.ndarray)):
+                        arr = np.asarray(item)
+                        if arr.ndim >= 1:
+                            return arr.astype(float)
+                # 或者按常见约定：第一个就是 x
+                return np.asarray(res[0], dtype=float)
+
+            # 4) 直接是 array-like
+            if isinstance(res, (list, tuple, np.ndarray)):
+                return np.asarray(res, dtype=float)
+
+            # 5) 失败兜底
+            raise TypeError(f"run_solver returned unsupported type: {type(res)}")
+
+        # --- 在调用求解器之前，存一份前态 ---
+        P_prev = np.asarray(P_curr, float).copy()
+
+        res = _dispatch_solver(
+            solver_stage, P_curr, _E_wrapped, _G_wrapped, solver_params, callback=_callback,
+        )
+        P_curr = _unwrap_P(res)
+        ctx.eval_index += int(solver_params.get("maxiter", iters_stage or 0))
+
+        # 位移统计（本 stage）
+        disp = float(np.linalg.norm(P_curr - P_prev))
 
         E1, G1, comps1, _ = energy_fn(P_curr, labels_curr, scene_dict, stage_mask, cfg)
         rec({"P": P_curr, "G": G1, "comps": comps1, "E": E1})
@@ -330,7 +393,7 @@ def solve(pack: SolvePack) -> ViewPack:
             int(stage_mask.sum()),
             iters_stage,
             solver_stage,
-            float(np.linalg.norm(P_curr - P_prev)),
+            disp,
         )
 
         # 若未记录最终一帧，则按需补齐
