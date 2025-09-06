@@ -6,3 +6,17 @@ data:
     num_areas: 1
     num_labels: 7
     num_steps: 9
+
+compute:
+  weights:
+    anchor.spring: 1.0
+    # 按需开启更多项（下面是常见可用项，选你需要的）：
+    ll.rect: 0.5
+    ll.disk: 0.2
+    ln.rect: 0.3
+    pl.rect: 0.3
+    area.embed: 0.5
+    area.cross: 0.1
+    area.softout: 0.2
+    boundary.wall: 0.5
+    focus.attract: 0.0

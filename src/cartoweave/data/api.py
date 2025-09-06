@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+import copy
 from typing import Dict, Mapping, Any, List
 import json
 import yaml
@@ -121,11 +122,10 @@ def build_solvepack_from_config(config: Mapping[str, Any] | str, seed: int | Non
         )
 
     # --- 5) Build pack cfg (only what SolvePack needs) ---
-    pack_cfg: Dict[str, Any] = {
-        "behavior": behavior_cfg,
-        "solver": solver_cfg,
-        "behaviors": norm_behaviors,
-    }
+    pack_cfg: Dict[str, Any] = copy.deepcopy(cfg)
+    pack_cfg["behavior"] = behavior_cfg
+    pack_cfg["solver"] = solver_cfg
+    pack_cfg["behaviors"] = norm_behaviors
 
     # --- 6) Construct v2 SolvePack and validate ---
     pack = SolvePack(N=N, P0=P0, active0=active0, labels0=labels0, scene0=scene, cfg=pack_cfg)

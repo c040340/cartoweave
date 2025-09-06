@@ -13,6 +13,50 @@ from pydantic import (
 )
 
 
+class ComputeEps(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    numeric: float = 1e-12
+
+class ComputePassCapture(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    every: int = 1
+    final_always: bool = True
+
+class ComputePassEarlyStop(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    ftol: float | None = None
+    gtol: float | None = None
+
+class ComputePassGradClip(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    max_abs: float | None = None
+    max_norm: float | None = None
+
+class ComputePassStepLimit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    max_step_norm: float | None = None
+
+class ComputePassNanGuard(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    e_fallback: float = 0.0
+
+class ComputePasses(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    capture: ComputePassCapture = ComputePassCapture()
+    early_stop: ComputePassEarlyStop = ComputePassEarlyStop()
+    grad_clip: ComputePassGradClip = ComputePassGradClip()
+    step_limit: ComputePassStepLimit = ComputePassStepLimit()
+    nan_guard: ComputePassNanGuard = ComputePassNanGuard()
+    schedule: dict = Field(default_factory=dict)
+
+class ComputeConfig(BaseModel):
+    # 禁止未知字段，保持“干净整洁”
+    model_config = ConfigDict(extra="forbid")
+    eps: ComputeEps = ComputeEps()
+    passes: ComputePasses = ComputePasses()
+    weights: dict[str, float] = Field(default_factory=dict)
+
 class SolverPublic(BaseModel):
     mode: Literal["lbfgsb", "simple", "hybrid", "newton"] = "lbfgsb"
     use_autocal: bool = False
@@ -338,19 +382,39 @@ class RootConfig(BaseModel):
     viz: VizConfig = Field(default_factory=VizConfig)
     data: DataConfig = Field(default_factory=DataConfig)
     terms: TermsCfg = Field(default_factory=TermsCfg)
+    compute: ComputeConfig | None = None
 
     model_config = ConfigDict(extra="forbid")
 
 
 def validate_config(cfg: Dict[str, Any]) -> None:
     """Validate *cfg* against the configuration schema."""
+
+    # 允许“带点号键”的白名单前缀：
+    ALLOW_DOTTED_PREFIXES = (
+        "compute.weights",
+        "solver.internals.weights",
+        "solver.terms.weights",
+        "viz.",
+    )
+
+    def _allowed_dotted(full_key: str) -> bool:
+        # full_key 形如 "compute.weights.anchor.spring"
+        # 只要以白名单前缀开头就放行
+        return any(
+            full_key == p or full_key.startswith(p)
+            for p in ALLOW_DOTTED_PREFIXES
+        )
+
     def _scan(data: Mapping[str, Any], path: str = "") -> None:
         for key, value in data.items():
             full_key = f"{path}.{key}" if path else key
-            if "." in key and not full_key.startswith("viz."):
+            # 若 key 含点号，但不在白名单前缀下，则报错
+            if "." in key and not _allowed_dotted(full_key):
                 raise ValueError(
                     f"Invalid configuration: legacy dotted key '{full_key}'"
                 )
+            # 禁止已废弃的 term_weights
             if full_key.endswith("term_weights"):
                 raise ValueError(
                     "Invalid configuration: 'term_weights' is no longer supported"
@@ -360,6 +424,15 @@ def validate_config(cfg: Dict[str, Any]) -> None:
 
     _scan(cfg)
 
+    # （可选但推荐）对 compute.weights 的值做一次数值类型校验
+    ws = ((cfg.get("compute", {}) or {}).get("weights", {}) or {})
+    for k, v in ws.items():
+        try:
+            float(v)
+        except Exception:
+            raise TypeError(f"compute.weights['{k}'] must be numeric, got {type(v).__name__}")
+
+    # 你原有的其它校验逻辑保持不动
     topk = cfg.get("solver", {}).get("topk", {})
     ms = topk.get("min_share")
     if ms is not None and ms > 1.0:

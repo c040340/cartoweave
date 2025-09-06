@@ -58,34 +58,19 @@ def solve_once(*, P, active, labels, scene, solver: str, params: Dict[str, Any])
 
 
 def solve_behaviors(pack: SolvePack) -> RuntimeState:
-    """Apply behaviors sequentially then run solver iterations for each."""
+    """
+    Apply behaviors sequentially and return current state.
+
+    This function MUST NOT run any optimization. It only mutates the state
+    according to cfg.behaviors (add/remove/mutate/anchors).
+    """
     P = np.asarray(pack.P0, float).copy()
     active = np.asarray(pack.active0, bool).copy()
     labels = [copy_label(l) for l in pack.labels0]
     state = RuntimeState(P=P, active=active, labels=labels)
 
-    for beh in pack.cfg.get("behaviors", []):
+    for beh in (pack.cfg or {}).get("behaviors", []):
         state = apply_behavior_step(pack, state, beh)
-
-        if isinstance(beh, dict):
-            solver_name = beh.get("solver", "lbfgs")
-            iters = int(beh.get("iters", 1))
-            params = dict(beh.get("params", {}) or {})
-        else:
-            solver_name = getattr(beh, "solver", "lbfgs")
-            iters = int(getattr(beh, "iters", 1))
-            params = dict(getattr(beh, "params", {}) or {})
-
-        if iters > 0:
-            params["iters"] = iters
-            state.P = solve_once(
-                P=state.P,
-                active=state.active,
-                labels=state.labels,
-                scene=pack.scene0,
-                solver=solver_name,
-                params=params,
-            )
 
     return state
 
@@ -116,6 +101,20 @@ def solve(pack: SolvePack) -> ViewPack:
     cfg = translate_legacy_keys(pack.cfg)
     pack.cfg = cfg
     logger = get_logger("cartoweave.compute.run", cfg)
+
+    # Bootstrap current state from behaviors (no optimization here)
+    if (pack.cfg or {}).get("behaviors"):
+        _state = solve_behaviors(pack)
+        P_curr = np.asarray(_state.P, dtype=float, copy=True)
+        active_curr = np.asarray(_state.active, dtype=bool, copy=True)
+        labels_curr = _state.labels
+    else:
+        P_curr = np.asarray(pack.P0, dtype=float, copy=True)
+        active_curr = np.asarray(pack.active0, dtype=bool, copy=True)
+        labels_curr = pack.labels0
+
+    logger.debug("bootstrap: active=%d", int(active_curr.sum()))
+
     t0 = time.perf_counter()
     L = pack.L
     mode = "lbfgs"
@@ -241,40 +240,81 @@ def solve(pack: SolvePack) -> ViewPack:
         return _rec
 
     # 串行跑各阶段
-    P_curr = pack.P0
     result: Dict[str, Any] = {}
     for s_idx, st in enumerate(stages):
         ctx.stage_index = s_idx
-        mode_stage = (st.solver or getattr(pack, "mode", None) or "lbfgs").lower()
-        stage_solver_names.append(mode_stage)
-        mask_popcount.append(int(st.mask.sum()))
 
-        rec = make_recorder(s_idx, st.mask, P_curr)
-        labels_all = pack.scene0.get("labels")
+        # read fields with tolerance for dataclass or dict
+        st_mask = getattr(st, "mask", None) if not isinstance(st, dict) else st.get("mask")
+        st_iters = getattr(st, "iters", None) if not isinstance(st, dict) else st.get("iters")
+        st_solver = getattr(st, "solver", None) if not isinstance(st, dict) else st.get("solver")
+        st_params = getattr(st, "params", None) if not isinstance(st, dict) else st.get("params")
+
+        # defaults from cfg
+        default_solver = (cfg.get("solver", {}) or {}).get("name") or "lbfgs"
+        default_iters = int((cfg.get("solver", {}) or {}).get("iters", 10))
+
+        # mask fallback
+        if st_mask is None:
+            stage_mask = active_curr
+        else:
+            stage_mask = np.asarray(st_mask, dtype=bool)
+            if stage_mask.shape != active_curr.shape or int(stage_mask.sum()) == 0:
+                stage_mask = active_curr
+
+        # iters/solver fallback
+        iters_stage = (
+            int(st_iters)
+            if isinstance(st_iters, (int, np.integer)) and st_iters > 0
+            else default_iters
+        )
+        solver_stage = (
+            st_solver or getattr(pack, "mode", None) or default_solver
+        ).lower()
+        params_stage = st_params or {}
+
+        stage_solver_names.append(solver_stage)
+        mask_popcount.append(int(stage_mask.sum()))
+
+        rec = make_recorder(s_idx, stage_mask, P_curr)
         scene_dict = pack.scene0.to_dict()
-        E0, G0, comps0, _ = energy_fn(P_curr, labels_all, scene_dict, st.mask, cfg)
+        E0, G0, comps0, _ = energy_fn(P_curr, labels_curr, scene_dict, stage_mask, cfg)
         rec({"P": P_curr, "G": G0, "comps": comps0, "E": E0})
 
         ctx_stage = SolveContext(
-            labels=labels_all,
+            labels=labels_curr,
             scene=scene_dict,
-            active=st.mask,
+            active=stage_mask,
             cfg=cfg,
-            iters=int(st.iters or 0),
-            mode=mode_stage,
-            params=st.params or {},
+            iters=iters_stage,
+            mode=solver_stage,
+            params=params_stage,
         )
 
         def _energy_no_meta(P, labels, scene, active, cfg):
-            E, G, comps, _ = energy_and_grad_full(P, labels, scene, active, cfg)
+            out = energy_and_grad_full(P, labels, scene, active, cfg)
+            if isinstance(out, tuple) and len(out) == 4:
+                E, G, comps, _ = out
+            else:
+                E, G, comps = out
             return E, G, comps
 
+        P_prev = P_curr.copy()
         P_curr, _ = run_iters(P_curr, ctx_stage, _energy_no_meta, report=False)
-        ctx.eval_index += ctx_stage.iters
+        ctx.eval_index += iters_stage
 
-        E1, G1, comps1, _ = energy_fn(P_curr, labels_all, scene_dict, st.mask, cfg)
+        E1, G1, comps1, _ = energy_fn(P_curr, labels_curr, scene_dict, stage_mask, cfg)
         rec({"P": P_curr, "G": G1, "comps": comps1, "E": E1})
         result = {"P": P_curr}
+
+        logger.debug(
+            "stage[%d]: mask.sum=%d iters=%d solver=%s dP=%.6g",
+            s_idx,
+            int(stage_mask.sum()),
+            iters_stage,
+            solver_stage,
+            float(np.linalg.norm(P_curr - P_prev)),
+        )
 
         # 若未记录最终一帧，则按需补齐
         last_eval_idx = ctx.eval_index - 1
