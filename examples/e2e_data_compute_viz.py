@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import argparse, json
+import argparse
+import json
+
 import numpy as np
 
+from cartoweave.compute import solve
 from cartoweave.config.loader import load_configs
 from cartoweave.data.api import build_solvepack_from_config
-from cartoweave.compute.run import solve_behaviors
 
 
 def main() -> None:
@@ -27,32 +29,36 @@ def main() -> None:
     scene = pack.scene0
     behaviors = list(pack.cfg.get("behaviors", []))
     behavior_cfg = dict(pack.cfg.get("behavior", {}))
-    N = int(pack.N)
-    P = int(len(scene.points))
-    L = int(len(scene.lines))
-    A = int(len(scene.areas))
-    G = P + L + A
-    S = int(len(behaviors))
+    n_labels = int(pack.N)
+    n_points = int(len(scene.points))
+    n_lines = int(len(scene.lines))
+    n_areas = int(len(scene.areas))
+    n_geoms = n_points + n_lines + n_areas
+    n_steps = int(len(behaviors))
 
     # --- Summary ---
-    print(f"[e2e] N={N} steps={S} seed={args.seed}")
-    print(f"[e2e] scene points/lines/areas = {P}/{L}/{A}")
+    print(f"[e2e] N={n_labels} steps={n_steps} seed={args.seed}")
+    print(f"[e2e] scene points/lines/areas = {n_points}/{n_lines}/{n_areas}")
     if behavior_cfg:
         apol = behavior_cfg.get("anchor_policy", "round_robin")
         dwh = behavior_cfg.get("default_WH", {})
         print(f"[e2e] behavior: anchor_policy={apol}, default_WH={dwh}")
 
     # --- Prominent sanity warnings ---
-    if S < G:
-        print(f"⚠️  [sanity] steps ({S}) < points+lines+areas ({G}). "
-              f"Some geometries may never get a first activation.")
-    if N != G:
-        print(f"⚠️  [sanity] label count N ({N}) != points+lines+areas ({G}). "
-              f"This is allowed, but check your design intent.")
+    if n_steps < n_geoms:
+        print(
+            f"⚠️  [sanity] steps ({n_steps}) < points+lines+areas ({n_geoms}). "
+            f"Some geometries may never get a first activation."
+        )
+    if n_labels != n_geoms:
+        print(
+            f"⚠️  [sanity] label count N ({n_labels}) != points+lines+areas ({n_geoms}). "
+            f"This is allowed, but check your design intent."
+        )
 
     # --- First-activation health check per label ---
-    first_act_idx = [-1] * N
-    first_act_mut_ok = [False] * N  # has kind+WH+(anchor if available)
+    first_act_idx = [-1] * n_labels
+    first_act_mut_ok = [False] * n_labels  # has kind+WH+(anchor if available)
     for sidx, b in enumerate(behaviors):
         ops = getattr(b, "ops", b.get("ops", {})) if isinstance(b, dict) else b.ops
         acts = ops.get("activate", [])
@@ -62,10 +68,10 @@ def main() -> None:
         for m in muts:
             try:
                 mut_by_id.setdefault(int(m["id"]), []).append(m.get("set", {}))
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
         for lid in acts:
-            if 0 <= int(lid) < N and first_act_idx[int(lid)] == -1:
+            if 0 <= int(lid) < n_labels and first_act_idx[int(lid)] == -1:
                 first_act_idx[int(lid)] = sidx
                 sets = mut_by_id.get(int(lid), [])
                 # consider ok if we have WH and (kind or anchor.kind)
@@ -81,24 +87,40 @@ def main() -> None:
                 first_act_mut_ok[int(lid)] = ok
 
     missing_act = [i for i, sidx in enumerate(first_act_idx) if sidx == -1]
-    weak_act   = [i for i, ok in enumerate(first_act_mut_ok) if not ok and first_act_idx[i] != -1]
+    weak_act = [
+        i for i, ok in enumerate(first_act_mut_ok) if not ok and first_act_idx[i] != -1
+    ]
 
     if missing_act:
-        print(f"⚠️  [sanity] {len(missing_act)}/{N} labels NEVER activated. "
-              f"Examples: {missing_act[:min(5,len(missing_act))]}")
+        print(
+            f"⚠️  [sanity] {len(missing_act)}/{n_labels} labels NEVER activated. "
+            f"Examples: {missing_act[:min(5, len(missing_act))]}"
+        )
     if weak_act:
-        print(f"⚠️  [sanity] {len(weak_act)}/{N} labels first activation lacks kind/WH (and/or anchor). "
-              f"Examples: {weak_act[:min(5,len(weak_act))]}")
+        print(
+            f"⚠️  [sanity] {len(weak_act)}/{n_labels} labels first activation lacks kind/WH (and/or anchor). "
+            f"Examples: {weak_act[:min(5, len(weak_act))]}"
+        )
 
     # --- Print a concise preview of behaviors ---
-    show = max(0, min(args.show, S))
+    show = max(0, min(args.show, n_steps))
     if show:
-        print(f"[e2e] behaviors preview (first {show}/{S}):")
+        print(f"[e2e] behaviors preview (first {show}/{n_steps}):")
         for sidx in range(show):
             b = behaviors[sidx]
-            iters = getattr(b, "iters", b.get("iters", None)) if isinstance(b, dict) else b.iters
-            solver = getattr(b, "solver", b.get("solver", None)) if isinstance(b, dict) else b.solver
-            ops = getattr(b, "ops", b.get("ops", {})) if isinstance(b, dict) else b.ops
+            iters = (
+                getattr(b, "iters", b.get("iters", None))
+                if isinstance(b, dict)
+                else b.iters
+            )
+            solver = (
+                getattr(b, "solver", b.get("solver", None))
+                if isinstance(b, dict)
+                else b.solver
+            )
+            ops = (
+                getattr(b, "ops", b.get("ops", {})) if isinstance(b, dict) else b.ops
+            )
             act = ops.get("activate", [])
             deact = ops.get("deactivate", [])
             muts = ops.get("mutate", [])
@@ -106,26 +128,30 @@ def main() -> None:
             msum = []
             if muts:
                 m0 = muts[0]
-                sid = m0.get("id", None)
                 sset = m0.get("set", {})
                 k = sset.get("kind", None)
                 wh = sset.get("WH", None)
                 anc = sset.get("anchor", None)
-                if k is not None: msum.append(f"kind={k}")
-                if wh is not None: msum.append(f"WH={wh}")
+                if k is not None:
+                    msum.append(f"kind={k}")
+                if wh is not None:
+                    msum.append(f"WH={wh}")
                 if isinstance(anc, dict) and "kind" in anc and "index" in anc:
                     msum.append(f"anchor={anc['kind']}#{anc['index']}")
             msum_txt = ", ".join(msum) if msum else "-"
-            print(f"  - step {sidx:02d}: iters={iters}, solver={solver}, "
-                  f"activate={act}, deactivate={deact}, mutate_first=[{msum_txt}]")
+            print(
+                f"  - step {sidx:02d}: iters={iters}, solver={solver}, "
+                f"activate={act}, deactivate={deact}, mutate_first=[{msum_txt}]"
+            )
 
     print("[e2e] pack ready (pre-solve)")
-    state = solve_behaviors(pack)
+    view = solve(pack)
+    last = view.last
     print(
         "[e2e] post-solve: active =",
-        int(state.active.sum()),
+        int(last.mask.sum()),
         " | P L2 =",
-        float(np.linalg.norm(state.P)),
+        float(np.linalg.norm(last.P)),
     )
 
 

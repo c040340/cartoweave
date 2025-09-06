@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+"""Public compute API."""
+
 from .run import solve
 
 __all__ = ["solve"]

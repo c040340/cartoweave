@@ -1,36 +1,60 @@
 """Solve function coordinating passes and compute solvers."""
 from __future__ import annotations
 
-from typing import Dict, List, Any
-import numpy as np
-import time, platform, sys
+import platform
+import sys
+import time
+from typing import Any, Dict, List
 
-from cartoweave.contracts.solvepack import SolvePack
-from cartoweave.contracts.viewpack import ViewPack, Frame
-from .eval import energy_and_grad_full
-from .types import _grad_metrics, Array2
-from cartoweave.compute.solver.solve_layer import run_iters, SolveContext
+import numpy as np
+
 from cartoweave.compute.passes.behavior_pass import (
     RuntimeState,
-    copy_label,
     apply_behavior_step,
+    copy_label,
 )
-from .passes.manager import PassManager
-from .passes.base import Context
+from cartoweave.compute.solver.solve_layer import SolveContext, run_iters
 from cartoweave.config.bridge import translate_legacy_keys
-from .forces._common import get_eps
-from cartoweave.version import __version__ as _cw_ver
+from cartoweave.contracts.solvepack import SolvePack
+from cartoweave.contracts.viewpack import Frame, ViewPack
 from cartoweave.logging_util import get_logger
+from cartoweave.version import __version__ as _cw_ver
+
+from .eval import energy_and_grad_full
+from .forces._common import get_eps
+from .passes.base import Context
+from .passes.manager import PassManager
+from .types import Array2, _grad_metrics
 
 
 def solve_once(*, P, active, labels, scene, solver: str, params: Dict[str, Any]):
-    """Single-iteration solver entry point.
+    """Single-step optimizer wrapper.
 
-    This is a thin wrapper around the project's existing solver.  For now it
-    returns ``P`` unchanged; plug in ``run_iters`` or other routines as needed.
+    Casts arrays, builds a :class:`SolveContext` and invokes
+    :func:`run_iters` for ``iters`` steps of the chosen solver.
     """
 
-    return np.asarray(P, float)
+    P0 = np.asarray(P, dtype=float, copy=True)
+    active_mask = np.asarray(active, dtype=bool, copy=False)
+
+    iters = 1
+    if params:
+        iters = int(params.get("iters", params.get("max_iters", 1)))
+
+    scene_dict = scene.to_dict() if hasattr(scene, "to_dict") else scene
+
+    ctx = SolveContext(
+        labels=labels,
+        scene=scene_dict,
+        active=active_mask,
+        cfg={"solver": params or {}},
+        iters=max(1, iters),
+        mode=solver,
+        params=params or {},
+    )
+
+    P_new, _reports = run_iters(P0, ctx, energy_and_grad_full, report=False)
+    return P_new
 
 
 def solve_behaviors(pack: SolvePack) -> RuntimeState:
@@ -52,7 +76,8 @@ def solve_behaviors(pack: SolvePack) -> RuntimeState:
             iters = int(getattr(beh, "iters", 1))
             params = dict(getattr(beh, "params", {}) or {})
 
-        for _ in range(max(1, iters)):
+        if iters > 0:
+            params["iters"] = iters
             state.P = solve_once(
                 P=state.P,
                 active=state.active,
@@ -93,18 +118,18 @@ def solve(pack: SolvePack) -> ViewPack:
     logger = get_logger("cartoweave.compute.run", cfg)
     t0 = time.perf_counter()
     L = pack.L
-    mode = "lbfgs" if pack.mode is None else str(pack.mode).lower()
+    mode = "lbfgs"
 
     # PassManager 构造与阶段规划
-    pm = PassManager(cfg, pack.passes)
+    pm = PassManager(cfg, getattr(pack, "passes", None))
     passes = pm.passes
     capture_pass = next((p for p in passes if hasattr(p, "final_always")), None)
     ctx = Context(pack=pack, stages=[], eval_index=0, stage_index=0)
-    stages = pm.plan_stages(ctx, pack.stages)
+    stages = pm.plan_stages(ctx, getattr(pack, "stages", None))
     ctx.stages = stages
 
     # 包裹能量和步长
-    base_energy = pack.energy_and_grad or energy_and_grad_full
+    base_energy = getattr(pack, "energy_and_grad", None) or energy_and_grad_full
     # Allow legacy energy functions with signature (P, scene, active, cfg)
     if base_energy is not energy_and_grad_full:
         import inspect
@@ -220,18 +245,19 @@ def solve(pack: SolvePack) -> ViewPack:
     result: Dict[str, Any] = {}
     for s_idx, st in enumerate(stages):
         ctx.stage_index = s_idx
-        mode_stage = (st.solver or pack.mode or "lbfgs").lower()
+        mode_stage = (st.solver or getattr(pack, "mode", None) or "lbfgs").lower()
         stage_solver_names.append(mode_stage)
         mask_popcount.append(int(st.mask.sum()))
 
         rec = make_recorder(s_idx, st.mask, P_curr)
         labels_all = pack.scene0.get("labels")
-        E0, G0, comps0, _ = energy_fn(P_curr, labels_all, pack.scene0, st.mask, cfg)
+        scene_dict = pack.scene0.to_dict()
+        E0, G0, comps0, _ = energy_fn(P_curr, labels_all, scene_dict, st.mask, cfg)
         rec({"P": P_curr, "G": G0, "comps": comps0, "E": E0})
 
         ctx_stage = SolveContext(
             labels=labels_all,
-            scene=pack.scene0,
+            scene=scene_dict,
             active=st.mask,
             cfg=cfg,
             iters=int(st.iters or 0),
@@ -246,7 +272,7 @@ def solve(pack: SolvePack) -> ViewPack:
         P_curr, _ = run_iters(P_curr, ctx_stage, _energy_no_meta, report=False)
         ctx.eval_index += ctx_stage.iters
 
-        E1, G1, comps1, _ = energy_fn(P_curr, labels_all, pack.scene0, st.mask, cfg)
+        E1, G1, comps1, _ = energy_fn(P_curr, labels_all, scene_dict, st.mask, cfg)
         rec({"P": P_curr, "G": G1, "comps": comps1, "E": E1})
         result = {"P": P_curr}
 
@@ -300,7 +326,7 @@ def solve(pack: SolvePack) -> ViewPack:
     view = ViewPack(
         L=L,
         mode=mode,
-        params_used=stages[-1].params if stages else (pack.params or {}),
+        params_used=stages[-1].params if stages else (getattr(pack, "params", {}) or {}),
         terms_used=terms_used,
         frames=frames,
         last=last,

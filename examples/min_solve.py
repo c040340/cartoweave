@@ -1,16 +1,24 @@
-import json
+"""Run a minimal solve using the config-driven API."""
 
-from cartoweave.data.api import load_solvepack_from_file
-from cartoweave.compute.run import solve
-from cartoweave.config.bridge import translate_legacy_keys
+from cartoweave.compute import solve
+from cartoweave.data.api import build_solvepack_from_config
 
-cfg = json.load(open("examples/configs/compute_min.json", "r", encoding="utf-8"))
-cfg = translate_legacy_keys(cfg)
+cfg = {
+    "data": {
+        "source": "generate",
+        "generate": {
+            "frame_size": [200, 100],
+            "num_labels": 3,
+            "num_points": 1,
+            "num_lines": 1,
+            "num_areas": 1,
+            "num_steps": 3,
+            "seed": 0,
+        },
+    }
+}
 
-sp = load_solvepack_from_file(
-    "examples/scenes/scene_min.json",
-    solver_cfg=cfg,
-    seed=0,
-)
+sp = build_solvepack_from_config(cfg, seed=0)
+sp.validate()
 view = solve(sp)
 print("frames:", view.summary.get("frames_captured"), "E_last:", view.summary.get("E_last"))
