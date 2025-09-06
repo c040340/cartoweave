@@ -1,4 +1,5 @@
-from cartoweave.compute import SolvePack, solve
+from cartoweave.contracts.solvepack import SolvePack
+from cartoweave.compute import solve
 from cartoweave.compute.eval import energy_and_grad_full
 import numpy as np
 

@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import importlib
 import cartoweave.compute.forces as new_forces
-from cartoweave.data.random import generate_scene
+from cartoweave.data.scene.make import get_scene
 from cartoweave.utils.geometry import polylines_to_segments
 
 # Ensure legacy forces package importable
@@ -63,8 +63,11 @@ def _fd_check(fn, scene, P, cfg, phase, F, n=5, h=1e-6):
 
 
 def test_force_parity():
-    scene = generate_scene(n_points=3, n_lines=2, n_areas=2, seed=0)
+    scene = get_scene(frame_size=(800, 600), seed=0,
+                      n_points_range=(3, 3), n_lines_range=(2, 2), n_polys_range=(2, 2),
+                      n_labels=3, n_steps=1)
     scene["lines"] = polylines_to_segments(scene["lines"]).reshape(-1, 4)
+    scene["areas"] = [{"polygon": A} for A in scene["areas"]]
     P = np.asarray(scene["labels_init"], float)
     cfg = _build_cfg()
     for name, phase in TERMS:

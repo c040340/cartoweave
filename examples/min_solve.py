@@ -1,5 +1,5 @@
 import json, numpy as np
-from cartoweave.compute.pack import SolvePack
+from cartoweave.contracts.solvepack import SolvePack
 from cartoweave.compute.run import solve
 from cartoweave.config.bridge import translate_legacy_keys
 

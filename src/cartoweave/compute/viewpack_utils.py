@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import numpy as np
 
-from .types import ViewPack
+from cartoweave.contracts.viewpack import ViewPack
 
 
 def to_old_payload(vp: ViewPack) -> Dict[str, Any]:

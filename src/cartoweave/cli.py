@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse, json, sys, pathlib
 import numpy as np
 
-from .compute.pack import SolvePack
+from .contracts.solvepack import SolvePack
 from .compute.run import solve
 from .config.bridge import translate_legacy_keys
 

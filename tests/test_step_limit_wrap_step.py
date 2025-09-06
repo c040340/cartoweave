@@ -1,12 +1,20 @@
 import numpy as np
-from cartoweave.compute.pack import SolvePack
+from cartoweave.contracts.solvepack import SolvePack
 from cartoweave.compute.run import solve
 
 
 def test_step_limit_clamps_step_when_enabled():
     L = 3
     P0 = np.zeros((L, 2), float)
-    scene = {"labels_init": np.zeros((L, 2), float), "labels": [{"anchor_kind": "none"}] * L}
+    scene = {
+        "labels_init": np.zeros((L, 2), float),
+        "labels": [{"anchor_kind": "none", "anchor_index": -1}] * L,
+        "frame_size": (1920, 1080),
+        "WH": np.ones((L, 2)),
+        "points": np.zeros((0, 2)),
+        "lines": [],
+        "areas": [],
+    }
     cfg = {"compute": {
         "weights": {"anchor.spring": 1.0},
         "eps": {"numeric": 1e-12},

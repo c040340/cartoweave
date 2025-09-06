@@ -9,7 +9,14 @@ def rng(): return np.random.default_rng(0)
 
 @pytest.fixture
 def scene(L):
-    return {"labels":[{"mode":"rect"}]*L, "WH":np.ones((L,2)), "frame_size":(1920,1080)}
+    return {
+        "labels": [{"mode": "rect", "anchor_kind": "none", "anchor_index": -1}] * L,
+        "WH": np.ones((L, 2)),
+        "frame_size": (1920, 1080),
+        "points": np.zeros((0, 2)),
+        "lines": [],
+        "areas": [],
+    }
 
 @pytest.fixture
 def mask(L): return np.ones((L,), dtype=bool)

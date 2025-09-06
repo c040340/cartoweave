@@ -1,12 +1,12 @@
 import numpy as np
-from cartoweave.compute.pack import SolvePack
+from cartoweave.contracts.solvepack import SolvePack
 from cartoweave.compute.run import solve
 
 
-def test_pass_manager_equivalence_smoke():
-    L = 6
+def test_pass_manager_equivalence_smoke(scene):
+    L = len(scene["labels"])
     P0 = np.zeros((L, 2), float)
-    scene = {"labels_init": np.zeros((L, 2), float), "labels": [{"anchor_kind": "none"}] * L}
+    scene = {**scene, "labels_init": np.zeros((L, 2), float)}
     cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12},
                         "passes": {"capture": {"every": 1, "final_always": True}}}}
     sp = SolvePack(

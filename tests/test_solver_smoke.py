@@ -24,14 +24,14 @@ def test_lbfgs_quadratic_smoke():
     assert np.isfinite(res.get("E", np.inf))
 
 
-def test_integration_schedule_and_capture():
+def test_integration_schedule_and_capture(scene):
     import numpy as np
-    from cartoweave.compute.pack import SolvePack
+    from cartoweave.contracts.solvepack import SolvePack
     from cartoweave.compute.run import solve
 
-    L = 8
+    L = len(scene["labels"])
     P0 = np.zeros((L, 2), float)
-    scene = {"labels_init": np.zeros((L, 2), float), "labels": [{"anchor_kind": "none"}] * L}
+    scene = {**scene, "labels_init": np.zeros((L, 2), float)}
     cfg = {"compute": {"weights": {"anchor.spring": 1.0}, "eps": {"numeric": 1e-12}}}
     sp = SolvePack(
         L=L,

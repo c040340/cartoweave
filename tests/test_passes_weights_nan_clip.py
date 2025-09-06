@@ -1,5 +1,6 @@
 import numpy as np
-from cartoweave.compute import SolvePack, solve
+from cartoweave.contracts.solvepack import SolvePack
+from cartoweave.compute import solve
 from cartoweave.compute.eval import energy_and_grad_full
 
 
@@ -27,7 +28,8 @@ def test_nan_guard_and_grad_clip_applied(P0, mask, scene, L, monkeypatch):
         G = np.full_like(P, np.inf)
         comps = {"foo": -G.copy()}
         return float("nan"), G, comps, {}
-    from cartoweave.compute import SolvePack, solve
+    from cartoweave.contracts.solvepack import SolvePack
+    from cartoweave.compute import solve
     cfg = {"compute": {"passes": {"grad_clip": {"max_norm": 1.0}, "capture": {"every": 1}}}}
     sp = SolvePack(L=L, P0=P0, active_mask0=mask, scene=scene, params={"max_iter":1},
                    energy_and_grad=bad_energy, cfg=cfg)

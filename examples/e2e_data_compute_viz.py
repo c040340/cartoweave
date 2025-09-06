@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from cartoweave.data.random import get_scene   # MUST use this to obtain scene + scene_script
-from cartoweave.compute.pack import SolvePack
+from cartoweave.contracts.solvepack import SolvePack
 from cartoweave.compute.run import solve
 
 from cartoweave.viz.build_viz_payload import build_viz_payload
@@ -46,7 +46,7 @@ def load_scene_with_script(seed: int = SEED):
       - scene_script: List[{"op": "appear"|"change"|"hide", "id": "pN|lN|aN", "mode"?: str, "step_id": int}]
     """
     data = get_scene(use_random=True, cache_path=None, with_scene_script=True,
-                     gen_cfg=None, seed=seed, frame_size=(1080, 1920))
+                     gen_cfg=None, seed=seed, frame_size=(1080, 1920), n_labels=15)
     return data
 
 

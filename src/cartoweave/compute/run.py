@@ -5,9 +5,10 @@ from typing import Dict, List, Any
 import numpy as np
 import time, platform, sys
 
-from .pack import SolvePack
+from cartoweave.contracts.solvepack import SolvePack
+from cartoweave.contracts.viewpack import ViewPack, Frame
 from .eval import energy_and_grad_full as _default_energy
-from .types import ViewPack, Frame, _grad_metrics, Array2
+from .types import _grad_metrics, Array2
 from .optim import run_solver
 from .passes.manager import PassManager
 from .passes.base import Context
