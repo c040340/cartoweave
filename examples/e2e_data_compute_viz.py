@@ -10,6 +10,7 @@ from cartoweave.compute import solve
 from cartoweave.config.loader import load_configs
 from cartoweave.data.api import make_solvepack_from_data_defaults
 from cartoweave.viz import interactive_view, merge_defaults, VIZ_DEFAULTS
+from cartoweave.logging import init_logging_from_cfg
 import matplotlib.pyplot as plt
 
 headless = matplotlib.get_backend().lower() == "agg"
@@ -31,6 +32,7 @@ def main() -> None:
         compute_cfg=compute_cfg, data_path="configs/data.yaml"
     )
     pack.validate()
+    init_logging_from_cfg(getattr(pack, "cfg", None))
     view = solve(pack)
     last = view.frames[-1]
     print(f"[e2e] N={pack.L} frames={len(view.frames)} final_E={last.E:.3g}")

@@ -2,6 +2,7 @@
 
 from cartoweave.compute import solve
 from cartoweave.data.api import make_solvepack_from_data_defaults
+from cartoweave.logging import init_logging_from_cfg
 
 
 def main() -> None:
@@ -9,6 +10,7 @@ def main() -> None:
         compute_cfg={"public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}}}}
     )
     sp.validate()
+    init_logging_from_cfg(getattr(sp, "cfg", None))
     view = solve(sp)
     print("[minimal_solve] final positions", view.last.P)
 

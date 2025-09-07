@@ -3,6 +3,7 @@ compute:
     public:
       mode: lbfgsb
       use_warmup: true
+      log_level: debug  # 可选: none | info | debug；作为全局日志等级来源
   passes:
     capture: { every: 1, final_always: true }
     grad_clip: { enable: false, norm_max: 1000.0 }
