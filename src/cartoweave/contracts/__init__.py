@@ -9,6 +9,7 @@ from .solvepack import (
     LabelKind,
     LineMode,
     PointMode,
+    ActionRecord,
     Scene,
     SolvePack,
 )
@@ -24,4 +25,5 @@ __all__ = [
     "AreaMode",
     "FreeMode",
     "LabelKind",
+    "ActionRecord",
 ]

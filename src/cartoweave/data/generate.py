@@ -1,4 +1,4 @@
-"""Programmatic generators for synthetic scenes and behaviors."""
+"""Programmatic generators for synthetic scenes."""
 from __future__ import annotations
 
 import math

@@ -189,7 +189,6 @@ class DataGenerate(BaseModel):
     counts: DataCounts
     labels: int | None = Field(default=None, ge=0)
     label_mix: dict[str, float] | None = None
-    steps: int = Field(ge=1)
     frame_size: tuple[float, float]
     seed: int | None = None
     spacing: DataSpacing
@@ -219,9 +218,9 @@ class DataConfig(BaseModel):
     source: Literal["generate", "load"] = "generate"
     generate: DataGenerate | None = None
     load: DataLoad | None = None
-    behaviors: list[dict] = Field(default_factory=list)
+    action_num: int = Field(ge=0)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     @model_validator(mode="after")
     def _check_source(self):  # type: ignore[override]

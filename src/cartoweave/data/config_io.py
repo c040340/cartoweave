@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -48,18 +47,16 @@ def _area_defaults() -> dict:
 def extract_data_params(cfg: Mapping[str, Any]) -> dict:
     """Extract and normalize the ``data`` section from *cfg*.
 
-    Legacy ``timeline`` is mapped to ``steps`` with a warning.
+    Only a minimal subset is supported; legacy ``steps``/``timeline`` fields are
+    ignored.
     """
     data = dict(cfg.get("data", {}))
-    if "timeline" in data and "steps" not in data:
-        data["steps"] = data.pop("timeline")
-        warnings.warn("Use 'steps' instead of 'timeline'", UserWarning, stacklevel=2)
 
     frame = data.get("frame", {})
     counts = data.get("counts", {})
     rand = data.get("random", {})
     anchors = data.get("anchors", {})
-    steps_cfg = data.get("steps", {})
+    action_num = int(data.get("action_num", 0))
 
     route_defaults = _route_defaults()
     area_defaults = _area_defaults()
@@ -72,15 +69,6 @@ def extract_data_params(cfg: Mapping[str, Any]) -> dict:
         "line": modes_in.get("line", "projected"),
         "area": modes_in.get("area", "projected_edge"),
     }
-
-    steps_norm = {
-        "kind": steps_cfg.get("kind", "none"),
-        "steps": steps_cfg.get("steps"),
-    }
-    if "group_sizes" in steps_cfg:
-        steps_norm["group_sizes"] = list(steps_cfg["group_sizes"])
-    if "groups" in steps_cfg:
-        steps_norm["groups"] = [list(g) for g in steps_cfg["groups"]]
 
     return {
         "source": data.get("source", "random"),
@@ -104,5 +92,5 @@ def extract_data_params(cfg: Mapping[str, Any]) -> dict:
             "policy": anchors.get("policy", "auto"),
             "modes": modes,
         },
-        "steps": steps_norm,
+        "action_num": action_num,
     }

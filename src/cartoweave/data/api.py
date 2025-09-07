@@ -9,6 +9,7 @@ from cartoweave.config.loader import load_data_defaults
 from cartoweave.contracts.solvepack import SolvePack
 
 from .generate import generate_scene
+from .action_sequence import generate_action_sequence_strict
 
 __all__ = ["make_solvepack_from_data_defaults"]
 
@@ -44,7 +45,21 @@ def make_solvepack_from_data_defaults(
         active0=active0.tolist(),
         scene0=scene0,
         cfg={"compute": compute_cfg or {}},
+        actions=[],
+        action_num=None,
+        behaviors=[],
     )
+
+    behaviors = getattr(cfg, "behaviors", None)
+    if behaviors:
+        pack.behaviors = list(behaviors)
+        pack.action_num = len(behaviors)
+    else:
+        S = cfg.action_num
+        actions = generate_action_sequence_strict(len(labels0), S, rng)
+        pack.actions = actions
+        pack.action_num = S
+
     gen_cfg = gen
     save_path = getattr(gen_cfg, "save_path", None) or "./snapshots/default_pack.json"
     from cartoweave.data.io import save_snapshot

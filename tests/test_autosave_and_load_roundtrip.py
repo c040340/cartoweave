@@ -10,10 +10,10 @@ def _minimal_generate_cfg(save_path: Path, seed: int = 123) -> dict:
     return {
         "data": {
             "source": "generate",
+            "action_num": 1,
             "generate": {
                 "counts": {"points": 2, "lines": 1, "areas": 1},
                 "labels": 4,
-                "steps": 1,
                 "frame_size": [64, 48],
                 "seed": seed,
                 "spacing": {"min_point_dist": 1.0, "margin": 0.0},
@@ -36,7 +36,6 @@ def _minimal_generate_cfg(save_path: Path, seed: int = 123) -> dict:
                 },
                 "save_path": str(save_path),
             },
-            "behaviors": [],
         }
     }
 
@@ -55,7 +54,7 @@ def test_generate_autosave_then_load_roundtrip(tmp_path):
     pack_gen = make_solvepack_from_data_defaults(str(cfg_path))
     assert save_path.exists(), "Autosave file was not created"
 
-    scene, P0, active0, labels, _ = load_snapshot(str(save_path))
+    scene, P0, active0, labels, actions, action_num = load_snapshot(str(save_path))
 
     assert pack_gen.L == len(labels)
     assert np.asarray(pack_gen.P0).shape == P0.shape
@@ -71,6 +70,7 @@ def test_generate_autosave_then_load_roundtrip(tmp_path):
         assert lg.id == i and ll.id == i
 
     assert np.allclose(np.asarray(pack_gen.P0, dtype=float), P0)
+    assert len(actions) == action_num == pack_gen.action_num
 
 
 def test_autosave_overwrite(tmp_path):
@@ -85,7 +85,7 @@ def test_autosave_overwrite(tmp_path):
     path2 = _write_cfg(tmp_path, cfg2)
     pack2 = make_solvepack_from_data_defaults(str(path2))
 
-    _, P0_loaded, _, _, _ = load_snapshot(str(save_path))
+    _, P0_loaded, _, _, _, _ = load_snapshot(str(save_path))
 
     p0_loaded = np.asarray(P0_loaded, dtype=float)
     p0_first = np.asarray(pack1.P0, dtype=float)

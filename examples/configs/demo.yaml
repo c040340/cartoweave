@@ -1,9 +1,9 @@
 data:
+  action_num: 9
   source: generate
   generate:
     counts: { points: 2, lines: 1, areas: 1 }
     labels: 7
-    steps: 9
     frame_size: [800, 600]
     seed: 0
     spacing: { min_point_dist: 8.0, margin: 12.0 }
@@ -22,7 +22,6 @@ data:
       policy: round_robin
       modes: { line: midpoint, area: centroid }
     # label_mix: { point: 1.0, line: 1.0, area: 1.0 }
-  behaviors: []
   load: { path: "" }
 
 compute:

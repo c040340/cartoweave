@@ -1,4 +1,8 @@
+# Default data configuration for CartoWeave
+# Provides parameters for generating random scenes and labels.
+
 data:
+  action_num: 24        # total number of atomic actions to generate
   # ---- 数据来源 ----
   # 控制 SolvePack 的生成方式：
   #  - generate : 随机生成场景、标签和初始状态（受下方 generate 配置控制）
@@ -15,9 +19,6 @@ data:
                    # null -> 默认等于 points+lines+areas
                    # 注意：不再强制等于几何数量，可小于或大于，总数≠几何总数时将复用或丢弃几何
                    # 可显式指定整数值以控制标签数
-
-    steps: 5       # 求解的最大步数或迭代次数（具体含义由 compute 层解释）
-                   # 必须 ≥1
 
     frame_size: [800, 600]   # 场景边界的宽高，决定生成几何和随机点的空间范围
                              # 单位通常是像素或世界坐标，取决于可视化
@@ -74,11 +75,8 @@ data:
 
     # ---- 自动保存路径 ----
     save_path: "./snapshots/default_pack.json"   # 生成 SolvePack 后自动覆盖保存的路径
-                                                 # 建议使用相对路径 + .json 后缀
+                                                 # 建议使用相对路径 + .json 后
                                                  # 每次运行都会覆盖，确保 load 可立即读取
-
-  behaviors: []       # 行为/动作序列，可留空
-                      # 例如 [{"action": "move", "args": {...}}, ...]
 
   load:
     path: ""          # 当 data.source == load 时，从此路径读取 SolvePack 快照

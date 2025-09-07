@@ -202,6 +202,29 @@ class Label(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# ActionRecord model
+# ---------------------------------------------------------------------------
+
+
+class ActionRecord(BaseModel):
+    t: float
+    step: int | None = None
+    id: int
+    type: Literal["appear", "mutate", "disappear"]
+    kind_to: str | None = None
+    WH_to: XY | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("t")
+    @classmethod
+    def _check_t(cls, v: float) -> float:
+        if not (0.0 < float(v) < 1.0):
+            raise ValueError("t must be in (0,1)")
+        return float(v)
+
+
+# ---------------------------------------------------------------------------
 # SolvePack model
 # ---------------------------------------------------------------------------
 
@@ -216,6 +239,9 @@ class SolvePack(BaseModel):
     rng_seed: int | None = None
     uid: str | None = None
     created_at: str | None = None
+    actions: list[ActionRecord] = Field(default_factory=list)
+    action_num: int | None = None
+    behaviors: list[dict] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -234,6 +260,15 @@ class SolvePack(BaseModel):
             if not isinstance(b, bool):
                 raise ValueError(f"active0[{i}] must be bool")
         return v
+
+    @model_validator(mode="after")
+    def _check_actions(self):
+        times = [a.t for a in self.actions]
+        if any(t2 <= t1 for t1, t2 in zip(times, times[1:])):
+            raise ValueError("actions times must be strictly increasing")
+        if self.action_num is not None and len(self.actions) != self.action_num:
+            raise ValueError("len(actions) must equal action_num")
+        return self
 
     @model_validator(mode="after")
     def _check_lengths(self):

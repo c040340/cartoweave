@@ -9,7 +9,7 @@ from typing import List, Tuple, Dict, Any
 import numpy as np
 from dataclasses import asdict, is_dataclass
 
-from cartoweave.contracts.solvepack import Scene, Label
+from cartoweave.contracts.solvepack import ActionRecord, Label, Scene
 
 __all__ = ["load_snapshot", "save_snapshot"]
 
@@ -39,11 +39,17 @@ def _parse_labels(raw: List[Dict[str, Any]]) -> List[Label]:
     return out
 
 
-def _parse_behaviors(raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [dict(b) for b in (raw or [])]
+def _parse_actions(raw: List[Dict[str, Any]]) -> List[ActionRecord]:
+    out: List[ActionRecord] = []
+    for a in raw or []:
+        if isinstance(a, dict):
+            out.append(ActionRecord.model_validate(a))
+    return out
 
 
-def load_snapshot(path: str) -> Tuple[Scene, np.ndarray, np.ndarray, List[Label], List[Dict[str, Any]]]:
+def load_snapshot(
+    path: str,
+) -> Tuple[Scene, np.ndarray, np.ndarray, List[Label], List[ActionRecord], int | None]:
     """Load a snapshot from ``path`` which may be ``.json`` or ``.npz``."""
 
     p = Path(path)
@@ -64,7 +70,10 @@ def load_snapshot(path: str) -> Tuple[Scene, np.ndarray, np.ndarray, List[Label]
     P0 = np.asarray(obj.get("P0"), float)
     active0 = np.asarray(obj.get("active0"), bool)
     labels0 = _parse_labels(obj.get("labels0", []))
-    behaviors = _parse_behaviors(obj.get("behaviors", []))
+    actions = _parse_actions(obj.get("actions", []))
+    action_num = obj.get("action_num")
+    if action_num is not None:
+        action_num = int(action_num)
 
     if P0.ndim != 2 or P0.shape[1] != 2:
         raise ValueError("P0 must have shape (N,2)")
@@ -73,7 +82,7 @@ def load_snapshot(path: str) -> Tuple[Scene, np.ndarray, np.ndarray, List[Label]
     if len(labels0) != P0.shape[0]:
         raise ValueError("labels0 length mismatch")
 
-    return scene, P0, active0, labels0, behaviors
+    return scene, P0, active0, labels0, actions, action_num
 
 
 def _to_serializable(obj: Any):
@@ -114,7 +123,11 @@ def save_snapshot(pack, path: str, fmt: str = "json") -> None:
         "rng_seed": _to_serializable(getattr(pack, "rng_seed", None)),
         "uid": _to_serializable(getattr(pack, "uid", None)),
         "created_at": _to_serializable(getattr(pack, "created_at", None)),
+        "actions": _to_serializable(getattr(pack, "actions", [])),
+        "action_num": _to_serializable(getattr(pack, "action_num", None)),
     }
+    if getattr(pack, "behaviors", None):
+        obj["behaviors"] = _to_serializable(pack.behaviors)
 
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
