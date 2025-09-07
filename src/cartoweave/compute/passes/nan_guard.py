@@ -27,8 +27,7 @@ class NaNGuardPass(ComputePass):
         def _wrapped(P, labels, scene, active_mask, cfg):
             conf = get_pass_cfg(cfg, "nan_guard", {"e_fallback": 0.0, "on_nan": self.on_nan, "on_inf": self.on_inf})
             ef = float(conf.get("e_fallback", 0.0))
-            E, G, comps, meta = energy_fn(P, labels, scene, active_mask, cfg)
-            meta = dict(meta or {})
+            E, G, comps = energy_fn(P, labels, scene, active_mask, cfg)
             hit_nan = False
             hit_inf = False
 
@@ -67,7 +66,7 @@ class NaNGuardPass(ComputePass):
                 if hit_inf:
                     stats["inf_frames"] += 1
 
-            return E, G, comps2, meta
+            return E, G, comps2
 
         return _wrapped
 

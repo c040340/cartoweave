@@ -28,7 +28,7 @@ pip install -e .
 
 ```python
 from cartoweave.data.api import build_solvepack_from_config
-from cartoweave.compute.run import solve
+from cartoweave.compute.solve import solve
 
 cfg = {
     "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},
@@ -162,7 +162,7 @@ pip install -e .
 
 ```python
 from cartoweave.data.api import build_solvepack_from_config
-from cartoweave.compute.run import solve
+from cartoweave.compute.solve import solve
 
 cfg = {
     "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},

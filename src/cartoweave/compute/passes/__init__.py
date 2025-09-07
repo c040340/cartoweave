@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Pass registry and builder utilities."""
+"""Pass registry, pass builder and step-wise ``PassManager``."""
 
 from __future__ import annotations
 from typing import Any, Dict, List, Union
-from .base import Context, Stage, ComputePass
+from .base import Context, ComputePass
 
 
 def get_pass_cfg(cfg: dict, name: str, defaults: dict | None = None) -> dict:
@@ -14,7 +14,6 @@ def get_pass_cfg(cfg: dict, name: str, defaults: dict | None = None) -> dict:
         return out
     return dict(d)
 
-from .schedule import SchedulePass
 from .capture import CapturePass
 from .weights import WeightsPass
 from .nan_guard import NaNGuardPass
@@ -23,7 +22,6 @@ from .step_limit import StepLimitPass
 from .geom_preproc import GeomPreprocPass
 
 REGISTRY = {
-    "schedule":   (SchedulePass, {}),
     "weights":    (WeightsPass, {}),
     "nan_guard":  (NaNGuardPass, {"on_nan": "zero", "on_inf": "clip"}),
     "grad_clip":  (GradClipPass, {"max_norm": None, "max_abs": None}),
@@ -38,7 +36,8 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
 
     ``cfg_list`` may contain strings or ``{"name": ..., "args": ...}``
     dictionaries. ``CapturePass`` is added with defaults from ``cfg`` if not
-    specified. ``SchedulePass`` is always present (single stage by default).
+    specified. ``geom_preproc`` and ``step_limit`` are inserted with defaults
+    if missing.
     """
     passes: List[ComputePass] = []
     names = set()
@@ -64,13 +63,9 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
         else:
             raise ValueError("pass config must be str or dict")
 
-    if "schedule" not in names:
-        cls, defaults = REGISTRY["schedule"]
-        passes.insert(0, cls(**defaults))
-        names.add("schedule")
     if "geom_preproc" not in names:
         cls, defaults = REGISTRY["geom_preproc"]
-        passes.insert(1, cls(**defaults))
+        passes.insert(0, cls(**defaults))
         names.add("geom_preproc")
     if "step_limit" not in names:
         cls, defaults = REGISTRY["step_limit"]
@@ -80,3 +75,193 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
         cls, defaults = REGISTRY["capture"]
         passes.append(cls(**defaults))
     return passes
+
+
+DEFAULT_PIPELINE = ["action", "forces", "solver", "capture"]
+
+
+class PassManager:
+    def __init__(
+        self,
+        cfg: dict | None = None,
+        passes_spec: list[Any] | None = None,
+        pipeline: list[str] | None = None,
+    ) -> None:
+        self.cfg = cfg or {}
+        self.passes = build_passes(self.cfg, passes_spec)
+        self.pass_map: dict[str, ComputePass] = {}
+        self.pipeline = list(pipeline or DEFAULT_PIPELINE)
+        self.eval_index = 0
+        self.events: list[dict[str, Any]] = []
+        for p in self.passes:
+            p.pm = self  # type: ignore[attr-defined]
+            name = getattr(p, "name", "") or p.__class__.__name__
+            self.pass_map[name.lower()] = p
+            self.emit_event({
+                "pass": name,
+                "global_iter": 0,
+                "info": "init",
+                "metrics": {},
+            })
+
+    # ----- pipeline helpers -------------------------------------------------
+    def ensure_pass(self, name: str, position: int | None = None):
+        if name in self.pipeline:
+            return
+        if position is None:
+            self.pipeline.insert(0, name)
+        else:
+            self.pipeline.insert(int(position), name)
+
+    def remove_pass(self, name: str):
+        self.pipeline = [p for p in self.pipeline if p != name]
+
+    def run_single_pass(self, name: str, ctx: dict):
+        p = self.pass_map.get(name)
+        if p is None:
+            entry = REGISTRY.get(name)
+            if entry:
+                cls, defaults = entry
+                p = cls(**defaults)
+                p.pm = self  # type: ignore[attr-defined]
+                self.passes.append(p)
+                self.pass_map[name] = p
+        if p is not None:
+            fn = getattr(p, "run", None)
+            if callable(fn):
+                fn(ctx)
+
+    def run_step(self, ctx: dict):
+        for name in self.pipeline:
+            self.run_single_pass(name, ctx)
+
+    # ----- wrapping ---------------------------------------------------------
+    def wrap_energy(
+        self,
+        energy_fn,
+    ):
+        import numpy as np
+
+        wrapped = energy_fn
+        for p in self.passes:
+            fn = getattr(p, "wrap_energy", None)
+            if callable(fn):
+                wrapped = fn(wrapped)
+
+        def _tracked(p, labels, scene, active_mask, cfg):
+            self.eval_index += 1
+            p = np.asarray(p, float)
+            active_mask = np.asarray(active_mask, bool)
+            n = p.shape[0]
+            if p.shape != (n, 2):
+                raise ValueError(f"P shape {p.shape} expected ({n},2)")
+            if active_mask.shape != (n,):
+                raise ValueError(
+                    f"active_mask shape {active_mask.shape} expected ({n},)"
+                )
+
+            e, g, comps = wrapped(p, labels, scene, active_mask, cfg)
+
+            metrics: dict[str, Any] = {}
+
+            if not np.isfinite(e):
+                metrics["nonfinite_E"] = 1
+                e = float(np.nan_to_num(e, nan=0.0, posinf=0.0, neginf=0.0))
+            else:
+                e = float(e)
+
+            if g is None:
+                g = np.zeros((n, 2), dtype=float)
+            else:
+                g = np.asarray(g, float)
+                if g.shape != (n, 2):
+                    raise ValueError(f"G shape {g.shape} expected ({n},2)")
+                bad = ~np.isfinite(g)
+                if bad.any():
+                    metrics["nonfinite_G"] = int(bad.sum())
+                    g = g.copy()
+                    g[bad] = 0.0
+
+            comps2: dict[str, np.ndarray] = {}
+            bad_comp_total = 0
+            for k, v in (comps or {}).items():
+                v = np.asarray(v, float)
+                if v.shape != (n, 2):
+                    raise ValueError(
+                        f"component '{k}' shape {v.shape} expected ({n},2)"
+                    )
+                bad = ~np.isfinite(v)
+                if bad.any():
+                    bad_comp_total += int(bad.sum())
+                    v = v.copy()
+                    v[bad] = 0.0
+                comps2[k] = v
+            if bad_comp_total:
+                metrics["nonfinite_comp"] = bad_comp_total
+
+            if metrics:
+                info = (
+                    "nonfinite" if any(k.startswith("nonfinite") for k in metrics) else "clip"
+                )
+                self.emit_event({"pass": "wrap_energy", "info": info, "metrics": metrics})
+
+            return e, g, comps2
+
+        return _tracked
+
+    def wrap_step(self, step_fn):
+        wrapped = step_fn
+        for p in self.passes:
+            fn = getattr(p, "wrap_step", None)
+            if callable(fn):
+                wrapped = fn(wrapped)
+        return wrapped
+
+    # ----- capture ----------------------------------------------------------
+    def want_capture(self, ctx: dict, eval_i: int, frames_len: int) -> bool:
+        for p in self.passes:
+            fn = getattr(p, "want_capture", None)
+            if callable(fn) and fn(ctx, eval_i, frames_len):
+                return True
+        return False
+
+    def build_recorder(self):
+        from cartoweave.compute.recorder import Recorder
+
+        cap_cfg = (
+            self.cfg.get("passes", {}).get("capture", {}) if isinstance(self.cfg, dict) else {}
+        )
+        return Recorder(self, cap_cfg)
+
+    # ----- stats & events ---------------------------------------------------
+    def collect_stats(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for p in self.passes:
+            name = getattr(p, "name", "") or p.__class__.__name__
+            stats = getattr(p, "stats", None)
+            if stats:
+                out[name] = stats
+        return out
+
+    def emit_event(self, event: dict[str, Any]) -> None:
+        event.setdefault("global_iter", self.eval_index)
+        self.events.append(event)
+
+    def pop_events(self) -> list[dict[str, Any]]:
+        evs = list(self.events)
+        self.events.clear()
+        return evs
+
+
+# ensure action pass registers itself
+from .action_pass import ActionPass as _  # noqa: F401
+
+
+__all__ = [
+    "Context",
+    "ComputePass",
+    "PassManager",
+    "build_passes",
+    "REGISTRY",
+    "get_pass_cfg",
+]

@@ -1,5 +1,5 @@
 # ruff: noqa: S101
-from cartoweave.compute.run import solve
+from cartoweave.compute.solve import solve
 from cartoweave.data.api import make_solvepack_from_data_defaults
 
 

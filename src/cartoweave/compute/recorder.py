@@ -79,6 +79,10 @@ class Recorder:
             }
         )
 
+    def capture_step_end(self, k: int, p: Array2, labels: list[Any], metrics: dict[str, Any]):
+        mask = np.ones(p.shape[0], dtype=bool)
+        self.capture_stage_end(k, p, labels, metrics, mask)
+
     def record_events(self, events: list[Event]) -> None:
         """Append events produced by passes."""
 

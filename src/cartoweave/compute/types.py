@@ -31,7 +31,7 @@ Event = Dict[str, Union[str, int, float, Dict[str, Union[str, int, float]]]]
 
 @dataclass
 class ViewPack:
-    """Result container returned by :func:`cartoweave.compute.run.solve`."""
+    """Result container returned by :func:`cartoweave.compute.solve.solve`."""
 
     frames: List[Frame]
     events: List[Event]

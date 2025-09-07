@@ -45,8 +45,8 @@ class GeomPreprocPass(ComputePass):
         tiny = self.tiny_eps
 
         def _wrapped(P, labels, scene, mask, cfg):
-            stage = pm.stage_index if pm else 0
-            if stage not in self.stage_cache:
+            key = 0
+            if key not in self.stage_cache:
                 collapsed = 0
                 dropped = 0
                 affected = 0
@@ -76,12 +76,12 @@ class GeomPreprocPass(ComputePass):
                             affected += 1
                         lab2.polyline = new_poly
                     cleaned_labels.append(lab2)
-                self.stage_cache[stage] = cleaned_labels
+                self.stage_cache[key] = cleaned_labels
                 if pm:
                     pm.emit_event(
                         {
                             "pass": "geom_preproc",
-                            "stage_id": stage,
+                            "stage_id": 0,
                             "global_iter": pm.eval_index,
                             "info": "cleanup",
                             "metrics": {
@@ -91,7 +91,7 @@ class GeomPreprocPass(ComputePass):
                             },
                         }
                     )
-            labels_use = self.stage_cache.get(stage, labels)
+            labels_use = self.stage_cache.get(key, labels)
             return energy_fn(P, labels_use, scene, mask, cfg)
 
         return _wrapped

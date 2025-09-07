@@ -27,7 +27,7 @@ class Frame:
 
 @dataclass
 class ViewPack:
-    """Container returned by :func:`cartoweave.compute.run.solve`."""
+    """Container returned by :func:`cartoweave.compute.solve.solve`."""
 
     L: int  # number of labels
     mode: str  # solver mode used

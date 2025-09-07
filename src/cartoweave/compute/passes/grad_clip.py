@@ -31,7 +31,7 @@ class GradClipPass(ComputePass):
             ma = conf.get("max_abs")
             eps = get_eps(cfg)
 
-            E, G, comps, meta = energy_fn(P, labels, scene, active_mask, cfg)
+            E, G, comps = energy_fn(P, labels, scene, active_mask, cfg)
             comps = dict(comps or {})
 
             if G is None:
@@ -54,7 +54,7 @@ class GradClipPass(ComputePass):
                     if scale < stats["max_scale_down"] or stats["max_scale_down"] == 0.0:
                         stats["max_scale_down"] = scale
 
-            return E, G, comps, meta
+            return E, G, comps
 
         return _wrapped
 

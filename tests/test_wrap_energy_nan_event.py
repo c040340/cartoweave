@@ -3,7 +3,7 @@ import numpy as np
 
 from cartoweave.compute.passes import REGISTRY
 from cartoweave.compute.passes.base import ComputePass
-from cartoweave.compute.run import solve
+from cartoweave.compute.solve import solve
 from cartoweave.data.api import make_solvepack_from_data_defaults
 
 

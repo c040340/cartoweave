@@ -24,8 +24,6 @@ def test_pipeline_smoke():
         scene0=scene,
         cfg={"compute": {"weights": {"anchor.spring": 1.0}}},
     )
-    pack.__dict__["stages"] = [{"iters": 1}]
-
     p = np.asarray(pack.P0, float)
     active = np.asarray(pack.active0, bool)
     scene_dict = pack.scene0.model_dump()

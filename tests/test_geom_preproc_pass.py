@@ -1,6 +1,6 @@
 import numpy as np
 
-from cartoweave.compute.passes.manager import PassManager
+from cartoweave.compute.passes import PassManager
 from cartoweave.compute.passes.geom_preproc import GeomPreprocPass
 from cartoweave.compute.eval import energy_and_grad_full
 

@@ -1,5 +1,5 @@
 """Public compute API."""
 
-from .run import solve
+from .solve import solve
 
 __all__ = ["solve"]

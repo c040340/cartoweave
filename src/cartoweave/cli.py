@@ -4,7 +4,7 @@ import argparse, json, sys, pathlib
 import numpy as np
 
 from .contracts.solvepack import SolvePack
-from .compute.run import solve
+from .compute.solve import solve
 
 
 def _load_json(p: str):
@@ -33,17 +33,16 @@ def cmd_solve(args):
             raise SystemExit(f"P0 shape {P0.shape} != {(L,2)}")
     active = np.ones(L, dtype=bool)
 
-    stages = cfg.get("compute", {}).get("stages") or [{"iters": int(args.iters), "solver": "lbfgs"}]
-    passes = cfg.get("compute", {}).get("passes_order") or ["schedule", "capture"]
-
     sp = SolvePack(
         L=L,
         P0=P0,
-        active_mask0=active,
-        scene=scene,
+        active0=active,
+        labels0=[],
+        scene0=scene,
         cfg=cfg,
-        stages=stages,
-        passes=passes,
+        actions=[],
+        action_num=None,
+        behaviors=[],
     )
     view = solve(sp)
 
