@@ -13,7 +13,7 @@ from cartoweave.contracts.solvepack import SolvePack
 from .events import report_to_event
 from .eval import energy_and_grad_full
 from .optim.loop import LoopContext as _EngineCtx, run_iters as _run_iters
-from .passes import PassManager
+from .passes import PassManager, get_pass_cfg
 from .recorder import ViewRecorder
 from .array_utils import expand_subset, expand_comps_subset
 from .sources import make_sources_from_scene
@@ -42,7 +42,13 @@ def _build_run_iters(pack: SolvePack):
 
     compute_cfg = pack.cfg.get("compute", {}) if isinstance(pack.cfg, dict) else {}
 
-    def _run(p0: Array2, ctx: dict, energy_fn, iters_override: int | None = None):
+    def _run(
+        p0: Array2,
+        ctx: dict,
+        energy_fn,
+        iters_override: int | None = None,
+        on_iter=None,
+    ):
         mode = compute_cfg.get("solver", {}).get("public", {}).get("mode", "lbfgsb")
         tuning = compute_cfg.get("solver", {}).get("tuning", {})
         iters = iters_override or tuning.get(mode, {}).get("maxiter", 1)
@@ -55,7 +61,7 @@ def _build_run_iters(pack: SolvePack):
             mode=mode,
             params={},
         )
-        p_new, reports = _run_iters(p0, eng_ctx, energy_fn, report=True)
+        p_new, reports = _run_iters(p0, eng_ctx, energy_fn, report=True, on_iter=on_iter)
         E, G, comps = energy_fn(
             p_new, ctx["labels"], ctx["scene"], ctx["active_ids"], compute_cfg
         )
@@ -130,6 +136,15 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
     )
     per_action_iters = int(((tuning.get("warmup", {}) or {}).get("steps", 1)) or 1)
 
+    capture_cfg = get_pass_cfg(
+        (pm.cfg if isinstance(pm.cfg, dict) else {}),
+        "capture",
+        {"every": 1, "limit": None, "final_always": True},
+    )
+    cap_every = max(1, int(capture_cfg.get("every", 1)))
+    cap_limit = capture_cfg.get("limit")
+    cap_final = bool(capture_cfg.get("final_always", True))
+
     t_global = 0
     P_prev_full = P_curr.copy()
     comps_prev_full: Dict[str, np.ndarray] = {}
@@ -152,8 +167,51 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         active = np.asarray(ctx.get("active_ids", active), bool)
         active_idx = np.flatnonzero(active)
 
+        _last_iter_recorded = -1
+
+        def _on_iter(it: int, P_iter: np.ndarray, meta: Dict[str, Any]) -> None:
+            nonlocal t_global, P_prev_full, comps_prev_full, _last_iter_recorded
+            if cap_limit is not None and isinstance(cap_limit, int):
+                if len(recorder.frames) >= cap_limit:
+                    return
+            if it % cap_every != 0:
+                return
+            P_full_i = expand_subset(P_prev_full, active_idx, P_iter[active_idx])
+            comps_full_i = expand_comps_subset(
+                comps_prev_full, active_idx, meta.get("comps", {})
+            )
+            meta_i: Dict[str, Any] = {
+                "schema_version": "compute-v2",
+                "pass_id": pass_id,
+                "pass_name": pass_name,
+                "frame_in_pass": it,
+                "status": "ok",
+                "events": pm.pop_events(),
+            }
+            gnorm_i = float(
+                np.linalg.norm(meta.get("G"))
+                if meta.get("G") is not None and meta.get("G").size
+                else 0.0
+            )
+            metrics_i = {"E": float(meta.get("E", 0.0)), "gnorm": gnorm_i}
+            recorder.record_frame(
+                t=t_global,
+                P_full=P_full_i,
+                comps_full=comps_full_i,
+                E=meta.get("E", 0.0),
+                active_mask=active.copy(),
+                meta_base=meta_i,
+                metrics=metrics_i,
+                field=None,
+                G_snapshot=meta.get("G"),
+            )
+            P_prev_full = P_full_i
+            comps_prev_full = comps_full_i
+            _last_iter_recorded = it
+            t_global += 1
+
         P_prop, metrics = run_iters(
-            P_curr, ctx, energy_fn, iters_override=per_action_iters
+            P_curr, ctx, energy_fn, iters_override=per_action_iters, on_iter=_on_iter
         )
         P_curr = step_fn(P_curr, P_prop, metrics)
 
@@ -170,7 +228,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             "schema_version": "compute-v2",
             "pass_id": pass_id,
             "pass_name": pass_name,
-            "frame_in_pass": 0,
+            "frame_in_pass": "final",
             "status": "ok",
             "reason": "",
             "timings_ms": {},
@@ -184,22 +242,46 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             comps_prev_full, active_idx, metrics.get("comps", {})
         )
 
-        recorder.record_frame(
-            t=t_global,
-            P_full=P_full,
-            comps_full=comps_full,
-            E=metrics.get("E", 0.0),
-            active_mask=active.copy(),
-            meta_base=meta_base,
-            metrics=metrics_all,
-            field=None,
-            G_snapshot=metrics.get("G"),
-        )
+        iters = int(metrics.get("iters", len(reports)))
+        need_final = cap_final and (_last_iter_recorded != (iters - 1))
+        if cap_limit is not None and isinstance(cap_limit, int):
+            if len(recorder.frames) >= cap_limit:
+                need_final = False
+        if need_final:
+            metrics_all_final = metrics_all
+            recorder.record_frame(
+                t=t_global,
+                P_full=P_full,
+                comps_full=comps_full,
+                E=metrics.get("E", 0.0),
+                active_mask=active.copy(),
+                meta_base=meta_base,
+                metrics=metrics_all_final,
+                field=None,
+                G_snapshot=metrics.get("G"),
+            )
+            t_global += 1
+        else:
+            # discard unused events
+            pm.pop_events()
+            if event is not None and recorder.frames:
+                last = recorder.frames[-1]
+                last.meta.setdefault("events", []).append(
+                    {
+                        "kind": "optimizer_step",
+                        "algo": event.get("algo"),
+                        "iter_in_algo": event.get("iter_in_algo"),
+                        "step_size": event.get("step_size"),
+                        "ls_evals": event.get("ls_evals"),
+                        "wolfe": event.get("wolfe"),
+                        "delta_E": event.get("delta_E"),
+                        "gnorm": event.get("gnorm"),
+                    }
+                )
 
         P_prev_full = P_full
         comps_prev_full = comps_full
 
-        t_global += 1
         recorder.end_pass()
 
     vp = recorder.finish()

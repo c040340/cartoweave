@@ -55,7 +55,13 @@ def expand_comps_subset(
         base = prev_full.get(k, zero_ref)
         arr = np.array(base, dtype=float, copy=True)
         if k in sub_comps:
-            arr[active_idx] = np.asarray(sub_comps[k], dtype=float)[active_idx]
+            sub_arr = np.asarray(sub_comps[k], dtype=float)
+            if sub_arr.shape == arr.shape:
+                arr = sub_arr
+            else:
+                if sub_arr.shape[0] != active_idx.size:
+                    raise IndexError("subset length mismatch for component '%s'" % k)
+                arr[active_idx] = sub_arr
         out[k] = arr
     return out
 

@@ -1,8 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable, Dict, Any, List, Tuple
+from typing import Callable, Dict, Any, List, Tuple, Optional
 import numpy as np
 
 EPS = 10.0 ** -12
+
+OnIter = Optional[Callable[[int, np.ndarray, Dict[str, Any]], None]]
 
 # Signature of the energy/grad function for the CURRENT behavior state
 EnergyFn = Callable[[np.ndarray, Any, Any, np.ndarray, Dict[str, Any]],
@@ -35,8 +37,13 @@ def clip_by_inf(arr: np.ndarray, max_norm: float | None) -> np.ndarray:
         return arr
     return arr * (max_norm / a)
 
-def run_iters(P0: np.ndarray, ctx: LoopContext, energy_fn: EnergyFn,
-              report: bool = False) -> Tuple[np.ndarray, List[StepReport]]:
+def run_iters(
+    P0: np.ndarray,
+    ctx: LoopContext,
+    energy_fn: EnergyFn,
+    report: bool = False,
+    on_iter: OnIter = None,
+) -> Tuple[np.ndarray, List[StepReport]]:
     """Run a minimal gradient loop with basic stopping criteria.
 
     - Calls energy_fn(P, ctx.labels, ctx.scene, ctx.active, ctx.cfg)
@@ -74,6 +81,12 @@ def run_iters(P0: np.ndarray, ctx: LoopContext, energy_fn: EnergyFn,
         x_inf = float(np.max(np.abs(P))) if P.size else 0.0
         if report:
             reps.append(StepReport(k=-1, it=it, E=E, g_inf=g_inf, x_inf=x_inf))
+
+        if on_iter is not None:
+            try:
+                on_iter(it, P, {"E": E, "G": g, "comps": comps})
+            except Exception:
+                pass
 
         if g_inf <= gtol:
             break
