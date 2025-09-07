@@ -5,3 +5,27 @@ compute:
       stopping: { gtol: 1.0e-4 }
       anti_jump: { step_cap_px: 30.0 }
       warmup: { steps: 1 }
+
+  passes:
+    calibration:
+      shape_profile:
+        enable: false
+        name: default      # default | sparse | dense
+        sigma_scale: 1.0
+        scope: once        # once | always
+      auto_k:
+        enable: false
+        base_term: focus.attract
+        p_quantile: 0.95
+        clip_q: 0.995
+        min_activation: 0.05
+        hysteresis: 0.25
+        clamp: { min: 0.33, max: 3.0 }
+        scope: once        # once | always
+        targets:
+          anchor.spring: 1.0
+          boundary.wall: 0.6
+          pl.rect: 0.8
+          ll.rect: 0.4
+          area.cross: 0.8
+          area.softout: 0.5
