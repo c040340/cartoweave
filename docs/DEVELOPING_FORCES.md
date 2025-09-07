@@ -7,32 +7,30 @@ from . import register
 import numpy as np
 
 @register("myterm.foo")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
   """
   Inputs:
     - scene: read-only view; do not mutate arrays in-place
     - P: (L,2) float array for current label positions
-    - cfg: dict, read from cfg['compute'] (use helpers for eps/weights)
-    - phase: "pre_anchor" or "anchor"
+    - params: per-term configuration dict (k handled by aggregator)
+    - cfg: global compute configuration (use helpers for eps)
   Returns: (E, F, meta)
     - E: scalar energy (float)
     - F: (L,2) force; DO NOT zero inactive rows here (aggregator does it)
     - meta: small dict with diagnostics; avoid large payloads
   """
-  # Example skeleton
-  from ._common import get_eps, weight_of, ensure_vec2
+  from ._common import get_eps, ensure_vec2
   eps = get_eps(cfg)
-  w   = weight_of("myterm.foo", cfg, 0.0)
-  if w <= 0.0:
+  if P is None or P.size == 0:
       return 0.0, np.zeros_like(P), {"disabled": True}
 
   # --- compute raw energy and raw force F_raw ---
   E_raw = 0.0
   F_raw = np.zeros_like(P)
 
-  # Check shape and apply weight
+  # Check shape
   F = ensure_vec2(F_raw, P.shape[0])
-  return float(E_raw * w), F * w, {"source": "compute.forces.myterm.foo"}
+  return float(E_raw), F, {"source": "compute.forces.myterm.foo"}
 ```
 
 ## Rules

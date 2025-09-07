@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, ensure_vec2
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -62,14 +62,11 @@ def _anchor(lab):
 
 
 @register("focus.attract")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
-    if phase != "pre_anchor" or P is None or P.size == 0:
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
     L = P.shape[0]
     eps = get_eps(cfg)
-    w = weight_of("focus.attract", cfg, 0.0)
-    if w <= 0.0:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
 
     k = float(cfg.get("focus.k.attract", 0.0))
     if k <= 0.0:
@@ -134,4 +131,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
 
     logger.debug("term_focus_huber: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"term": "focus.attract", "focus_huber": info}
+    return float(E), F, {"term": "focus.attract", "focus_huber": info}

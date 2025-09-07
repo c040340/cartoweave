@@ -5,6 +5,8 @@ compute:
       stopping: { gtol: 1.0e-4 }
       anti_jump: { step_cap_px: 30.0 }
       warmup: { steps: 1 }
+  tuning_passes:
+    calibration: {}
 
   passes:
     calibration:

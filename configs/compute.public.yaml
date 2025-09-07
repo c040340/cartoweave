@@ -7,4 +7,23 @@ compute:
     capture: { every: 1, final_always: true }
     grad_clip: { enable: false, norm_max: 1000.0 }
     step_limit: { max_step_norm: null }
-  weights: {}
+  public:
+    forces:
+      anchor.spring:
+        enable: true
+        k: 1.0
+      boundary.wall:
+        enable: false
+        k: 0.3
+      pl.rect:
+        enable: true
+        k: 0.8
+      ll.rect:
+        enable: false
+        k: 0.3
+      area.cross:
+        enable: true
+        k: 0.8
+      area.softout:
+        enable: true
+        k: 0.5

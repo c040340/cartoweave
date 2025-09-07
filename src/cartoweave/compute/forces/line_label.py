@@ -2,7 +2,7 @@
 from __future__ import annotations
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, ensure_vec2
 from cartoweave.utils.geometry import (
     project_point_to_segment,
     rect_half_extent_along_dir,
@@ -64,11 +64,10 @@ def _anchor(lab):
 
 
 @register("ln.rect")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
-    w = weight_of("ln.rect", cfg, 0.0)
-    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
     segs_raw = scene.get("lines")
     if segs_raw is None or len(segs_raw) == 0:
@@ -142,4 +141,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
 
     logger.debug("term_line_label: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"term": "ln.rect", "ln": int(segs.shape[0])}
+    return float(E), F, {"term": "ln.rect", "ln": int(segs.shape[0])}

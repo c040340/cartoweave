@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, ensure_vec2
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -62,11 +62,10 @@ def _anchor(lab):
 
 
 @register("boundary.wall")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
-    w = weight_of("boundary.wall", cfg, 0.0)
-    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "boundary.wall"}
 
     W, H = scene.get("frame_size", (1920.0, 1080.0))
@@ -145,4 +144,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
         pass
     logger.debug("term_boundary: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"term": "boundary.wall", "boundary": src}
+    return float(E), F, {"term": "boundary.wall", "boundary": src}

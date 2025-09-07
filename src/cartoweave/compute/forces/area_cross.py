@@ -4,7 +4,7 @@ import os
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, ensure_vec2
 from cartoweave.utils.kernels import softplus, sigmoid, smoothmax, softabs, EPS_DIST, EPS_NORM, EPS_ABS
 from cartoweave.utils.geometry import poly_signed_area, segment_rect_gate
 from cartoweave.utils.shape import as_nx2
@@ -64,24 +64,63 @@ def _legacy_aabb_gate(ax, ay, bx, by, cx, cy, w, h, pad=0.0):
 
 
 @register("area.cross")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
-    L = P.shape[0] if P is not None else 0
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
+    L_len = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
-    w = weight_of("area.cross", cfg, 0.0)
-    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.cross"}
 
-    labels_all = scene.get("labels", [])
-    areas = scene.get("areas", [])
+    labels_all = scene.get("labels", []) or []
+    areas      = scene.get("areas", []) or []
+
+    # --- 与 P 完全对齐：尽量使用活跃索引，否则回退为 0..N-1 ---
     N = P.shape[0]
-    WH = np.asarray(scene.get("WH"), float)
-    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
-    active_ids = scene.get("_active_ids", list(range(N)))
-    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
-    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    all_active = scene.get("_active_ids_solver") or scene.get("_active_ids")
+    if not all_active or len(all_active) != N:
+        import logging
+        logging.getLogger(__name__).warning(
+            "area.cross: active ids len=%s != P rows=%d; fallback to identity [0..N-1]",
+            None if all_active is None else len(all_active), N
+        )
+        all_active = list(range(N))
+
+    # 与 P 同序取 labels（不在这里做 kind 过滤，只在行内跳过）
+    def _get_label(i):
+        if 0 <= i < len(labels_all):
+            return labels_all[i]
+        # 占位空壳，防止字段访问炸
+        class _Dummy:
+            kind = None
+            WH = (0.0, 0.0)
+            def __getattr__(self, _): return None
+        return _Dummy()
+
+    labels = [_get_label(i) for i in all_active]
+
+    # 组装 WH -> (N,2)，并做稳健规范化
+    WH = np.asarray([getattr(lab, "WH", (0.0, 0.0)) if not isinstance(lab, dict)
+                     else lab.get("WH", (0.0, 0.0)) for lab in labels], dtype=float)
+    if WH.ndim != 2 or WH.shape != (N, 2):
+        from numpy import full
+        if WH.ndim == 0:
+            WH = full((N, 2), float(WH))
+        elif WH.ndim == 1 and WH.shape[0] == 2:
+            WH = np.broadcast_to(WH.reshape(1, 2), (N, 2)).astype(float, copy=False)
+        elif WH.ndim == 1 and WH.shape[0] == N:
+            WH = np.stack([WH, WH], axis=1).astype(float, copy=False)
+        else:
+            import logging
+            logging.getLogger(__name__).warning(
+                "area.cross: cannot normalize WH shape %s, fallback zeros (N,2)",
+                WH.shape
+            )
+            WH = np.zeros((N, 2), dtype=float)
+
+    # “行内”跳过：仅对非 circle 的 label 计算；可选地也跳过 kind=="area"
     modes = [_val(lab, "mode") for lab in labels]
-    mask = np.array([m != "circle" for m in modes], dtype=bool)
-    idxs = np.nonzero(mask)[0]
+    kinds = [getattr(lab, "kind", None) for lab in labels]
+    mask  = np.array([(k != "area") and (m != "circle") for k, m in zip(kinds, modes)], dtype=bool)
+    idxs  = np.nonzero(mask)[0]
     skip_circle = int(np.count_nonzero(~mask))
 
     k_cross = float(cfg.get("area.k.cross", 900.0))
@@ -110,10 +149,10 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
         if w_i <= 0.0 and h_i <= 0.0:
             continue
         cx, cy = float(P[i, 0]), float(P[i, 1])
-        for ai, A in enumerate(areas):
+        for ai, poly in enumerate(areas):
             if ai == own_idx:
                 continue
-            poly = A.get("polygon", None)
+            #poly = A.get("polygon", None)
             if poly is None:
                 continue
             arr = np.asarray(poly, float).reshape(-1, 2)
@@ -207,5 +246,5 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             S[i].append((int(ai), float(fx_sum), float(fy_sum), float(best)))
 
     logger.debug("term_area_cross: skip_circle=%d", skip_circle)
-    F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"term": "area.cross", "area_cross": S}
+    F = ensure_vec2(F, L_len)
+    return float(E), F, {"term": "area.cross", "area_cross": S}

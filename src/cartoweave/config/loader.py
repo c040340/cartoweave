@@ -29,6 +29,19 @@ def _ensure_only_compute(d: Dict[str, Any]) -> None:
         raise ValueError(f"unexpected top-level keys: {sorted(extra)}")
 
 
+def _reject_legacy_weights(cfg: dict) -> None:
+    if (
+        isinstance(cfg, dict)
+        and "compute" in cfg
+        and isinstance(cfg["compute"], dict)
+        and "weights" in cfg["compute"]
+    ):
+        raise ValueError(
+            "Legacy 'compute.weights' is no longer supported. Use "
+            "'compute.public.forces.<term>.{enable,k}' instead."
+        )
+
+
 def load_compute_config(
     *,
     internals_path: str = "configs/compute.internals.yaml",
@@ -53,6 +66,16 @@ def load_compute_config(
     if overrides:
         _ensure_only_compute(overrides)
         cfg = deep_update(cfg, overrides.get("compute", {}))
+
+    passes = cfg.get("passes")
+    if isinstance(passes, dict) and "calibration" in passes:
+        tp = cfg.setdefault("tuning_passes", {})
+        if not isinstance(tp, dict):
+            tp = {}
+            cfg["tuning_passes"] = tp
+        tp["calibration"] = passes.pop("calibration")
+
+    _reject_legacy_weights({"compute": cfg})
 
     model = Compute.model_validate(cfg)
     return {"compute": model.model_dump()}

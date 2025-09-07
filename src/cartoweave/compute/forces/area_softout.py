@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, ensure_vec2
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -65,30 +65,63 @@ def _anchor(lab):
 
 
 @register("area.softout")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
-    if phase != "pre_anchor" or P is None or P.size == 0:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
-    L = P.shape[0]
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
+    L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
-    w = weight_of("area.softout", cfg, 0.0)
-    if w <= 0.0:
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
 
-    labels_all = scene.get("labels", [])
-    areas = scene.get("areas", [])
+    import logging
+    log = logging.getLogger(__name__)
+
+    labels_all = scene.get("labels", []) or []
+    areas      = scene.get("areas", [])  or []
+
+    # --- 与 P 完全对齐：尽量使用活跃索引，否则回退为 0..N-1 ---
     N = P.shape[0]
-    WH = np.asarray(scene.get("WH"), float)
-    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
-    active_ids = scene.get("_active_ids", list(range(N)))
-    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
-    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    all_active = scene.get("_active_ids_solver") or scene.get("_active_ids")
+    if not all_active or len(all_active) != N:
+        log.warning(
+            "area.softout: active ids len=%s != P rows=%d; fallback to identity [0..N-1]",
+            None if all_active is None else len(all_active), N
+        )
+        all_active = list(range(N))
+
+    # 与 P 同序取 labels（不在这里做 kind-only 过滤，只在行内跳过）
+    def _get_label(i):
+        if 0 <= i < len(labels_all):
+            return labels_all[i]
+        class _Dummy:
+            kind = None
+            WH = (0.0, 0.0)
+            def __getattr__(self, _): return None
+        return _Dummy()
+
+    labels = [_get_label(i) for i in all_active]
+
+    # 组装 WH -> (N,2) 并稳健规范化
+    WH = np.asarray([getattr(lab, "WH", (0.0, 0.0)) if not isinstance(lab, dict)
+                     else lab.get("WH", (0.0, 0.0)) for lab in labels], dtype=float)
+    if WH.ndim != 2 or WH.shape != (N, 2):
+        if WH.ndim == 0:
+            WH = np.full((N, 2), float(WH))
+        elif WH.ndim == 1 and WH.shape[0] == 2:
+            WH = np.broadcast_to(WH.reshape(1, 2), (N, 2)).astype(float, copy=False)
+        elif WH.ndim == 1 and WH.shape[0] == N:
+            WH = np.stack([WH, WH], axis=1).astype(float, copy=False)
+        else:
+            log.warning("area.softout: cannot normalize WH shape %s, fallback zeros (N,2)", WH.shape)
+            WH = np.zeros((N, 2), dtype=float)
+
+    # 行内跳过：不对 area 自身施力，且排除 circle 模式（与其它 term 保持一致）
     modes = [_val(lab, "mode") for lab in labels]
-    mask = np.array([m != "circle" for m in modes], dtype=bool)
-    idxs = np.nonzero(mask)[0]
+    kinds = [getattr(lab, "kind", None) for lab in labels]
+    mask  = np.array([(k != "area") and (m != "circle") for k, m in zip(kinds, modes)], dtype=bool)
+    idxs  = np.nonzero(mask)[0]
     skip_circle = int(np.count_nonzero(~mask))
 
     k_push = float(cfg.get("area.k.softout", 250.0))
-    min_gap = float(cfg.get("area.softout.min_gap", 0.0))
+    min_gap = float(params.get("min_gap", cfg.get("area.softout.min_gap", 0.0)))
     beta = float(cfg.get("area.softout.beta", 0.7))
     alpha_sp = float(cfg.get("area.softout.alpha", 0.35))
     gamma_out = float(cfg.get("area.softout.outside_weight", 0.5))
@@ -109,10 +142,10 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
             continue
         hx, hy = 0.5 * w_i, 0.5 * h_i
         cx, cy = float(P[i, 0]), float(P[i, 1])
-        for ai, A in enumerate(areas):
+        for ai, poly in enumerate(areas):
             if ai == own_idx:
                 continue
-            poly = A.get("polygon", None)
+            # poly = A.get("polygon", None)
             if poly is None:
                 continue
             arr = np.asarray(poly, float).reshape(-1, 2)
@@ -168,4 +201,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
 
     logger.debug("term_area_softout: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"term": "area.softout", "area_softout": S}
+    return float(E), F, {"term": "area.softout", "area_softout": S}

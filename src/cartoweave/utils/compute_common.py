@@ -13,12 +13,6 @@ def get_eps(cfg: Dict[str, Any]) -> float:
     return cfg.get("eps", {}).get("numeric") or np.finfo(float).eps
 
 
-def weight_of(term: str, cfg: Dict[str, Any], default: float = 0.0) -> float:
-    """Lookup force weight for *term* from configuration."""
-    ws = cfg.get("weights", {}) or {}
-    return float(ws.get(term, default))
-
-
 def ensure_vec2(F: np.ndarray, L: int) -> np.ndarray:
     """Validate that *F* is an ``(L,2)`` array of floats."""
     F = np.asarray(F, float)

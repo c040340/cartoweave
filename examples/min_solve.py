@@ -5,7 +5,7 @@ from cartoweave.data.api import make_solvepack_from_data_defaults
 
 sp = make_solvepack_from_data_defaults(
     compute_cfg={
-        "weights": {"anchor.spring": 1.0},
+        "public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}}},
         "passes": {"capture": {"every": 1, "final_always": True}},
     }
 )

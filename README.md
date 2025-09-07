@@ -32,7 +32,7 @@ from cartoweave.compute.solve import solve
 
 cfg = {
     "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},
-    "compute": {"weights": {"anchor.spring": 1.0}},
+    "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}}}},
 }
 sp = build_solvepack_from_config(cfg, seed=0)
 view = solve(sp)
@@ -166,7 +166,7 @@ from cartoweave.compute.solve import solve
 
 cfg = {
     "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},
-    "compute": {"weights": {"anchor.spring": 1.0}},
+    "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}}}},
 }
 sp = build_solvepack_from_config(cfg, seed=0)
 view = solve(sp)
