@@ -9,6 +9,7 @@ from cartoweave.config.loader import load_data_defaults
 from cartoweave.contracts.solvepack import SolvePack
 
 from .generate import generate_scene
+from cartoweave.data.io import load_snapshot
 from .action_sequence import generate_action_sequence_strict
 
 __all__ = ["make_solvepack_from_data_defaults"]
@@ -29,8 +30,20 @@ def make_solvepack_from_data_defaults(
     """
 
     cfg = load_data_defaults(data_path)
-    if cfg.source != "generate":  # pragma: no cover - non-default path
-        raise NotImplementedError("loading scenes from file is not supported")
+    if cfg.source == "load":
+        load_cfg = cfg.load  # pydantic 已保证存在
+        scene0, P0, active0, labels0, actions, action_num = load_snapshot(load_cfg.path)
+        pack = SolvePack(
+                L = len(labels0),
+            P0 = np.asarray(P0, dtype=float).tolist(),
+            labels0 = labels0,
+            active0 = np.asarray(active0, dtype=bool).tolist(),
+            scene0 = scene0,
+            cfg = {"compute": compute_cfg or {}},
+        )
+        return pack
+    elif cfg.source != "generate":  # pragma: no cover - safety
+        raise ValueError(f"unknown data.source: {cfg.source}")
 
     gen = cfg.generate
     if gen is None:  # pragma: no cover - config validation ensures non-None

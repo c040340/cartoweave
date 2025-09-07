@@ -7,7 +7,7 @@ data:
   # 控制 SolvePack 的生成方式：
   #  - generate : 随机生成场景、标签和初始状态（受下方 generate 配置控制）
   #  - load     : 从磁盘加载快照文件（见 data.load.path）
-  source: generate
+  source: load
 
   generate:
     # ---- 基础场景元素数量 ----
@@ -79,5 +79,6 @@ data:
                                                  # 每次运行都会覆盖，确保 load 可立即读取
 
   load:
-    path: ""          # 当 data.source == load 时，从此路径读取 SolvePack 快照
+    path: "./snapshots/default_pack.json"
+                      # 当 data.source == load 时，从此路径读取 SolvePack 快照
                       # 必须是 save_snapshot 生成的文件，支持相对路径
