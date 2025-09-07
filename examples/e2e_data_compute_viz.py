@@ -11,6 +11,7 @@ from cartoweave.config.loader import load_configs
 from cartoweave.data.api import make_solvepack_from_data_defaults
 from cartoweave.logging import init_logging_from_cfg
 from cartoweave.viz import interactive_view, merge_defaults, VIZ_DEFAULTS
+from cartoweave.logging import init_logging_from_cfg
 import matplotlib.pyplot as plt
 
 headless = matplotlib.get_backend().lower() == "agg"

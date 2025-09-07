@@ -46,6 +46,7 @@ def cmd_solve(args):
         action_num=None,
         behaviors=[],
     )
+    init_logging_from_cfg(getattr(sp, "cfg", None))
     view = solve(sp)
 
     out_sum = args.out_summary or "out/summary.json"

@@ -18,7 +18,7 @@ from .recorder import ViewRecorder
 from .array_utils import expand_subset, expand_comps_subset
 from .sources import make_sources_from_scene
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("cartoweave.compute.solve")
 
 Array2 = np.ndarray
 
@@ -65,7 +65,9 @@ def _build_run_iters(pack: SolvePack):
             mode=mode,
             params={},
         )
+        logger.debug("begin run_iters: mode=%s iters=%s", mode, iters)
         p_new, reports = _run_iters(p0, eng_ctx, energy_fn, report=True, on_iter=on_iter)
+        logger.debug("end run_iters: reports=%s", len(reports))
         E, G, comps = energy_fn(
             p_new, ctx["labels"], ctx["scene"], ctx["active_ids"], compute_cfg
         )
@@ -141,8 +143,8 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
     )
     compute_cfg = (pack.cfg.get("compute", {}) if isinstance(pack.cfg, dict) else {}) or {}
     solver_pub = ((compute_cfg.get("solver", {}) or {}).get("public", {}) or {})
-    use_warmup = bool(solver_pub.get("use_warmup", False))
-    per_action_iters = None
+    use_warmup = bool(solver_pub.get("use_warmup", True))
+    per_action_iters = True
 
     capture_cfg = get_pass_cfg(
         (pm.cfg if isinstance(pm.cfg, dict) else {}),
@@ -223,18 +225,20 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             _last_iter_recorded = it
             t_global += 1
 
+        metrics: Dict[str, Any] = {}
         if use_warmup:
             warmup_steps = int(((tuning.get("warmup", {}) or {}).get("steps", 10)) or 10)
             # 你可以选择 on_iter=None（不记录 warmup 帧），或用 _on_iter（记录 warmup 帧）
-            P_warm, metrics_warm = run_iters(
+            P_warm, metrics = run_iters(
                 P_curr, ctx, energy_fn, iters_override=warmup_steps, on_iter=_on_iter
             )
-            P_curr = step_fn(P_curr, P_warm, metrics_warm)
+            P_curr = step_fn(P_curr, P_warm, metrics)
 
-        P_prop, metrics = run_iters(
-            P_curr, ctx, energy_fn, iters_override=per_action_iters, on_iter=_on_iter
-        )
-        P_curr = step_fn(P_curr, P_prop, metrics)
+        if per_action_iters is not None:
+            P_prop, metrics = run_iters(
+                P_curr, ctx, energy_fn, iters_override=per_action_iters, on_iter=_on_iter
+            )
+            P_curr = step_fn(P_curr, P_prop, metrics)
 
         reports = metrics.pop("reports", [])
         event = None
