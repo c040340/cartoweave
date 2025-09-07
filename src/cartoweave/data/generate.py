@@ -14,6 +14,11 @@ from cartoweave.data.sampling.helpers import (
     project_to_rect_inset,
 )
 from cartoweave.data.sampling.poisson import poisson_disc
+from cartoweave.data.textblock import (
+    load_font,
+    measure_text_block,
+    random_text_lines,
+)
 
 __all__ = ["generate_scene"]
 
@@ -220,6 +225,13 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
     labels: list[Label] = []
     active0 = np.ones(label_count, dtype=bool)
 
+    txt_cfg = gen_cfg.text
+    font = load_font(txt_cfg.font.path, int(txt_cfg.font.size))
+    len_min, len_max = map(int, txt_cfg.len_range)
+    spacing = int(txt_cfg.line_spacing_px)
+    padx = int(txt_cfg.padding_px.x)
+    pady = int(txt_cfg.padding_px.y)
+
     pool_sizes = {
         "point": len(points_list),
         "line": len(lines_list),
@@ -279,6 +291,16 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
                     xy = _area_anchor_xy(np.asarray(areas_list[idx], float), mode, rng)
                     anchor = Anchor(target="area", index=idx, mode=mode)
         p0[i] = xy
-        labels.append(Label(id=i, kind=label_kind, anchor=anchor))
+        lines = random_text_lines(rng, (len_min, len_max))
+        W, H = measure_text_block(lines, font, spacing, padx, pady)
+        labels.append(
+            Label(
+                id=i,
+                kind=label_kind,
+                anchor=anchor,
+                WH=(float(W), float(H)),
+                meta={"mode": "rectangular", "text_lines": lines},
+            )
+        )
 
     return p0, labels, active0, scene

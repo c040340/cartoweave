@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from ..textspec import label_specs_for_len
+from ..textblock import load_font, measure_text_block, random_text_lines
 from . import areas as A  # noqa: N812
 from . import lines as L  # noqa: N812
 from . import points as P  # noqa: N812
@@ -87,5 +87,10 @@ def assign_labels(geometry: dict[str, Any], n_labels: int, anchors_policy, ancho
 
 
 def measure_WH(n_labels: int, rng: np.random.Generator) -> np.ndarray:  # noqa: N802
-    spec = label_specs_for_len(10)
-    return np.array([[spec.single_px, 24.0] for _ in range(n_labels)], dtype=float)
+    font = load_font("./assets/Roboto-Regular.ttf", 24)
+    WH = []
+    for _ in range(n_labels):
+        lines = random_text_lines(rng, (12, 46))
+        W, H = measure_text_block(lines, font, 4, 8, 4)
+        WH.append((float(W), float(H)))
+    return np.array(WH, dtype=float)

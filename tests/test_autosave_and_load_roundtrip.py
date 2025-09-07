@@ -2,6 +2,8 @@ import numpy as np
 import yaml
 from pathlib import Path
 
+import numpy as np
+
 from cartoweave.data.api import make_solvepack_from_data_defaults
 from cartoweave.data.io import load_snapshot
 
@@ -34,6 +36,14 @@ def _minimal_generate_cfg(save_path: Path, seed: int = 123) -> dict:
                     "policy": "round_robin",
                     "modes": {"line": "midpoint", "area": "centroid"},
                 },
+                "text": {
+                    "len_range": [12, 46],
+                    "choose_lines": [1, 3],
+                    "font": {"path": "./assets/Roboto-Regular.ttf", "size": 24},
+                    "line_spacing_px": 4,
+                    "padding_px": {"x": 8, "y": 4},
+                },
+                "mutate": {"resample_text_on_size_mutate": True},
                 "save_path": str(save_path),
             },
         }

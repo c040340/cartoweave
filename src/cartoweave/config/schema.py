@@ -185,6 +185,36 @@ class DataAnchors(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DataTextFont(BaseModel):
+    path: str
+    size: int = Field(ge=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DataTextPadding(BaseModel):
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DataTextGenerate(BaseModel):
+    len_range: tuple[int, int]
+    choose_lines: tuple[int, int]
+    font: DataTextFont
+    line_spacing_px: int = Field(ge=0)
+    padding_px: DataTextPadding
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DataMutate(BaseModel):
+    resample_text_on_size_mutate: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DataGenerate(BaseModel):
     counts: DataCounts
     labels: int | None = Field(default=None, ge=0)
@@ -196,6 +226,8 @@ class DataGenerate(BaseModel):
     route_gen: DataRouteGen
     area_gen: DataAreaGen
     anchors: DataAnchors
+    text: DataTextGenerate
+    mutate: DataMutate = Field(default_factory=DataMutate)
     save_path: str | None = None
 
     model_config = ConfigDict(extra="forbid")
@@ -249,6 +281,10 @@ __all__.extend(
         "DataRouteGen",
         "DataAreaGen",
         "DataAnchors",
+        "DataTextFont",
+        "DataTextPadding",
+        "DataTextGenerate",
+        "DataMutate",
         "DataGenerate",
         "DataLoad",
         "DataConfig",

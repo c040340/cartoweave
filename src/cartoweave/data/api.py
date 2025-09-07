@@ -11,6 +11,7 @@ from cartoweave.contracts.solvepack import SolvePack
 from .generate import generate_scene
 from cartoweave.data.io import load_snapshot
 from .action_sequence import generate_action_sequence_strict
+from .textblock import load_font
 
 __all__ = ["make_solvepack_from_data_defaults"]
 
@@ -69,7 +70,24 @@ def make_solvepack_from_data_defaults(
         pack.action_num = len(behaviors)
     else:
         S = cfg.action_num
-        actions = generate_action_sequence_strict(len(labels0), S, rng)
+        txt_cfg = gen.text
+        font = load_font(txt_cfg.font.path, int(txt_cfg.font.size))
+        len_min, len_max = map(int, txt_cfg.len_range)
+        spacing = int(txt_cfg.line_spacing_px)
+        padx = int(txt_cfg.padding_px.x)
+        pady = int(txt_cfg.padding_px.y)
+        resample = bool(gen.mutate.resample_text_on_size_mutate)
+        actions = generate_action_sequence_strict(
+            labels0,
+            S,
+            rng,
+            font,
+            (len_min, len_max),
+            spacing,
+            padx,
+            pady,
+            resample,
+        )
         pack.actions = actions
         pack.action_num = S
 

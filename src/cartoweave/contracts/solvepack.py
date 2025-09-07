@@ -171,7 +171,7 @@ class Label(BaseModel):
     anchor: Anchor
     meta: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     @model_validator(mode="before")
     @classmethod

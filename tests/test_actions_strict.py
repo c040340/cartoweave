@@ -18,3 +18,10 @@ def test_action_sequence_strict_properties():
             for s in seq[1:-1]:
                 assert s.type == "mutate"
             assert seq[-1].type in {"mutate", "disappear"}
+
+    for act in pack.actions:
+        if act.type == "appear":
+            assert act.WH_to == pack.labels0[act.id].WH
+            assert act.kind_to == "rectangular"
+        elif act.type == "mutate":
+            assert act.WH_to is not None

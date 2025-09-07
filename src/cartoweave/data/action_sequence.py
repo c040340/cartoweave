@@ -1,27 +1,42 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
+from PIL import ImageFont
 
-from cartoweave.contracts.solvepack import ActionRecord
+from cartoweave.contracts.solvepack import ActionRecord, Label
+from cartoweave.data.textblock import measure_text_block, random_text_lines
 
 __all__ = ["generate_action_sequence_strict"]
 
 
-def generate_action_sequence_strict(L: int, S: int, rng: np.random.Generator) -> List[ActionRecord]:
-    """Generate a strict sequence of ``S`` actions for ``L`` labels.
+def generate_action_sequence_strict(
+    labels0: List[Label],
+    S: int,
+    rng: np.random.Generator,
+    font: ImageFont.FreeTypeFont,
+    len_range: Tuple[int, int],
+    line_spacing_px: int,
+    padding_x: int,
+    padding_y: int,
+    resample_text_on_size_mutate: bool,
+) -> List[ActionRecord]:
+    """Generate a strict sequence of ``S`` actions for ``labels0``.
 
-    Each label receives at least one ``appear`` when ``S >= L`` and additional
-    actions are distributed uniformly at random.  Action timestamps are sampled
-    in ``(0,1)`` and globally ordered with strict increase.
+    Each label receives at least one ``appear`` when ``S >= len(labels0)`` and
+    additional actions are distributed uniformly at random.  Action timestamps
+    are sampled in ``(0,1)`` and globally ordered with strict increase.  ``WH_to``
+    is populated for ``appear`` and ``mutate`` actions based on Pillow
+    measurement.
     """
+    L = len(labels0)
     if S < 0:
         raise ValueError("S must be >=0")
     if S == 0:
         return []
     if L <= 0:
-        raise ValueError("L must be >0 when S>0")
+        raise ValueError("labels0 must be non-empty when S>0")
 
     if S <= L:
         counts = np.zeros(L, dtype=int)
@@ -51,7 +66,18 @@ def generate_action_sequence_strict(L: int, S: int, rng: np.random.Generator) ->
             types.extend(["mutate"] * (a - 2))
             types.append("mutate" if rng.random() < 0.5 else "disappear")
         for t, tp in zip(times, types):
-            raw_actions.append({"t": float(t), "step": None, "id": lbl_id, "type": tp})
+            act: dict = {"t": float(t), "step": None, "id": lbl_id, "type": tp}
+            if tp == "appear":
+                act["WH_to"] = labels0[lbl_id].WH
+                act["kind_to"] = "rectangular"
+            elif tp == "mutate":
+                if resample_text_on_size_mutate:
+                    lines = random_text_lines(rng, len_range)
+                    W, H = measure_text_block(lines, font, line_spacing_px, padding_x, padding_y)
+                    act["WH_to"] = (float(W), float(H))
+                else:
+                    act["WH_to"] = labels0[lbl_id].WH
+            raw_actions.append(act)
 
     raw_actions.sort(key=lambda a: a["t"])
     last = -1.0
