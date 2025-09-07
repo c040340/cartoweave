@@ -2,7 +2,7 @@
 # Provides parameters for generating random scenes and labels.
 
 data:
-  action_num: 24        # total number of atomic actions to generate
+  action_num: 12        # total number of atomic actions to generate
   # ---- 数据来源 ----
   # 控制 SolvePack 的生成方式：
   #  - generate : 随机生成场景、标签和初始状态（受下方 generate 配置控制）
@@ -20,10 +20,10 @@ data:
                    # 注意：不再强制等于几何数量，可小于或大于，总数≠几何总数时将复用或丢弃几何
                    # 可显式指定整数值以控制标签数
 
-    frame_size: [800, 600]   # 场景边界的宽高，决定生成几何和随机点的空间范围
+    frame_size: [1080, 1920]   # 场景边界的宽高，决定生成几何和随机点的空间范围
                              # 单位通常是像素或世界坐标，取决于可视化
 
-    seed: 7        # 随机数种子，确保生成的场景可复现
+    seed: 127        # 随机数种子，确保生成的场景可复现
                    # 设为 null 可每次运行得到不同随机场景
 
     spacing:
@@ -46,9 +46,9 @@ data:
     # ---- 多边形生成参数 ----
     area_gen:
       inset_margin_scale: 0.04        # 多边形距边界的内缩比例
-      min_edge_spacing_scale: 0.04    # 边与边之间的最小间隔比例
-      n_vertices_min: 3              # 多边形最少顶点数
-      n_vertices_max: 7              # 多边形最多顶点数
+      min_edge_spacing_scale: 0.00001 # 边与边之间的最小间隔比例
+      n_vertices_min: 12              # 多边形最少顶点数
+      n_vertices_max: 32              # 多边形最多顶点数
 
     # ---- 标签锚点分配策略 ----
     anchors:

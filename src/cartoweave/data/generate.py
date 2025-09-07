@@ -7,6 +7,7 @@ import numpy as np
 
 from cartoweave.config.schema import DataGenerate
 from cartoweave.contracts.solvepack import Anchor, Label, Scene
+from cartoweave.data.build_random.areas import generate_areas
 from cartoweave.data.primitives.polygons import generate_polygon_by_area
 from cartoweave.data.sampling.helpers import (
     frame_metrics,
@@ -123,7 +124,7 @@ def _area_anchor_xy(poly: np.ndarray, mode: str, rng: np.random.Generator) -> np
 
 def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
     """Generate geometry, labels and initial positions from ``gen_cfg``."""
-
+    backend = getattr(gen_cfg, "backend", "build_random")
     w, h = map(float, gen_cfg.frame_size)
     diag, area_total = frame_metrics((w, h))
     counts = gen_cfg.counts
@@ -189,18 +190,37 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
 
     # Areas
     areas: list[np.ndarray] = []
-    area_inset = spacing.margin + ag.inset_margin_scale * diag
-    edge_spacing = ag.min_edge_spacing_scale * diag
-    for _ in range(int(counts.areas)):
-        poly = generate_polygon_by_area(
-            rng,
-            (w, h),
-            0.02 * area_total,
-            area_inset,
-            edge_spacing,
-            (ag.n_vertices_min, ag.n_vertices_max),
-        )
-        areas.append(poly)
+    if counts.areas > 0:
+        if backend == "build_random":
+            # 适配 build_random.areas.generate_areas(params, rng) 的入参风格
+            params = {
+                "frame": {"width": int(w), "height": int(h)},
+                "counts": {"areas": int(counts.areas)},
+                "random": {
+                    "area_gen": {
+                        "inset_margin_scale": float(ag.inset_margin_scale),
+                        "min_edge_spacing_scale": float(ag.min_edge_spacing_scale),
+                        "n_vertices_min": int(ag.n_vertices_min),
+                        "n_vertices_max": int(ag.n_vertices_max),
+                    }
+                },
+            }
+            polys = generate_areas(params, rng)
+            areas = [np.asarray(p, float) for p in polys]
+        else:
+            # 保留原 primitives 路线作为备选
+            area_inset = spacing.margin + ag.inset_margin_scale * diag
+            edge_spacing = ag.min_edge_spacing_scale * diag
+            for _ in range(int(counts.areas)):
+                poly = generate_polygon_by_area(
+                    rng,
+                    (w, h),
+                    0.02 * area_total,  # 原来的 2% 目标面积
+                    area_inset,
+                    edge_spacing,
+                    (ag.n_vertices_min, ag.n_vertices_max),
+                )
+                areas.append(poly)
 
     # Convert geometry to scene pools
     points_list = [tuple(map(float, p)) for p in points]
