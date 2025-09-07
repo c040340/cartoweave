@@ -64,32 +64,27 @@ def make_solvepack_from_data_defaults(
         behaviors=[],
     )
 
-    behaviors = getattr(cfg, "behaviors", None)
-    if behaviors:
-        pack.behaviors = list(behaviors)
-        pack.action_num = len(behaviors)
-    else:
-        S = cfg.action_num
-        txt_cfg = gen.text
-        font = load_font(txt_cfg.font.path, int(txt_cfg.font.size))
-        len_min, len_max = map(int, txt_cfg.len_range)
-        spacing = int(txt_cfg.line_spacing_px)
-        padx = int(txt_cfg.padding_px.x)
-        pady = int(txt_cfg.padding_px.y)
-        resample = bool(gen.mutate.resample_text_on_size_mutate)
-        actions = generate_action_sequence_strict(
-            labels0,
-            S,
-            rng,
-            font,
-            (len_min, len_max),
-            spacing,
-            padx,
-            pady,
-            resample,
-        )
-        pack.actions = actions
-        pack.action_num = S
+    S = cfg.action_num
+    txt_cfg = gen.text
+    font = load_font(txt_cfg.font.path, int(txt_cfg.font.size))
+    len_min, len_max = map(int, txt_cfg.len_range)
+    spacing = int(txt_cfg.line_spacing_px)
+    padx = int(txt_cfg.padding_px.x)
+    pady = int(txt_cfg.padding_px.y)
+    resample = bool(gen.mutate.resample_text_on_size_mutate)
+    actions = generate_action_sequence_strict(
+        labels0,
+        S,
+        rng,
+        font,
+        (len_min, len_max),
+        spacing,
+        padx,
+        pady,
+        resample,
+    )
+    pack.actions = actions
+    pack.action_num = S
 
     gen_cfg = gen
     save_path = getattr(gen_cfg, "save_path", None) or "./snapshots/default_pack.json"

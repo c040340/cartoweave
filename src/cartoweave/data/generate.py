@@ -43,13 +43,12 @@ def _polyline_by_length(
     x0, y0, x1, y1 = rect
     p = np.array([rng.uniform(x0, x1), rng.uniform(y0, y1)])
     pts = [p]
-    ang = rng.uniform(-math.pi, math.pi)
     total = 0.0
     while total < length_target:
-        ang += rng.normal(0.0, angle_sigma)
+        ang = rng.normal(0, angle_sigma * math.pi)
         step = max(
             min_vertex_spacing,
-            rng.normal(segment_len_scale, 0.3 * segment_len_scale),
+            rng.normal(min_vertex_spacing, 0.3 * min_vertex_spacing),
         )
         q = p + step * np.array([math.cos(ang), math.sin(ang)])
         q = project_to_rect_inset(q, rect)
@@ -136,14 +135,12 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
 
     # Points via simple Poisson sampling inside margin
     if counts.points > 0:
-        pts = poisson_disc(
-            rng,
-            w - 2 * spacing.margin,
-            h - 2 * spacing.margin,
-            spacing.min_point_dist,
-            x0=spacing.margin,
-            y0=spacing.margin,
-        )
+        pts = []
+        for i in range(counts.points):
+            x = rng.uniform(0.0, w - 2 * spacing.margin)
+            y = rng.uniform(0.0, h - 2 * spacing.margin)
+            pts.append([x, y])
+        pts = np.array(pts)
         points = pts[: counts.points]
         if points.shape[0] < counts.points:
             # fallback random sampling if Poisson not enough
@@ -164,7 +161,7 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
     min_spacing = max(1e-6, rt.min_vertex_spacing_scale * seg_len0)
     inset = spacing.margin + rt.inset_margin_scale * diag
     for _ in range(int(counts.lines)):
-        length_target = seg_len0 * rng.uniform(4.0, 6.0)
+        length_target = seg_len0 * rng.uniform(0.8, 1.2)
         line = _polyline_by_length(
             rng,
             (w, h),

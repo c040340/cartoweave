@@ -37,10 +37,10 @@ data:
 
     # ---- 折线路径生成参数 ----
     route_gen:
-      min_vertex_spacing_scale: 1.0   # 顶点间距比例因子（基于 frame_size 缩放）
-      inset_margin_scale: 0.05        # 折线距边界的内缩比例
-      segment_len_scale: 0.10         # 目标段长相对于 frame_size 的比例
-      angle_noise_sigma: 0.0          # 顶点角度的随机扰动标准差（弧度）
+      min_vertex_spacing_scale: 0.03   # 顶点间距比例因子（基于 segment length 缩放）
+      inset_margin_scale: 0.2        # 折线距边界的内缩比例
+      segment_len_scale: 0.2        # 目标段长相对于 frame_size 的比例
+      angle_noise_sigma: 0.25           # 顶点角度的随机扰动标准差（弧度）
                                       # 设置 >0 可生成不规则折线
 
     # ---- 多边形生成参数 ----
