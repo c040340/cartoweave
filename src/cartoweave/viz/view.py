@@ -87,8 +87,8 @@ def _compute_anchors(
     fs = (0.0, 0.0) if frame_size is None else frame_size
     anchors = []
     for lab in labels:
-        kind = str(lab.get("anchor_kind", ""))
-        idx = lab.get("anchor_index")
+        kind = lab.anchor.target
+        idx = lab.anchor.index
         if isinstance(idx, int) and kind:
             qx, qy = anchor_xy(kind, idx, data_geo, fs)
             anchors.append((qx, qy))
@@ -104,12 +104,9 @@ def _label_name(lab: Dict[str, Any], index: int) -> str:
     Falls back to the numeric index when no explicit identifier is stored in
     the label dictionary.
     """
-
-    for key in ("uid", "id", "name"):
-        val = lab.get(key)
-        if isinstance(val, str) and val:
-            return val
-    return str(index)
+    text0 = lab.kind[0]
+    text = text0 + str(lab.id)
+    return text
 
 
 def interactive_view(

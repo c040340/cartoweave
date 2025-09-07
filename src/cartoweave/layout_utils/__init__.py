@@ -9,7 +9,7 @@ def is_circle_label(lab: Dict) -> bool:
     drawn as simple discs without a surrounding rectangle or text box and are
     excluded from the solver's active subset.
     """
-    return lab.get("mode") == "circle"
+    return lab.meta["mode"] == "circle"
 
 
 __all__ = ["is_circle_label"]

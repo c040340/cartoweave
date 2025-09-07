@@ -133,12 +133,8 @@ def _as_vec2(a: Any) -> Optional[np.ndarray]:
 
 def _label_text(lab: Dict[str, Any], index: int) -> str:
     """Return a short identifier for *lab* used in the layout view."""
-
-    for key in ("uid", "id", "name"):
-        val = lab.get(key)
-        if isinstance(val, str) and val:
-            return val
-    return f"{index}"
+    text = lab.kind + str(lab.id)
+    return f"{text}"
 
 
 def _format_pct(pct: float) -> str:
