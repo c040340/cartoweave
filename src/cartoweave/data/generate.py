@@ -44,8 +44,9 @@ def _polyline_by_length(
     p = np.array([rng.uniform(x0, x1), rng.uniform(y0, y1)])
     pts = [p]
     total = 0.0
+    ang = rng.uniform(-math.pi, math.pi)
     while total < length_target:
-        ang = rng.normal(0, angle_sigma * math.pi)
+        ang += rng.normal(0, angle_sigma * math.pi)
         step = max(
             min_vertex_spacing,
             rng.normal(min_vertex_spacing, 0.3 * min_vertex_spacing),
@@ -53,7 +54,7 @@ def _polyline_by_length(
         q = p + step * np.array([math.cos(ang), math.sin(ang)])
         q = project_to_rect_inset(q, rect)
         if np.linalg.norm(q - p) < min_vertex_spacing:
-            ang += math.pi / 2.0
+            #ang += math.pi / 2.0
             q = project_to_rect_inset(
                 p + step * np.array([math.cos(ang), math.sin(ang)]), rect
             )
