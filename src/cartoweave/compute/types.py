@@ -6,6 +6,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+# Re-export the strict ViewPack contract for downstream modules.
+from cartoweave.contracts.viewpack_v1 import (
+    ViewPack,
+    VPFrame,
+    VPPass,
+    VPSources,
+)
+
 Array2 = np.ndarray  # shape == (L, 2)
 
 
@@ -30,8 +38,8 @@ Event = Dict[str, Union[str, int, float, Dict[str, Union[str, int, float]]]]
 
 
 @dataclass
-class ViewPack:
-    """Result container returned by :func:`cartoweave.compute.solve.solve`."""
+class RecorderViewPack:
+    """Legacy result container used by :class:`cartoweave.compute.recorder.Recorder`."""
 
     frames: List[Frame]
     events: List[Event]
@@ -58,11 +66,15 @@ def _grad_metrics(G: Optional[Array2]) -> Dict[str, float]:
 
 
 __all__ = [
-    "Frame",
-    "ViewPack",
-    "Event",
     "Array2",
     "EnergyFn",
+    "Event",
+    "Frame",
+    "RecorderViewPack",
+    "ViewPack",
+    "VPFrame",
+    "VPPass",
+    "VPSources",
     "_grad_metrics",
 ]
 

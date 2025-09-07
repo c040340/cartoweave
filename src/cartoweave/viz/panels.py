@@ -133,8 +133,17 @@ def _as_vec2(a: Any) -> Optional[np.ndarray]:
 
 def _label_text(lab: Dict[str, Any], index: int) -> str:
     """Return a short identifier for *lab* used in the layout view."""
-    text = lab.kind + str(lab.id)
-    return f"{text}"
+
+    kind = getattr(lab, "kind", None)
+    lab_id = getattr(lab, "id", None)
+    if isinstance(lab, dict):
+        kind = lab.get("kind", kind)
+        lab_id = lab.get("id", lab_id)
+    if kind is None:
+        kind = "L"
+    if lab_id is None:
+        lab_id = index
+    return f"{kind}{lab_id}"
 
 
 def _format_pct(pct: float) -> str:

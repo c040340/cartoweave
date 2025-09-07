@@ -105,8 +105,8 @@ def test_generator_behavior_and_anchor_reuse():
 def test_end_to_end_solve_and_no_label_geometry_refs():
     pack = make_solvepack_from_data_defaults("configs/data.yaml")
     view = solve(pack)
-    assert len(view.frames) >= 1
-    for arr in view.last.comps.values():
+    assert view.num_frames() >= 1
+    for arr in view.frames[-1].comps.values():
         assert arr.shape == (pack.L, 2)
         assert np.isfinite(arr).all()
 

@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from .types import Array2, Event, Frame, ViewPack
+from .types import (
+    Array2,
+    Event,
+    Frame,
+    RecorderViewPack,
+    ViewPack,
+    VPFrame,
+    VPPass,
+    VPSources,
+)
 
 
 class Recorder:
@@ -88,8 +97,8 @@ class Recorder:
             self.events.extend(events)
 
     # ------------------------------------------------------------------
-    def to_viewpack(self, p_final: Array2, labels: list[Any]) -> ViewPack:
-        """Convert captured data to a :class:`ViewPack`."""
+    def to_viewpack(self, p_final: Array2, labels: list[Any]) -> RecorderViewPack:
+        """Convert captured data to a :class:`RecorderViewPack`."""
 
         if not self.frames:
             # ensure at least one frame exists for ViewPack.last
@@ -121,8 +130,159 @@ class Recorder:
             "global_iters": self.pm.eval_index,
             "pass_stats": self.pm.collect_stats(),
         }
-        return ViewPack(frames=self.frames, events=self.events, last=last, summary=summary)
+        return RecorderViewPack(
+            frames=self.frames, events=self.events, last=last, summary=summary
+        )
 
 
-__all__ = ["Recorder"]
+class ViewRecorder:
+    """Build a :class:`ViewPack` by recording full frames during optimization."""
+
+    def __init__(self) -> None:
+        self.N: int = 0
+        self.labels: List[dict] = []
+        self.WH: Optional[np.ndarray] = None
+        self.sources: Optional[VPSources] = None
+        self.defaults: Dict[str, Any] = {}
+        self.aux: Dict[str, Any] = {}
+        self.frames: List[VPFrame] = []
+        self.passes: List[VPPass] = []
+        self._current_pass: Optional[tuple[int, str, int]] = None
+
+    # ------------------------------------------------------------------
+    def start_run(
+        self,
+        N: int,
+        labels: List[dict],
+        WH: Optional[np.ndarray],
+        sources: VPSources,
+        defaults: Dict[str, Any],
+        aux: Dict[str, Any],
+    ) -> None:
+        """Initialize run metadata before recording frames."""
+
+        self.N = int(N)
+        self.labels = labels
+        self.WH = None if WH is None else np.asarray(WH, float)
+        self.sources = sources
+        self.defaults = defaults
+        self.aux = aux
+        self.frames = []
+        self.passes = []
+        self._current_pass = None
+
+    # ------------------------------------------------------------------
+    def start_pass(self, pass_id: int, pass_name: str) -> None:
+        if self._current_pass is not None:
+            raise RuntimeError("previous pass not closed")
+        self._current_pass = (pass_id, pass_name, len(self.frames))
+
+    def end_pass(self) -> None:
+        if self._current_pass is None:
+            raise RuntimeError("end_pass called without active pass")
+        pass_id, pass_name, t_start = self._current_pass
+        t_end = len(self.frames)
+        self.passes.append(VPPass(pass_id, pass_name, t_start, t_end))
+        self._current_pass = None
+
+    # ------------------------------------------------------------------
+    def record_frame(
+        self,
+        *,
+        t: int,
+        P_full: np.ndarray,
+        comps_full: Dict[str, np.ndarray],
+        E: float,
+        active_mask: np.ndarray,
+        meta_base: Dict[str, Any],
+        metrics: Dict[str, float],
+        field: Optional[np.ndarray],
+        G_snapshot: Optional[np.ndarray],
+    ) -> None:
+        if t != len(self.frames):
+            raise ValueError(
+                f"record_frame: expected t={len(self.frames)}, got {t}"
+            )
+        P = np.asarray(P_full, float)
+        if P.shape != (self.N, 2):
+            raise ValueError(f"P_full shape {P.shape} != ({self.N},2)")
+
+        mask = np.asarray(active_mask, bool)
+        if mask.shape != (self.N,):
+            raise ValueError(
+                f"active_mask shape {mask.shape} != ({self.N},)"
+            )
+
+        comps: Dict[str, np.ndarray] = {}
+        for term, arr in comps_full.items():
+            arr2 = np.asarray(arr, float)
+            if arr2.shape != (self.N, 2):
+                raise ValueError(
+                    f"comps_full term '{term}' shape {arr2.shape} != ({self.N},2)"
+                )
+            arr2 = arr2.copy()
+            arr2[~mask] = 0.0
+            comps[term] = arr2
+
+        meta = dict(meta_base)
+        events: List[dict] = list(meta.pop("events", []))
+        step_info = meta.pop("optimizer_step", None)
+        if step_info is not None:
+            events.append(
+                {
+                    "kind": "optimizer_step",
+                    "algo": step_info.get("algo"),
+                    "iter_in_algo": step_info.get("iter_in_algo"),
+                    "step_size": step_info.get("step_size"),
+                    "ls_evals": step_info.get("ls_evals"),
+                    "wolfe": step_info.get("wolfe"),
+                    "delta_E": step_info.get("delta_E"),
+                    "gnorm": step_info.get("gnorm"),
+                }
+            )
+        if not events:
+            events.append(
+                {"kind": "state_snapshot", "note": "no optimizer step this frame"}
+            )
+
+        meta["events"] = events
+        meta["global_iter"] = t
+        active_ids = np.flatnonzero(mask).tolist()
+        meta["active_ids"] = active_ids
+        meta["active_count"] = len(active_ids)
+        if G_snapshot is not None:
+            meta["G_snapshot"] = np.asarray(G_snapshot, float)
+
+        frame = VPFrame(
+            t=t,
+            P=P,
+            comps=comps,
+            E=float(E),
+            active_mask=mask,
+            meta=meta,
+            metrics=metrics,
+            field=None if field is None else np.asarray(field, float),
+        )
+        frame.validate(self.N)
+        self.frames.append(frame)
+
+    # ------------------------------------------------------------------
+    def finish(self) -> ViewPack:
+        if self._current_pass is not None:
+            self.end_pass()
+        assert self.sources is not None, "start_run must be called before finish"
+        return ViewPack(
+            schema_version="viewpack-v1",
+            N=self.N,
+            labels=self.labels,
+            WH=self.WH,
+            frames=self.frames,
+            passes=self.passes,
+            sources=self.sources,
+            defaults=self.defaults,
+            aux=self.aux,
+        )
+
+
+__all__ = ["Recorder", "ViewRecorder"]
 

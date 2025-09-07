@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 import numpy as np
 
-from .types import ViewPack
+from .types import ViewPack, RecorderViewPack
 
 
-def to_old_payload(vp: ViewPack) -> Dict[str, Any]:
-    """Convert a :class:`ViewPack` to the old visualization payload format.
+def to_old_payload(vp: Union[ViewPack, RecorderViewPack]) -> Dict[str, Any]:
+    """Convert a ViewPack to the old visualization payload format.
 
     The returned structure contains minimal fields expected by earlier
     visualization utilities.
@@ -32,5 +32,5 @@ def to_old_payload(vp: ViewPack) -> Dict[str, Any]:
         "G_seq": G_seq,
         "comps_seq": comps_seq,
         "stage_seq": stage_seq,
-        "summary": dict(vp.summary),
+        "summary": dict(getattr(vp, "summary", {})),
     }

@@ -24,6 +24,11 @@ def test_nan_injection_emits_event():
     )
     object.__setattr__(sp, "passes", ["inject_nan"])
     vp = solve(sp)
-    events = [e for e in vp.events if e.get("pass") == "wrap_energy" and e.get("info") == "nonfinite"]
+    events = [
+        e
+        for fr in vp.frames
+        for e in fr.meta["events"]
+        if e.get("pass") == "wrap_energy" and e.get("info") == "nonfinite"
+    ]
     assert events and events[0]["metrics"].get("nonfinite_G", 0) > 0
     del REGISTRY["inject_nan"]

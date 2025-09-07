@@ -14,7 +14,7 @@ def test_pass_stats():
     }
     sp = make_solvepack_from_data_defaults(compute_cfg=compute_cfg)
     vp = solve(sp)
-    ps = vp.summary.get("pass_stats", {})
-    assert ps.get("NaNGuardPass", {}).get("fixed_frames", 0) >= 0
-    assert ps.get("GradClipPass", {}).get("clipped_frames", 0) >= 0
-    assert ps.get("StepLimitPass", {}).get("clamped_steps", 0) >= 0
+    events = [
+        e for fr in vp.frames for e in fr.meta["events"] if e.get("pass")
+    ]
+    assert events  # passes emitted events
