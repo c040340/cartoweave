@@ -8,20 +8,20 @@ import numpy as np
 
 from cartoweave.compute import solve
 from cartoweave.config.loader import load_configs
-from cartoweave.data.api import build_solvepack_from_config
+from cartoweave.data.api import make_solvepack_from_data_defaults
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", type=str, default=None, help="Unused placeholder")
     ap.add_argument("--overrides", type=str, default=None)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     overrides = json.loads(args.overrides) if args.overrides else None
-    merged = load_configs(overrides=overrides)
-    # merged["data"] = {"generate": {"num_labels": 5}}
-    pack = build_solvepack_from_config(merged, seed=args.seed)
+    compute_cfg = load_configs(overrides=overrides)["compute"]
+    pack = make_solvepack_from_data_defaults(
+        compute_cfg=compute_cfg, data_path="configs/data.yaml"
+    )
     pack.validate()
     view = solve(pack)
     last = view.last

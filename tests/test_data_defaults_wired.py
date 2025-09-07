@@ -1,3 +1,4 @@
+# ruff: noqa: S101, N806
 import numpy as np
 
 from cartoweave.config.loader import load_data_defaults
@@ -18,12 +19,12 @@ def test_generate_scene_shapes_and_ranges():
     rng = np.random.default_rng(1)
     P0, labels0, active0, scene0 = generate_scene(cfg.generate, rng)
     assert P0.shape[1] == 2
-    total = (
-        cfg.generate.counts.points
-        + cfg.generate.counts.lines
-        + cfg.generate.counts.areas
-    )
-    assert len(labels0) == total
+    counts = cfg.generate.counts
+    assert len(scene0.points) == counts.points
+    assert len(scene0.lines) == counts.lines
+    assert len(scene0.areas) == counts.areas
+    expect_labels = cfg.generate.labels or (counts.points + counts.lines + counts.areas)
+    assert len(labels0) == expect_labels
     for lbl in labels0:
-        if lbl.kind == "line" and lbl.polyline is not None:
-            assert len(lbl.polyline) >= cfg.generate.shapes.line_min_vertices
+        assert not hasattr(lbl, "polyline")
+        assert not hasattr(lbl, "polygon")

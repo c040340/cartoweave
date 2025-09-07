@@ -1,25 +1,13 @@
-"""Minimal example using the config-driven data API."""
+"""Minimal example using the default data configuration."""
 
 from cartoweave.compute import solve
-from cartoweave.data.api import build_solvepack_from_config
+from cartoweave.data.api import make_solvepack_from_data_defaults
 
 
-def main():
-    cfg = {
-        "data": {
-            "source": "generate",
-            "generate": {
-                "frame_size": [100, 100],
-                "num_labels": 1,
-                "num_points": 0,
-                "num_lines": 0,
-                "num_areas": 0,
-                "num_steps": 1,
-                "seed": 0,
-            },
-        }
-    }
-    sp = build_solvepack_from_config(cfg, seed=0)
+def main() -> None:
+    sp = make_solvepack_from_data_defaults(
+        compute_cfg={"weights": {"anchor.spring": 1.0}}
+    )
     sp.validate()
     view = solve(sp)
     print("[minimal_solve] final positions", view.last.P)

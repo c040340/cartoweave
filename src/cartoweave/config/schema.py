@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Tuple, Literal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Eps(BaseModel):
@@ -116,7 +116,7 @@ class Solver(BaseModel):
 class Compute(BaseModel):
     eps: Eps
     passes: Passes
-    weights: Dict[str, float] = Field(default_factory=dict)
+    weights: dict[str, float] = Field(default_factory=dict)
     solver: Solver
 
     model_config = ConfigDict(extra="forbid")
@@ -133,16 +133,8 @@ class DataCounts(BaseModel):
     points: int = Field(ge=0)
     lines: int = Field(ge=0)
     areas: int = Field(ge=0)
-    total_labels: Optional[int] = Field(default=None, ge=0)
 
     model_config = ConfigDict(extra="forbid")
-
-    @model_validator(mode="after")
-    def _check_total(self):  # type: ignore[override]
-        if self.total_labels is not None:
-            if self.total_labels != self.points + self.lines + self.areas:
-                raise ValueError("total_labels must equal points+lines+areas")
-        return self
 
 
 class DataSpacing(BaseModel):
@@ -185,7 +177,7 @@ class DataAreaGen(BaseModel):
 
 class DataAnchors(BaseModel):
     policy: Literal["round_robin", "random", "fixed"] = "round_robin"
-    modes: Dict[
+    modes: dict[
         str,
         Literal["midpoint", "centroid", "projected", "center", "nearest_edge"],
     ] = Field(default_factory=lambda: {"line": "midpoint", "area": "centroid"})
@@ -195,9 +187,11 @@ class DataAnchors(BaseModel):
 
 class DataGenerate(BaseModel):
     counts: DataCounts
+    labels: int | None = Field(default=None, ge=0)
+    label_mix: dict[str, float] | None = None
     steps: int = Field(ge=1)
-    frame_size: Tuple[float, float]
-    seed: Optional[int] = None
+    frame_size: tuple[float, float]
+    seed: int | None = None
     spacing: DataSpacing
     shapes: DataShapes
     route_gen: DataRouteGen
@@ -208,7 +202,7 @@ class DataGenerate(BaseModel):
 
     @field_validator("frame_size")
     @classmethod
-    def _check_frame(cls, v: Tuple[float, float]) -> Tuple[float, float]:
+    def _check_frame(cls, v: tuple[float, float]) -> tuple[float, float]:
         if len(v) != 2 or any(not math.isfinite(x) or x <= 0 for x in v):
             raise ValueError("frame_size must be positive finite (W,H)")
         return v
@@ -222,9 +216,9 @@ class DataLoad(BaseModel):
 
 class DataConfig(BaseModel):
     source: Literal["generate", "load"] = "generate"
-    generate: Optional[DataGenerate] = None
-    load: Optional[DataLoad] = None
-    behaviors: List[dict] = Field(default_factory=list)
+    generate: DataGenerate | None = None
+    load: DataLoad | None = None
+    behaviors: list[dict] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 

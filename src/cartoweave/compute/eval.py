@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Compute-only energy and gradient aggregator.
 
 All force terms are evaluated through :mod:`cartoweave.compute.forces` and
@@ -13,26 +12,30 @@ For each enabled term a force field ``F_i`` is produced. We ensure shapes are
 """
 
 from __future__ import annotations
-from typing import Dict, Tuple, Any, List
+
+from typing import Any
+
 import numpy as np
 
-from .forces import REGISTRY as _CMP_REG, enabled_terms as _cmp_enabled
+from .forces import REGISTRY as _CMP_REG
+from .forces import enabled_terms as _cmp_enabled
+from .geom_anchor_resolver import anchor_position
 
 Array2 = np.ndarray
 
 
-def _as_active_ids(mask: np.ndarray) -> List[int]:
+def _as_active_ids(mask: np.ndarray) -> list[int]:
     mask = np.asarray(mask, bool)
     return np.where(mask)[0].tolist()
 def energy_and_grad_full(
-    P: Array2,
+    P: Array2,  # noqa: N803
     labels: Any,
-    scene: Dict[str, Any],
+    scene: dict[str, Any],
     active_mask: np.ndarray,
     cfg: dict,
-) -> Tuple[float, Array2, Dict[str, Array2]]:
+) -> tuple[float, Array2, dict[str, Array2]]:
     """Aggregate energy and gradient across all enabled force terms"""
-    P = np.asarray(P, float)
+    P = np.asarray(P, float)  # noqa: N806
     active_mask = np.asarray(active_mask, bool)
 
     sc = dict(scene or {})
@@ -43,47 +46,51 @@ def energy_and_grad_full(
     ids = _as_active_ids(active_mask)
     sc["_active_ids"] = ids
     sc["_active_ids_solver"] = ids
+    labels_all = sc.get("labels", [])
+    sc["anchors"] = np.asarray(
+        [anchor_position(labels_all[i], sc, P) for i in ids], dtype=float
+    )
 
-    E_total = 0.0
+    energy_total = 0.0
     g = np.zeros_like(P)
-    comps: Dict[str, Array2] = {}
+    comps: dict[str, Array2] = {}
 
     # Phase 1: pre_anchor
-    Fsum_ext = np.zeros_like(P)
+    fsum_ext = np.zeros_like(P)
     for name in _cmp_enabled(cfg, phase="pre_anchor"):
         fn = _CMP_REG.get(name)
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
-        E_i, F_i, _ = fn(sc, P, cfg, phase="pre_anchor")
-        if F_i is None:
-            F_i = np.zeros_like(P)
-        F_i = np.asarray(F_i, float)
-        E_total += float(E_i)
-        comps[name] = F_i
-        Fsum_ext += F_i
+        e_i, f_i, _ = fn(sc, P, cfg, phase="pre_anchor")
+        if f_i is None:
+            f_i = np.zeros_like(P)
+        f_i = np.asarray(f_i, float)
+        energy_total += float(e_i)
+        comps[name] = f_i
+        fsum_ext += f_i
 
     # Phase 2: anchor
-    sc["_ext_dir"] = Fsum_ext.copy()
+    sc["_ext_dir"] = fsum_ext.copy()
     for name in _cmp_enabled(cfg, phase="anchor"):
         fn = _CMP_REG.get(name)
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
-        E_i, F_i, _ = fn(sc, P, cfg, phase="anchor")
-        if F_i is None:
-            F_i = np.zeros_like(P)
-        F_i = np.asarray(F_i, float)
-        E_total += float(E_i)
-        comps[name] = F_i
+        e_i, f_i, _ = fn(sc, P, cfg, phase="anchor")
+        if f_i is None:
+            f_i = np.zeros_like(P)
+        f_i = np.asarray(f_i, float)
+        energy_total += float(e_i)
+        comps[name] = f_i
 
     # ∇E = -ΣF
-    for F_i in comps.values():
-        g -= F_i
+    for f_i in comps.values():
+        g -= f_i
 
     # mask inactive rows
     g[~active_mask] = 0.0
-    for k, Fi in comps.items():
-        Fi = Fi.copy()
-        Fi[~active_mask] = 0.0
-        comps[k] = Fi
+    for k, f_i in comps.items():
+        f_i = f_i.copy()
+        f_i[~active_mask] = 0.0
+        comps[k] = f_i
 
-    return float(E_total), g, comps
+    return float(energy_total), g, comps

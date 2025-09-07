@@ -1,24 +1,18 @@
-from cartoweave.data.api import build_solvepack_from_config
+# ruff: noqa: S101
 from cartoweave.compute.run import solve
+from cartoweave.data.api import make_solvepack_from_data_defaults
 
 
 def test_pass_stats():
-    cfg = {
-        "data": {
-            "source": "generate",
-            "generate": {"num_points": 2, "num_lines": 0, "num_areas": 0, "num_steps": 1},
-        },
-        "compute": {
-            "passes": {
-                "nan_guard": {},
-                "grad_clip": {"max_norm": 1.0},
-                "step_limit": {"max_step_norm": 1.5},
-                "capture": {"every": 1},
-            }
-        },
-        "behaviors": [{"solver": "lbfgs", "iters": 1}],
+    compute_cfg = {
+        "passes": {
+            "nan_guard": {},
+            "grad_clip": {"max_norm": 1.0},
+            "step_limit": {"max_step_norm": 1.5},
+            "capture": {"every": 1},
+        }
     }
-    sp = build_solvepack_from_config(cfg, seed=1)
+    sp = make_solvepack_from_data_defaults(compute_cfg=compute_cfg)
     vp = solve(sp)
     ps = vp.summary.get("pass_stats", {})
     assert ps.get("NaNGuardPass", {}).get("fixed_frames", 0) >= 0

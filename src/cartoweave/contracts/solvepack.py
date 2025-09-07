@@ -1,8 +1,9 @@
-"""Strict SolvePack schema using Pydantic models.
+"""SolvePack v2 strict contract using Pydantic models.
 
-This module defines a minimal contract used by the compute layer. The schema is
-not backwards compatible with the previous dataclass based implementation. Any
-unknown fields will raise validation errors.
+This module defines the "SolvePack" schema used by the compute layer.  The
+contract is intentionally strict and non‑legacy: geometry is stored only in the
+scene pools and labels carry no embedded geometry.  Any unknown fields result in
+validation errors.
 """
 
 from __future__ import annotations
@@ -10,15 +11,20 @@ from __future__ import annotations
 import math
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    field_validator,
+    model_validator,
+)
 
 # ---------------------------------------------------------------------------
 # Helper type aliases
 # ---------------------------------------------------------------------------
 
 XY = tuple[float, float]
-Polygon = list[XY]
-Polyline = list[XY]
 
 
 # ---------------------------------------------------------------------------
@@ -26,19 +32,53 @@ Polyline = list[XY]
 # ---------------------------------------------------------------------------
 
 class Scene(BaseModel):
-    """Static geometry of the scene."""
+    """Static geometry containers of the scene."""
 
     frame_size: XY
+    points: list[XY] = Field(default_factory=list)
+    lines: list[list[XY]] = Field(default_factory=list)
+    areas: list[list[XY]] = Field(default_factory=list)
     bounds: tuple[float, float, float, float] | None = None
     padding: float | None = None
 
     model_config = ConfigDict(extra="forbid")
 
+    # --- validators -----------------------------------------------------
     @field_validator("frame_size")
     @classmethod
     def _check_frame_size(cls, v: XY) -> XY:
         if len(v) != 2 or any(not math.isfinite(x) or x <= 0 for x in v):
             raise ValueError("frame_size must be positive finite (W,H)")
+        return v
+
+    @field_validator("points")
+    @classmethod
+    def _check_points(cls, v: list[XY]) -> list[XY]:
+        for i, xy in enumerate(v):
+            if len(xy) != 2 or any(not math.isfinite(c) for c in xy):
+                raise ValueError(f"points[{i}] must be finite (x,y)")
+        return v
+
+    @field_validator("lines")
+    @classmethod
+    def _check_lines(cls, v: list[list[XY]]) -> list[list[XY]]:
+        for i, line in enumerate(v):
+            if len(line) < 2:
+                raise ValueError(f"lines[{i}] must have >=2 vertices")
+            for j, xy in enumerate(line):
+                if len(xy) != 2 or any(not math.isfinite(c) for c in xy):
+                    raise ValueError(f"lines[{i}][{j}] must be finite (x,y)")
+        return v
+
+    @field_validator("areas")
+    @classmethod
+    def _check_areas(cls, v: list[list[XY]]) -> list[list[XY]]:
+        for i, area in enumerate(v):
+            if len(area) < 3:
+                raise ValueError(f"areas[{i}] must have >=3 vertices")
+            for j, xy in enumerate(area):
+                if len(xy) != 2 or any(not math.isfinite(c) for c in xy):
+                    raise ValueError(f"areas[{i}][{j}] must be finite (x,y)")
         return v
 
     @field_validator("bounds")
@@ -61,39 +101,86 @@ class Scene(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Label model
+# Anchor model
 # ---------------------------------------------------------------------------
 
+AnchorTarget = Literal["free", "point", "line", "area"]
+PointMode = Literal["exact", "offset"]
+LineMode = Literal["midpoint", "projected", "centroid"]
+AreaMode = Literal["centroid", "center", "nearest_edge"]
+FreeMode = Literal["xy"]
+
+
 class Anchor(BaseModel):
-    mode: Literal["xy", "centroid", "line_midpoint", "bbox_center"]
+    target: AnchorTarget
+    index: int | None = None
+    mode: PointMode | LineMode | AreaMode | FreeMode
     xy: XY | None = None
 
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
-    def _check_xy(self):  # type: ignore[override]
-        if self.mode == "xy":
+    def _check(self):
+        if self.target == "free":
+            if self.index is not None:
+                raise ValueError("index must be None when target='free'")
+            if self.mode != "xy":
+                raise ValueError("mode must be 'xy' when target='free'")
             if self.xy is None:
-                raise ValueError("anchor.xy required when mode='xy'")
-            if len(self.xy) != 2 or any(not math.isfinite(x) for x in self.xy):
-                raise ValueError("anchor.xy must be finite (x,y)")
-        elif self.xy is not None:
-            raise ValueError("anchor.xy only allowed when mode='xy'")
+                raise ValueError("xy required when target='free'")
+            if len(self.xy) != 2 or any(not math.isfinite(c) for c in self.xy):
+                raise ValueError("xy must be finite (x,y)")
+        else:
+            if self.index is None or self.index < 0:
+                raise ValueError("index must be >=0 when target!='free'")
+            if self.target == "point":
+                if self.mode not in ("exact", "offset"):
+                    raise ValueError("invalid mode for point target")
+                if self.mode == "offset":
+                    if self.xy is not None:
+                        if len(self.xy) != 2 or any(not math.isfinite(c) for c in self.xy):
+                            raise ValueError("xy must be finite (x,y)")
+                elif self.xy is not None:
+                    raise ValueError("xy only allowed for point/offset")
+            elif self.target == "line":
+                if self.mode not in ("midpoint", "projected", "centroid"):
+                    raise ValueError("invalid mode for line target")
+                if self.xy is not None:
+                    raise ValueError("xy only allowed for point/offset")
+            elif self.target == "area":
+                if self.mode not in ("centroid", "center", "nearest_edge"):
+                    raise ValueError("invalid mode for area target")
+                if self.xy is not None:
+                    raise ValueError("xy only allowed for point/offset")
         return self
+
+
+# ---------------------------------------------------------------------------
+# Label model
+# ---------------------------------------------------------------------------
+
+LabelKind = Literal["point", "line", "area"]
 
 
 class Label(BaseModel):
     id: int
-    kind: Literal["point", "line", "area"]
+    kind: LabelKind
     WH: XY | None = None
     thickness: float | None = None
     radius: float | None = None
-    polyline: Polyline | None = None
-    polygon: Polygon | None = None
     anchor: Anchor
     meta: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_geometry(cls, data: Any):
+        if isinstance(data, dict) and ("polyline" in data or "polygon" in data):
+            raise ValueError(
+                "Label must not carry geometry; put lines/areas in scene0.* and reference via anchor."
+            )
+        return data
 
     @field_validator("WH")
     @classmethod
@@ -113,37 +200,11 @@ class Label(BaseModel):
             raise ValueError("values must be positive and finite")
         return v
 
-    @field_validator("polyline", "polygon")
-    @classmethod
-    def _check_poly(cls, v: Polyline | Polygon | None, info):
-        if v is None:
-            return v
-        for xy in v:
-            if len(xy) != 2 or any(not math.isfinite(c) for c in xy):
-                raise ValueError(f"{info.field_name} must contain finite (x,y) pairs")
-        return v
-
-    @model_validator(mode="after")
-    def _kind_requirements(self):  # type: ignore[override]
-        if self.kind == "point":
-            if self.polyline is not None or self.polygon is not None:
-                raise ValueError("point label must not have polyline/polygon")
-        elif self.kind == "line":
-            if not self.polyline or len(self.polyline) < 2:
-                raise ValueError("line label requires polyline with >=2 vertices")
-            if self.polygon is not None:
-                raise ValueError("line label must not have polygon")
-        elif self.kind == "area":
-            if not self.polygon or len(self.polygon) < 3:
-                raise ValueError("area label requires polygon with >=3 vertices")
-            if self.polyline is not None:
-                raise ValueError("area label must not have polyline")
-        return self
-
 
 # ---------------------------------------------------------------------------
 # SolvePack model
 # ---------------------------------------------------------------------------
+
 
 class SolvePack(BaseModel):
     L: int
@@ -166,10 +227,18 @@ class SolvePack(BaseModel):
                 raise ValueError(f"P0[{i}] must be finite (x,y), got {xy}")
         return v
 
+    @field_validator("active0")
+    @classmethod
+    def _check_active(cls, v: list[StrictBool]) -> list[StrictBool]:
+        for i, b in enumerate(v):
+            if not isinstance(b, bool):
+                raise ValueError(f"active0[{i}] must be bool")
+        return v
+
     @model_validator(mode="after")
-    def _check_lengths(self):  # type: ignore[override]
-        if self.L <= 0:
-            raise ValueError(f"L must be positive, got {self.L}")
+    def _check_lengths(self):
+        if self.L < 0:
+            raise ValueError(f"L must be >=0, got {self.L}")
         if not (len(self.P0) == len(self.labels0) == len(self.active0) == self.L):
             raise ValueError(
                 f"length mismatch: L={self.L} P0={len(self.P0)} "
@@ -177,17 +246,20 @@ class SolvePack(BaseModel):
             )
         for i, lbl in enumerate(self.labels0):
             if lbl.id != i:
-                raise ValueError(
-                    f"labels0[{i}].id expected {i}, got {lbl.id}"
-                )
+                raise ValueError(f"labels0[{i}].id expected {i}, got {lbl.id}")
+        # anchor reference range checks
+        for lbl in self.labels0:
+            a = lbl.anchor
+            if a.target == "point" and a.index >= len(self.scene0.points):
+                raise ValueError("anchor index out of range for points pool")
+            if a.target == "line" and a.index >= len(self.scene0.lines):
+                raise ValueError("anchor index out of range for lines pool")
+            if a.target == "area" and a.index >= len(self.scene0.areas):
+                raise ValueError("anchor index out of range for areas pool")
         return self
 
     @model_validator(mode="after")
-    def _check_cfg(self):  # type: ignore[override]
-        if "solver" in self.cfg:
-            raise ValueError("cfg contains legacy key 'solver'")
-        if "terms" in self.cfg:
-            raise ValueError("cfg contains legacy key 'terms'")
+    def _check_cfg(self):
         keys = set(self.cfg.keys())
         if keys != {"compute"}:
             raise ValueError(f"cfg top-level keys must be {{'compute'}}, got {keys}")
@@ -198,4 +270,3 @@ class SolvePack(BaseModel):
         return self
 
 
-__all__ = ["SolvePack", "Scene", "Label", "Anchor"]

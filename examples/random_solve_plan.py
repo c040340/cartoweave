@@ -1,27 +1,11 @@
-"""Minimal example that generates a scene using the new data API."""
+"""Minimal example that generates a scene using data defaults."""
 from __future__ import annotations
 
-import numpy as np
-
-from cartoweave.data.api import build_solvepack_from_config
+from cartoweave.data.api import make_solvepack_from_data_defaults
 
 
 def main() -> None:
-    cfg = {
-        "data": {
-            "source": "generate",
-            "generate": {
-                "frame_size": [200, 100],
-                "num_labels": 5,
-                "num_points": 2,
-                "num_lines": 2,
-                "num_areas": 1,
-                "num_steps": 5,
-                "seed": 0,
-            },
-        }
-    }
-    sp = build_solvepack_from_config(cfg, seed=0)
+    sp = make_solvepack_from_data_defaults()
     sp.validate()
     scene = sp.scene0
     print("frame", scene.frame_size)
