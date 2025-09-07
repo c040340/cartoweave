@@ -55,7 +55,7 @@ def expand_comps_subset(
         base = prev_full.get(k, zero_ref)
         arr = np.array(base, dtype=float, copy=True)
         if k in sub_comps:
-            arr[active_idx] = np.asarray(sub_comps[k], dtype=float)
+            arr[active_idx] = np.asarray(sub_comps[k], dtype=float)[active_idx]
         out[k] = arr
     return out
 

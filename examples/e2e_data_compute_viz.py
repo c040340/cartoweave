@@ -26,7 +26,7 @@ def main() -> None:
     )
     pack.validate()
     view = solve(pack)
-    last = view.last
+    last = view.frames[-1]
     print(f"[e2e] N={pack.L} frames={len(view.frames)} final_E={last.E:.3g}")
     print(f"[e2e] P_norm={float(np.linalg.norm(last.P)):.3g}")
 
