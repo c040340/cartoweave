@@ -27,6 +27,7 @@ Array2 = np.ndarray
 def _as_active_ids(mask: np.ndarray) -> list[int]:
     mask = np.asarray(mask, bool)
     return np.where(mask)[0].tolist()
+
 def energy_and_grad_full(
     P: Array2,  # noqa: N803
     labels: Any,

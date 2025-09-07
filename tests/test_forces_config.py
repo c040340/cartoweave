@@ -34,11 +34,10 @@ def test_legacy_weights_rejected():
 
 def test_term_params_passthrough():
     scene = {
-        "areas": [{"polygon": [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]}],
-        "WH": np.array([[0.5, 0.5]]),
+        "areas": [[(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]],
         "frame_size": (5.0, 5.0),
     }
-    labels = [{}]
+    labels = [{"WH": (0.5, 0.5)}]
     P = np.array([[1.9, 1.0]], dtype=float)
     mask = np.array([True])
     cfg0 = {"public": {"forces": {"area.softout": {"enable": True, "k": 1.0, "min_gap": 0.0}}}}
