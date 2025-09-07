@@ -1,197 +1,245 @@
-"""Programmatic generators for synthetic scenes and behavior timelines."""
-
+"""Programmatic generators for synthetic scenes and behaviors."""
 from __future__ import annotations
 
-from typing import List, Dict, Tuple
+import math
+from typing import List, Tuple
 
 import numpy as np
 
-from cartoweave.contracts.solvepack import (
-    Scene,
-    LabelState,
-    AnchorSpec,
-    Behavior,
-    BehaviorOp,
+from cartoweave.contracts.solvepack import Scene, Label, Anchor
+from cartoweave.config.schema import DataGenerate
+from cartoweave.data.sampling.helpers import (
+    frame_metrics,
+    inset_rect,
+    project_to_rect_inset,
 )
-from cartoweave.data.primitives.lines import generate_polyline_by_length
 from cartoweave.data.primitives.polygons import generate_polygon_by_area
-from cartoweave.data.sampling.helpers import frame_metrics
+from cartoweave.data.sampling.poisson import poisson_disc
 
-__all__ = [
-    "generate_scene",
-    "generate_labels",
-    "assign_anchor",
-    "generate_behaviors",
-]
+__all__ = ["generate_scene"]
 
 
 # ---------------------------------------------------------------------------
-#  Scene and label generation
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def generate_scene(
-    num_points: int,
-    num_lines: int,
-    num_areas: int,
-    frame_size: Tuple[float, float] = (1920.0, 1080.0),
-    seed: int = 0,
-) -> Scene:
-    """Generate a synthetic scene.
-
-    The implementation favours the more robust generators shipped with the
-    project (``data.primitives``) and falls back to simple random geometry when
-    those fail for any reason.
-    """
-
-    rng = np.random.default_rng(seed)
-    W, H = float(frame_size[0]), float(frame_size[1])
-    diag, area_total = frame_metrics((W, H))
-
-    points = rng.uniform([0, 0], [W, H], size=(int(num_points), 2))
-
-    lines: List[np.ndarray] = []
-    seg_len0 = 0.05 * diag
-    min_spacing = 0.02 * diag
-    inset = 0.05 * diag
-    for _ in range(int(num_lines)):
-        try:
-            target_len = seg_len0 * rng.uniform(4.0, 6.0)
-            line = generate_polyline_by_length(
-                rng, (W, H), target_len, min_spacing, inset, seg_len0
+def _polyline_by_length(
+    rng: np.random.Generator,
+    frame_size: Tuple[float, float],
+    L_target: float,
+    min_vertex_spacing: float,
+    inset_margin: float,
+    segment_len_scale: float,
+    angle_sigma: float,
+) -> np.ndarray:
+    """Generate a random polyline with configurable parameters."""
+    rect = inset_rect(frame_size, inset_margin)
+    x0, y0, x1, y1 = rect
+    p = np.array([rng.uniform(x0, x1), rng.uniform(y0, y1)])
+    pts = [p]
+    ang = rng.uniform(-math.pi, math.pi)
+    total = 0.0
+    while total < L_target:
+        ang += rng.normal(0.0, angle_sigma)
+        step = max(
+            min_vertex_spacing,
+            rng.normal(segment_len_scale, 0.3 * segment_len_scale),
+        )
+        q = p + step * np.array([math.cos(ang), math.sin(ang)])
+        q = project_to_rect_inset(q, rect)
+        if np.linalg.norm(q - p) < min_vertex_spacing:
+            ang += math.pi / 2.0
+            q = project_to_rect_inset(
+                p + step * np.array([math.cos(ang), math.sin(ang)]), rect
             )
-            lines.append(line)
-        except Exception:  # pragma: no cover - robust generators may fail
-            start = rng.uniform([0, 0], [W, H], size=2)
-            end = rng.uniform([0, 0], [W, H], size=2)
-            lines.append(np.vstack([start, end]))
+        total += float(np.linalg.norm(q - p))
+        pts.append(q)
+        p = q
+    return np.asarray(pts, dtype=float)
 
-    areas: List[Dict[str, np.ndarray]] = []
-    area_inset = 0.05 * diag
-    edge_spacing = 0.02 * diag
-    for _ in range(int(num_areas)):
-        try:
-            exterior = generate_polygon_by_area(
+
+def _polyline_midpoint(poly: np.ndarray) -> np.ndarray:
+    d = np.linalg.norm(np.diff(poly, axis=0), axis=1)
+    total = float(np.sum(d))
+    if total == 0.0:
+        return poly[0]
+    half = 0.5 * total
+    cum = np.cumsum(d)
+    idx = int(np.searchsorted(cum, half))
+    prev = poly[idx]
+    nxt = poly[min(idx + 1, poly.shape[0] - 1)]
+    seg_len = d[idx] if idx < len(d) else 1.0
+    t = (half - (cum[idx - 1] if idx > 0 else 0.0)) / seg_len
+    return (1 - t) * prev + t * nxt
+
+
+def _line_anchor_xy(poly: np.ndarray, mode: str, rng: np.random.Generator) -> np.ndarray:
+    if mode == "midpoint":
+        return _polyline_midpoint(poly)
+    if mode == "centroid":
+        return np.mean(poly, axis=0)
+    if mode == "projected":
+        # random point along polyline
+        d = np.linalg.norm(np.diff(poly, axis=0), axis=1)
+        total = float(np.sum(d))
+        if total == 0.0:
+            return poly[0]
+        t = rng.uniform(0.0, total)
+        cum = np.cumsum(d)
+        idx = int(np.searchsorted(cum, t))
+        prev = poly[idx]
+        nxt = poly[min(idx + 1, poly.shape[0] - 1)]
+        seg_len = d[idx] if idx < len(d) else 1.0
+        u = (t - (cum[idx - 1] if idx > 0 else 0.0)) / seg_len
+        return (1 - u) * prev + u * nxt
+    return poly[0]
+
+
+def _area_anchor_xy(poly: np.ndarray, mode: str, rng: np.random.Generator) -> np.ndarray:
+    if mode == "centroid":
+        return np.mean(poly, axis=0)
+    if mode == "center":
+        xmin, ymin = np.min(poly, axis=0)
+        xmax, ymax = np.max(poly, axis=0)
+        return np.array([(xmin + xmax) / 2.0, (ymin + ymax) / 2.0])
+    if mode == "nearest_edge":
+        c = np.mean(poly, axis=0)
+        edges = np.stack([poly, np.roll(poly, -1, axis=0)], axis=1)
+        mids = edges.mean(axis=1)
+        d = np.linalg.norm(mids - c, axis=1)
+        return mids[int(np.argmin(d))]
+    return poly[0]
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
+    """Generate geometry, labels and initial positions from ``gen_cfg``."""
+
+    W, H = map(float, gen_cfg.frame_size)
+    diag, area_total = frame_metrics((W, H))
+    counts = gen_cfg.counts
+    spacing = gen_cfg.spacing
+    shapes = gen_cfg.shapes
+    rt = gen_cfg.route_gen
+    ag = gen_cfg.area_gen
+    anchors = gen_cfg.anchors
+
+    # Points via simple Poisson sampling inside margin
+    if counts.points > 0:
+        pts = poisson_disc(
+            rng,
+            W - 2 * spacing.margin,
+            H - 2 * spacing.margin,
+            spacing.min_point_dist,
+            x0=spacing.margin,
+            y0=spacing.margin,
+        )
+        points = pts[: counts.points]
+        if points.shape[0] < counts.points:
+            # fallback random sampling if Poisson not enough
+            while points.shape[0] < counts.points:
+                p = rng.uniform(
+                    [spacing.margin, spacing.margin],
+                    [W - spacing.margin, H - spacing.margin],
+                )
+                if not len(points) or np.min(np.linalg.norm(points - p, axis=1)) >= spacing.min_point_dist:
+                    points = np.vstack([points, p]) if len(points) else np.array([p])
+        points = points[: counts.points]
+    else:
+        points = np.zeros((0, 2), float)
+
+    # Lines
+    lines: List[np.ndarray] = []
+    seg_len0 = rt.segment_len_scale * diag
+    min_spacing = max(1e-6, rt.min_vertex_spacing_scale * seg_len0)
+    inset = spacing.margin + rt.inset_margin_scale * diag
+    for _ in range(int(counts.lines)):
+        L_target = seg_len0 * rng.uniform(4.0, 6.0)
+        line = _polyline_by_length(
+            rng,
+            (W, H),
+            L_target,
+            min_spacing,
+            inset,
+            seg_len0,
+            rt.angle_noise_sigma,
+        )
+        tries = 0
+        while line.shape[0] < shapes.line_min_vertices and tries < 5:
+            line = _polyline_by_length(
                 rng,
                 (W, H),
-                0.02 * area_total,
-                area_inset,
-                edge_spacing,
+                L_target,
+                min_spacing,
+                inset,
+                seg_len0,
+                rt.angle_noise_sigma,
             )
-        except Exception:  # pragma: no cover - fallback rectangle
-            cx, cy = rng.uniform([0, 0], [W, H])
-            w, h = rng.uniform(0.05, 0.2, size=2) * np.array([W, H])
-            x0, y0 = max(0.0, cx - w / 2), max(0.0, cy - h / 2)
-            x1, y1 = min(W, cx + w / 2), min(H, cy + h / 2)
-            exterior = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=float)
-        areas.append({"exterior": exterior, "holes": []})
+            tries += 1
+        lines.append(line)
 
-    return Scene(points=points, lines=lines, areas=areas, frame_size=(W, H))
+    # Areas
+    areas: List[dict] = []
+    area_inset = spacing.margin + ag.inset_margin_scale * diag
+    edge_spacing = ag.min_edge_spacing_scale * diag
+    for _ in range(int(counts.areas)):
+        poly = generate_polygon_by_area(
+            rng,
+            (W, H),
+            0.02 * area_total,
+            area_inset,
+            edge_spacing,
+            (ag.n_vertices_min, ag.n_vertices_max),
+        )
+        areas.append({"exterior": poly, "holes": []})
 
+    # Build labels and initial positions
+    L_total = counts.points + counts.lines + counts.areas
+    P0 = np.zeros((L_total, 2), float)
+    labels: List[Label] = []
+    active0 = np.ones(L_total, dtype=bool)
+    idx = 0
+    for pt in points:
+        anchor = Anchor(mode="xy", xy=(float(pt[0]), float(pt[1])))
+        labels.append(Label(id=idx, kind="point", anchor=anchor))
+        P0[idx] = pt
+        idx += 1
+    line_mode = anchors.modes.get("line", "midpoint")
+    line_anchor_map = {
+        "midpoint": "line_midpoint",
+        "centroid": "centroid",
+        "projected": "xy",
+    }
+    for line in lines:
+        xy = _line_anchor_xy(line, line_mode, rng)
+        amode = line_anchor_map.get(line_mode, "line_midpoint")
+        anchor = Anchor(mode=amode, xy=tuple(map(float, xy)) if amode == "xy" else None)
+        labels.append(
+            Label(id=idx, kind="line", anchor=anchor, polyline=[tuple(map(float, p)) for p in line])
+        )
+        P0[idx] = xy
+        idx += 1
+    area_mode = anchors.modes.get("area", "centroid")
+    area_anchor_map = {
+        "centroid": "centroid",
+        "center": "bbox_center",
+        "nearest_edge": "xy",
+    }
+    for area in areas:
+        poly = area["exterior"]
+        xy = _area_anchor_xy(poly, area_mode, rng)
+        amode = area_anchor_map.get(area_mode, "centroid")
+        anchor = Anchor(mode=amode, xy=tuple(map(float, xy)) if amode == "xy" else None)
+        labels.append(
+            Label(id=idx, kind="area", anchor=anchor, polygon=[tuple(map(float, p)) for p in poly])
+        )
+        P0[idx] = xy
+        idx += 1
 
-def generate_labels(
-    N: int,
-    scene: Scene,
-    behavior_cfg: Dict | None = None,
-) -> Tuple[np.ndarray, np.ndarray, List[LabelState]]:
-    """Initial label state: no active labels and zero sizes/positions."""
-
-    P0 = np.zeros((N, 2), dtype=float)
-    active0 = np.zeros(N, dtype=bool)
-    labels0 = [
-        LabelState(kind="none", WH=np.zeros(2, float), anchor=None, meta={})
-        for _ in range(N)
-    ]
-    return P0, active0, labels0
-
-
-# ---------------------------------------------------------------------------
-#  Behavior helpers
-# ---------------------------------------------------------------------------
-
-
-def assign_anchor(
-    i: int, scene: Scene, policy: str = "round_robin", offset: int = 0
-) -> AnchorSpec | None:
-    """Return an anchor in round-robin fashion across points/lines/areas."""
-
-    if policy != "round_robin":  # pragma: no cover - only policy implemented
-        return None
-
-    pts = int(len(scene.points))
-    lines = int(len(scene.lines))
-    areas = int(len(scene.areas))
-    total = pts + lines + areas
-    if total == 0:
-        return None
-    j = (i + offset) % total
-    if j < pts:
-        return AnchorSpec("point", j)
-    j -= pts
-    if j < lines:
-        return AnchorSpec("line", j)
-    j -= lines
-    if j < areas:
-        return AnchorSpec("area", j)
-    return None
-
-
-def generate_behaviors(
-    N: int,
-    S: int,
-    scene: Scene,
-    behavior_cfg: Dict | None = None,
-    policy: str = "round_robin",
-    seed: int = 0,
-) -> List[Behavior]:
-    """Create a deterministic behavior timeline.
-
-    Activation pattern: for each step ``k`` the label ``i = k % N`` is targeted.
-    If inactive, it is activated and assigned an anchor; otherwise resize and
-    deactivate alternatingly.
-    """
-
-    rng = np.random.default_rng(seed)
-    default_WH = (behavior_cfg or {}).get(
-        "default_WH",
-        {"point": [8.0, 8.0], "line": [12.0, 6.0], "area": [40.0, 30.0], "none": [0.0, 0.0]},
-    )
-
-    active = np.zeros(N, dtype=bool)
-    states = [LabelState(kind="none", WH=np.zeros(2), anchor=None, meta={}) for _ in range(N)]
-    resized = [False] * N
-    behaviors: List[Behavior] = []
-    anchor_cursor = 0
-
-    for k in range(int(S)):
-        i = k % N
-        ops: Dict[str, List] = {"activate": [], "deactivate": [], "mutate": []}
-        if not active[i]:
-            anc = assign_anchor(anchor_cursor, scene, policy)
-            anchor_cursor += 1
-            kind = anc.kind if anc else "none"
-            WH = default_WH.get(kind, default_WH["point"])
-            ops["activate"].append(i)
-            mut = {"id": i, "set": {"kind": kind, "WH": WH}}
-            if anc is not None:
-                mut["set"]["anchor"] = {"kind": anc.kind, "index": anc.index}
-            ops["mutate"].append(mut)
-            active[i] = True
-            resized[i] = False
-            states[i].kind = kind
-            states[i].WH = np.asarray(WH, float)
-            states[i].anchor = anc
-        else:
-            if not resized[i]:
-                new_WH = (states[i].WH * 0.85).tolist()
-                ops["mutate"].append({"id": i, "set": {"WH": new_WH}})
-                states[i].WH = np.asarray(new_WH, float)
-                resized[i] = True
-            else:
-                ops["deactivate"].append(i)
-                active[i] = False
-                resized[i] = False
-        behaviors.append(Behavior(iters=5, ops=ops, solver="lbfgs", params={}))
-
-    return behaviors
-
+    scene = Scene(frame_size=(W, H))
+    return P0, labels, active0, scene

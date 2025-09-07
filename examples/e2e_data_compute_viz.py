@@ -20,7 +20,7 @@ def main() -> None:
 
     overrides = json.loads(args.overrides) if args.overrides else None
     merged = load_configs(overrides=overrides)
-    merged["data"] = {"generate": {"num_labels": 5}}
+    # merged["data"] = {"generate": {"num_labels": 5}}
     pack = build_solvepack_from_config(merged, seed=args.seed)
     pack.validate()
     view = solve(pack)

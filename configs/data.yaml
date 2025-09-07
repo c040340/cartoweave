@@ -1,0 +1,50 @@
+data:
+  source: generate          # generate | load
+
+  # --- When source=generate ---
+  generate:
+    counts:
+      points:  5            # >=0
+      lines:   1            # >=0
+      areas:   1            # >=0
+      total_labels: null    # optional; if set, must equal points+lines+areas
+
+    steps: 5                # >=1 (behavior/stage baseline)
+    frame_size: [800, 600]  # [W, H] > 0
+    seed: 7                 # optional
+
+    # Geometry quality & spacing
+    spacing:
+      min_point_dist: 8.0   # >=0, minimum point-to-point distance
+      margin: 12.0          # >=0, boundary margin to frame
+
+    shapes:
+      area_fallback: polygon  # polygon | capsule
+      line_min_vertices: 2    # >=2
+
+    # === Previously un-wired knobs (NOW WIRED) ===
+    route_gen:
+      min_vertex_spacing_scale: 1.0
+      inset_margin_scale: 0.05
+      segment_len_scale: 0.10
+      angle_noise_sigma: 0.0
+
+    area_gen:
+      inset_margin_scale: 0.04
+      min_edge_spacing_scale: 0.04
+      n_vertices_min: 3
+      n_vertices_max: 7
+
+    # Anchor assignment during generation
+    anchors:
+      policy: round_robin            # round_robin | random | fixed
+      modes:
+        line: midpoint               # midpoint | centroid | projected
+        area: centroid               # centroid | center | nearest_edge
+
+  # Optional explicit behavior script; if present, it overrides "steps"
+  behaviors: []
+
+  # --- When source=load ---
+  load:
+    path: ""  # e.g., "path/to/snapshot.npz"

@@ -7,9 +7,9 @@ from typing import Any, Dict, Optional
 import yaml
 
 from cartoweave.utils.dict_merge import deep_update
-from .schema import Compute
+from .schema import Compute, ProfileData, DataConfig
 
-__all__ = ["load_compute_config", "load_configs"]
+__all__ = ["load_compute_config", "load_configs", "load_data_defaults"]
 
 
 def _read_yaml(path: str | Path) -> Dict[str, Any]:
@@ -56,6 +56,23 @@ def load_compute_config(
 
     model = Compute.model_validate(cfg)
     return {"compute": model.model_dump()}
+
+
+# ---------------------------------------------------------------------------
+# Data configuration loader
+# ---------------------------------------------------------------------------
+
+
+def load_data_defaults(path: str = "configs/data.yaml") -> DataConfig:
+    """Read ``configs/data.yaml`` and return a validated :class:`DataConfig`."""
+
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"data config not found: {path}")
+    with p.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    profile = ProfileData.model_validate(raw)
+    return profile.data
 
 
 # Backwards-compatible alias
