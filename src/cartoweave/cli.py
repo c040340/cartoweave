@@ -5,6 +5,7 @@ import numpy as np
 
 from .contracts.solvepack import SolvePack
 from .compute.solve import solve
+from .logging import init_logging_from_cfg
 
 
 def _load_json(p: str):
@@ -20,6 +21,7 @@ def _dump_json(p: str, obj):
 
 def cmd_solve(args):
     cfg = _load_json(args.config) if args.config.endswith(".json") else _load_json(args.config)
+    init_logging_from_cfg(cfg)
     scene = _load_json(args.scene)
 
     L = int(args.L) if args.L else len(scene.get("labels_init", [])) or 0

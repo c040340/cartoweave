@@ -51,7 +51,11 @@ def _build_run_iters(pack: SolvePack):
     ):
         mode = compute_cfg.get("solver", {}).get("public", {}).get("mode", "lbfgsb")
         tuning = compute_cfg.get("solver", {}).get("tuning", {})
-        iters = iters_override or tuning.get(mode, {}).get("maxiter", 1)
+        iters = (
+            iters_override
+            or tuning.get(mode, {}).get("maxiter")
+            or tuning.get("warmup", {}).get("steps", 1)
+        )
         eng_ctx = _EngineCtx(
             labels=ctx["labels"],
             scene=ctx["scene"],
@@ -90,6 +94,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
     actions = list(getattr(pack, "actions", []) or [])
     if not actions:
         raise ValueError("No actions provided in SolvePack; nothing to solve.")
+    logger.debug("begin solve with %d actions", len(actions))
 
     pm = kwargs.get("pass_manager") or kwargs.get("pm")
     if pm is None:
@@ -153,6 +158,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
     comps_prev_full: Dict[str, np.ndarray] = {}
     for pass_id, action in enumerate(actions):
         pass_name = getattr(action, "type", None) or getattr(action, "pass_name", None) or "action"
+        logger.debug("begin run_iters for action %s", pass_name)
         recorder.start_pass(pass_id, pass_name)
 
         ctx = {

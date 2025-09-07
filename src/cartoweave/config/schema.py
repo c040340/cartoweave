@@ -70,6 +70,7 @@ class ComputePublic(BaseModel):
 class SolverPublic(BaseModel):
     mode: str
     use_warmup: bool
+    log_level: Literal["none", "info", "debug"] = "none"
 
     model_config = ConfigDict(extra="forbid")
 

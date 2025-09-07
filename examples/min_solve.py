@@ -2,6 +2,7 @@
 
 from cartoweave.compute import solve
 from cartoweave.data.api import make_solvepack_from_data_defaults
+from cartoweave.logging import init_logging_from_cfg
 
 sp = make_solvepack_from_data_defaults(
     compute_cfg={
@@ -10,6 +11,7 @@ sp = make_solvepack_from_data_defaults(
     }
 )
 sp.validate()
+init_logging_from_cfg(getattr(sp, "cfg", None))
 view = solve(sp)
 print(
     "frames:", view.summary.get("frames_captured"),
