@@ -84,7 +84,7 @@ def generate_polygon_by_area(
     W, H = frame_size
     x0, y0 = inset_margin, inset_margin
     x1, y1 = W - inset_margin, H - inset_margin
-    if x1 <= x0 + 2 or y1 <= y0 + 2:
+    if x1 >= W * 0.9 or y1 >= H * 0.9:
         return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], float)
 
     # —— 中心采样加缓冲，至少离边 ~3×spacing 或内框 6% ——

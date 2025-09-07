@@ -45,8 +45,8 @@ data:
 
     # ---- 多边形生成参数 ----
     area_gen:
-      inset_margin_scale: 0.09        # 多边形距边界的内缩比例
-      min_edge_spacing_scale: 0.00001 # 边与边之间的最小间隔比例
+      inset_margin_scale: 0.2        # 多边形距边界的内缩比例
+      min_edge_spacing_scale: 0.001 # 边与边之间的最小间隔比例
       n_vertices_min: 12              # 多边形最少顶点数
       n_vertices_max: 32              # 多边形最多顶点数
 
