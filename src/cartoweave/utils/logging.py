@@ -12,6 +12,13 @@ import logging
 logger = logging.getLogger("cartoweave")
 logger.addHandler(logging.NullHandler())
 
+# --- squelch noisy 3rd-party loggers ---
+for noisy in (
+    "matplotlib", "PIL", "fontTools", "urllib3", "asyncio",
+    "numba", "fsspec", "matplotlib.font_manager",
+):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
+
 
 def configure_logging(enabled: bool = True, level: int = logging.INFO) -> None:
     """Configure the global ``cartoweave`` logger.
