@@ -6,11 +6,17 @@ import json
 
 import numpy as np
 import matplotlib
-matplotlib.use("TkAgg")
 from cartoweave.compute import solve
 from cartoweave.config.loader import load_configs
 from cartoweave.data.api import make_solvepack_from_data_defaults
 from cartoweave.viz import interactive_view, merge_defaults, VIZ_DEFAULTS
+import matplotlib.pyplot as plt
+
+headless = matplotlib.get_backend().lower() == "agg"
+if headless:
+    def _savefig(*args, **kwargs):
+        plt.savefig("out_e2e.png", dpi=160, bbox_inches="tight")
+    plt.show = _savefig
 
 
 def main() -> None:

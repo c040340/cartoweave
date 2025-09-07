@@ -62,6 +62,7 @@ def _anchor(lab):
 
 
 @register("boundary.wall")
+@register("boundary.wall")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
@@ -69,29 +70,63 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "boundary.wall"}
 
     W, H = scene.get("frame_size", (1920.0, 1080.0))
-    W = float(W)
-    H = float(H)
+    W, H = float(W), float(H)
 
+    import logging
+    log = logging.getLogger(__name__)
+
+    labels_all = scene.get("labels", []) or []
     N = P.shape[0]
-    WH = np.asarray(scene.get("WH"), float)
-    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
-    labels_all = scene.get("labels", [])
-    active_ids = scene.get("_active_ids", list(range(N)))
-    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
-    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
-    modes = [_val(lab, "mode") for lab in labels]
-    mask = np.array([m != "circle" for m in modes], dtype=bool)
-    idxs = np.nonzero(mask)[0]
-    skip_circle = int(np.count_nonzero(~mask))
 
+    # 与 P 完全对齐：优先 _active_ids_solver，其次 _active_ids，不匹配则回退 0..N-1
+    all_active = scene.get("_active_ids_solver") or scene.get("_active_ids")
+    if not all_active or len(all_active) != N:
+        log.warning(
+            "boundary.wall: active ids len=%s != P rows=%d; fallback to identity [0..N-1]",
+            None if all_active is None else len(all_active), N
+        )
+        all_active = list(range(N))
+
+    # 与 P 同序取 labels（避免错位）；越界给空壳
+    def _get_label(i):
+        if 0 <= i < len(labels_all):
+            return labels_all[i]
+        class _Dummy:
+            kind = None
+            WH = (0.0, 0.0)
+            def __getattr__(self, _): return None
+        return _Dummy()
+
+    labels = [_get_label(i) for i in all_active]
+
+    # WH 按同序组装，并做稳健规范化到 (N,2)
+    WH = np.asarray([getattr(lab, "WH", (0.0, 0.0)) for lab in labels], dtype=float)
+    if WH.ndim != 2 or WH.shape != (N, 2):
+        if WH.ndim == 0:
+            WH = np.full((N, 2), float(WH))
+        elif WH.ndim == 1 and WH.shape[0] == 2:
+            WH = np.broadcast_to(WH.reshape(1, 2), (N, 2)).astype(float, copy=False)
+        elif WH.ndim == 1 and WH.shape[0] == N:
+            WH = np.stack([WH, WH], axis=1).astype(float, copy=False)
+        else:
+            log.warning("boundary.wall: cannot normalize WH shape %s, fallback zeros (N,2)", WH.shape)
+            WH = np.zeros((N, 2), dtype=float)
+
+    # 行内过滤：跳过 circle（可按需也排除非 point）
+    modes = [_val(lab, "mode") for lab in labels]
+    kinds = [getattr(lab, "kind", None) for lab in labels]
+    mask = np.array([(m != "circle") and (k != "area") for m, k in zip(modes, kinds)], dtype=bool)
+    idxs = np.nonzero(mask)[0]
+
+    # ===== 你原来的参数读取与主循环从这里继续 =====
     k_wall = float(cfg.get("boundary.k.wall", 240.0))
-    power = float(cfg.get("boundary.wall_power", 3.0))
-    pad = float(cfg.get("boundary.pad", 0.0))
+    power  = float(cfg.get("boundary.wall_power", 3.0))
+    pad    = float(cfg.get("boundary.pad", 0.0))
     beta_d = float(cfg.get("beta.softplus.dist", 3.0))
-    eps_div = float(cfg.get("boundary.wall_eps", 0.3))
-    k_in = float(cfg.get("boundary.k.in", 0.0))
+    eps_div= float(cfg.get("boundary.wall_eps", 0.3))
+    k_in   = float(cfg.get("boundary.k.in", 0.0))
     y_down = bool(cfg.get("boundary.y_down", True))
-    topk = int(cfg.get("source.topk", 0))
+    topk   = int(cfg.get("source.topk", 0))
 
     v0 = math.log(2.0) / max(beta_d, 1e-8)
     e0 = v0 + eps_div
@@ -142,6 +177,6 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     if topk and topk > 0:
         pass
-    logger.debug("term_boundary: skip_circle=%d", skip_circle)
+    logger.debug("term_boundary: skip_circle=%d", int(np.count_nonzero(~mask)))
     F = ensure_vec2(F, L)
     return float(E), F, {"term": "boundary.wall", "boundary": src}

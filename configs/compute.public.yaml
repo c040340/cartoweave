@@ -19,7 +19,7 @@ compute:
         enable: true
         k: 0.8
       ll.rect:
-        enable: false
+        enable: true
         k: 0.3
       area.cross:
         enable: true

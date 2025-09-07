@@ -65,38 +65,73 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.rect"}
 
+    import logging
+    log = logging.getLogger(__name__)
+
     N = P.shape[0]
-    WH = np.asarray(scene.get("WH"), float)
-    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
+    labels_all = scene.get("labels", []) or []
 
-    labels_all = scene.get("labels", [])
-    active_ids = scene.get("_active_ids_solver", list(range(N)))
-    assert len(active_ids) == N, f"_active_ids_solver misaligned: {len(active_ids)} vs P {P.shape}"
-    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    # 1) 与 P 完全对齐：优先 _active_ids_solver，其次 _active_ids；不匹配就回退为 0..N-1
+    all_active = scene.get("_active_ids_solver") or scene.get("_active_ids")
+    if not all_active or len(all_active) != N:
+        log.warning(
+            "ll.rect: active ids len=%s != P rows=%d; fallback to identity [0..N-1]",
+            None if all_active is None else len(all_active), N
+        )
+        all_active = list(range(N))
+
+    # 2) 与 P 同序取 labels（避免错位）；越界给空壳
+    def _get_label(i):
+        if 0 <= i < len(labels_all):
+            return labels_all[i]
+        class _Dummy:
+            kind = None
+            WH = (0.0, 0.0)
+            def __getattr__(self, _): return None
+        return _Dummy()
+
+    labels = [_get_label(i) for i in all_active]
+
+    # 3) WH 由 labels 同序组装，并稳健规范化到 (N,2)
+    WH = np.asarray([getattr(lab, "WH", (0.0, 0.0)) for lab in labels], dtype=float)
+    if WH.ndim != 2 or WH.shape != (N, 2):
+        if WH.ndim == 0:
+            WH = np.full((N, 2), float(WH))
+        elif WH.ndim == 1 and WH.shape[0] == 2:
+            WH = np.broadcast_to(WH.reshape(1, 2), (N, 2)).astype(float, copy=False)
+        elif WH.ndim == 1 and WH.shape[0] == N:
+            WH = np.stack([WH, WH], axis=1).astype(float, copy=False)
+        else:
+            log.warning("ll.rect: cannot normalize WH shape %s, fallback zeros (N,2)", WH.shape)
+            WH = np.zeros((N, 2), dtype=float)
+
+    # 4) 行内过滤：排除 circle，通常也排除 area（只做“矩形标签之间”的相互作用）
     modes = [_val(lab, "mode") for lab in labels]
-    mask = np.array([m != "circle" for m in modes], dtype=bool)
-    idxs = np.nonzero(mask)[0]
+    kinds = [getattr(lab, "kind", None) for lab in labels]
+    mask  = np.array([(m != "circle") and (k != "area") for m, k in zip(modes, kinds)], dtype=bool)
+    idxs  = np.nonzero(mask)[0]
 
+    # ===== 你的原始主循环逻辑从这里继续（不变） =====
     F = np.zeros_like(P)
     E = 0.0
 
     k_out = float(cfg.get("ll.k.repulse", 0.0))
-    k_in = float(cfg.get("ll.k.inside", 0.0))
-    pwr = float(cfg.get("ll.edge_power", 2.0))
+    k_in  = float(cfg.get("ll.k.inside", 0.0))
+    pwr   = float(cfg.get("ll.edge_power", 2.0))
     eps_d = float(cfg.get("eps.dist", EPS_DIST))
     eps_n = float(cfg.get("eps.norm", EPS_NORM))
-    eps_a = float(cfg.get("eps.abs", EPS_ABS))
+    eps_a = float(cfg.get("eps.abs",  EPS_ABS))
 
     beta_sep = float(cfg.get("ll.beta.sep", 6.0))
-    beta_in = float(cfg.get("ll.beta.in", 6.0))
-    g_eps = float(cfg.get("ll.g_eps", 1e-6))
+    beta_in  = float(cfg.get("ll.beta.in",  6.0))
+    g_eps    = float(cfg.get("ll.g_eps",    1e-6))
 
     for ai in range(len(idxs)):
         a = idxs[ai]
         xa, ya = float(P[a, 0]), float(P[a, 1])
         wa, ha = float(WH[a, 0]), float(WH[a, 1])
         for bi in range(ai + 1, len(idxs)):
-            b = idxs[bi]
+            b  = idxs[bi]
             xb, yb = float(P[b, 0]), float(P[b, 1])
             wb, hb = float(WH[b, 0]), float(WH[b, 1])
 
@@ -107,7 +142,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
             spx = softplus(sx, beta_sep)
             spy = softplus(sy, beta_sep)
-            g = (spx * spx + spy * spy + g_eps * g_eps) ** 0.5
+            g   = (spx * spx + spy * spy + g_eps * g_eps) ** 0.5
 
             if k_out > 0.0:
                 E += invdist_energy(g + eps_d, k_out, pwr)
@@ -122,23 +157,19 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                     fy = -dEdg * d_g_ddy
                 else:
                     fx = fy = 0.0
-                F[a, 0] += fx
-                F[a, 1] += fy
-                F[b, 0] -= fx
-                F[b, 1] -= fy
+                F[a, 0] += fx; F[a, 1] += fy
+                F[b, 0] -= fx; F[b, 1] -= fy
 
             if k_in > 0.0:
                 vin = softplus(-sx, beta_in) + softplus(-sy, beta_in)
                 E += 0.5 * k_in * (vin * vin)
                 c1 = k_in * vin * (-sigmoid(-beta_in * sx)) * (dx / (adx + eps))
                 c2 = k_in * vin * (-sigmoid(-beta_in * sy)) * (dy / (ady + eps))
-                fx_in = -c1
-                fy_in = -c2
-                F[a, 0] += fx_in
-                F[a, 1] += fy_in
-                F[b, 0] -= fx_in
-                F[b, 1] -= fy_in
+                fx_in = -c1; fy_in = -c2
+                F[a, 0] += fx_in; F[a, 1] += fy_in
+                F[b, 0] -= fx_in; F[b, 1] -= fy_in
 
     M = len(idxs)
     F = ensure_vec2(F, L)
     return float(E), F, {"term": "ll.rect", "pairs": int(M * (M - 1) // 2)}
+

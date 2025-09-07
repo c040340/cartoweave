@@ -1,38 +1,64 @@
-"""Matplotlib backend selection helpers."""
+"""Matplotlib backend selection utilities."""
 
 from __future__ import annotations
 
+import logging
 import os
-import sys
-import matplotlib
 
 
-def use_compatible_backend() -> None:
-    """Select a usable Matplotlib backend for the current environment.
+logger = logging.getLogger(__name__)
 
-    Priority:
-    1. Environment variable ``MPLBACKEND`` if set.
-    2. On macOS, try interactive backends (``TkAgg``, ``MacOSX``).
-    3. Fallback to the non-interactive ``Agg`` backend.
+
+def setup_matplotlib_backend(prefer: str = "TkAgg", fallback: str = "Agg") -> str:
+    """Try to set a Matplotlib backend.
+
+    The function first honours ``MATPLOTLIB_BACKEND`` when set.  If that
+    fails, it attempts to use ``prefer`` and finally ``fallback``.  The backend
+    string actually in use is returned.
     """
-    env_backend = os.environ.get("MPLBACKEND")
+
+    import matplotlib
+
+    chosen: str | None = None
+    env_backend = os.environ.get("MATPLOTLIB_BACKEND", "").strip()
     if env_backend:
         try:
-            matplotlib.use(env_backend, force=True)
-            return
-        except Exception:
-            pass
+            matplotlib.use(env_backend)
+            chosen = env_backend
+        except Exception:  # pragma: no cover - log only
+            logger.warning(
+                "Failed to use MATPLOTLIB_BACKEND=%s; will try %s→%s",
+                env_backend,
+                prefer,
+                fallback,
+            )
 
-    if sys.platform.startswith("darwin"):
-        for cand in ("TkAgg", "MacOSX"):
+    if chosen is None:
+        try:
+            matplotlib.use(prefer)
+            chosen = prefer
+        except Exception:  # pragma: no cover - rare
             try:
-                matplotlib.use(cand, force=True)
-                return
-            except Exception:
-                continue
+                matplotlib.use(fallback)
+                chosen = fallback
+            except Exception:  # pragma: no cover - extremely rare
+                chosen = matplotlib.get_backend()
+                logger.warning(
+                    "Could not set backend to %s/%s. Using default: %s",
+                    prefer,
+                    fallback,
+                    chosen,
+                )
 
-    try:
-        matplotlib.use("Agg", force=True)
-    except Exception:
-        # If even Agg fails, let Matplotlib fall back to its default.
-        pass
+    logger.info("Matplotlib backend = %s", chosen)
+    return chosen
+
+
+def use_compatible_backend() -> str:
+    """Backward compatible alias for :func:`setup_matplotlib_backend`."""
+
+    return setup_matplotlib_backend()
+
+
+__all__ = ["setup_matplotlib_backend", "use_compatible_backend"]
+
