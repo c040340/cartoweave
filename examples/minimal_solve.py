@@ -6,7 +6,7 @@ from cartoweave.data.api import make_solvepack_from_data_defaults
 
 def main() -> None:
     sp = make_solvepack_from_data_defaults(
-        compute_cfg={"weights": {"anchor.spring": 1.0}}
+        compute_cfg={"public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}}}}
     )
     sp.validate()
     view = solve(sp)

@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 
 from .forces import REGISTRY as _CMP_REG
-from .forces import enabled_terms as _cmp_enabled
+from .forces import enabled_terms as _cmp_enabled, term_params_map
 from .geom_anchor_resolver import anchor_position
 
 Array2 = np.ndarray
@@ -55,19 +55,24 @@ def energy_and_grad_full(
     g = np.zeros_like(P)
     comps: dict[str, Array2] = {}
 
+    pmap = term_params_map(cfg)
+
     # Phase 1: pre_anchor
     fsum_ext = np.zeros_like(P)
     for name in _cmp_enabled(cfg, phase="pre_anchor"):
         fn = _CMP_REG.get(name)
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
-        e_i, f_i, _ = fn(sc, P, cfg, phase="pre_anchor")
-        if f_i is None:
-            f_i = np.zeros_like(P)
-        f_i = np.asarray(f_i, float)
-        energy_total += float(e_i)
-        comps[name] = f_i
-        fsum_ext += f_i
+        params = pmap.get(name, {})
+        k = float(params.get("k", 0.0))
+        if k <= 0.0:
+            continue
+        e_i, f_i, _ = fn(sc, P, params, cfg)
+        f_i = np.asarray(f_i if f_i is not None else np.zeros_like(P), float)
+        energy_total += k * float(e_i)
+        f_scaled = k * f_i
+        comps[name] = f_scaled
+        fsum_ext += f_scaled
 
     # Phase 2: anchor
     sc["_ext_dir"] = fsum_ext.copy()
@@ -75,12 +80,15 @@ def energy_and_grad_full(
         fn = _CMP_REG.get(name)
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
-        e_i, f_i, _ = fn(sc, P, cfg, phase="anchor")
-        if f_i is None:
-            f_i = np.zeros_like(P)
-        f_i = np.asarray(f_i, float)
-        energy_total += float(e_i)
-        comps[name] = f_i
+        params = pmap.get(name, {})
+        k = float(params.get("k", 0.0))
+        if k <= 0.0:
+            continue
+        e_i, f_i, _ = fn(sc, P, params, cfg)
+        f_i = np.asarray(f_i if f_i is not None else np.zeros_like(P), float)
+        energy_total += k * float(e_i)
+        f_scaled = k * f_i
+        comps[name] = f_scaled
 
     # ∇E = -ΣF
     for f_i in comps.values():

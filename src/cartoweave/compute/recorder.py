@@ -19,7 +19,6 @@ class Recorder:
         self.final_always = bool(capture_cfg.get("final_always", True))
         self.frames: list[Frame] = []
         self.events: list[Event] = []
-        self.term_keys: set[str] = set()
         self._t0 = time.time()
 
     # ------------------------------------------------------------------
@@ -37,7 +36,6 @@ class Recorder:
 
         n = p.shape[0]
         comps_raw = metrics.get("comps", {}) or {}
-        self.term_keys.update(k for k, v in comps_raw.items() if np.asarray(v).shape == (n, 2))
         g_vec = metrics.get("G")
         gnorm = float(np.linalg.norm(g_vec)) if g_vec is not None and g_vec.size else 0.0
         if self.pm and isinstance(self.pm.cfg, dict):
@@ -106,11 +104,22 @@ class Recorder:
                 )
             )
         last = self.frames[-1]
+        from .forces import term_params_map, enabled_terms
+
+        compute_cfg = self.pm.cfg if isinstance(self.pm.cfg, dict) else {}
+        pmap = term_params_map(compute_cfg)
+        terms = enabled_terms(compute_cfg, phase="pre_anchor") + enabled_terms(
+            compute_cfg, phase="anchor"
+        )
         summary = {
             "frames_captured": len(self.frames),
-            "terms_used": sorted(self.term_keys),
+            "terms_used": [
+                {"name": name, "k": float(pmap.get(name, {}).get("k", 0.0))}
+                for name in terms
+            ],
             "time_ms": int((time.time() - self._t0) * 1000),
             "global_iters": self.pm.eval_index,
+            "pass_stats": self.pm.collect_stats(),
         }
         return ViewPack(frames=self.frames, events=self.events, last=last, summary=summary)
 

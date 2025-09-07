@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, ensure_vec2
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -65,14 +65,11 @@ def _anchor(lab):
 
 
 @register("area.softout")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
-    if phase != "pre_anchor" or P is None or P.size == 0:
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
     L = P.shape[0]
     eps = get_eps(cfg)
-    w = weight_of("area.softout", cfg, 0.0)
-    if w <= 0.0:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
 
     labels_all = scene.get("labels", [])
     areas = scene.get("areas", [])
@@ -88,7 +85,7 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
     skip_circle = int(np.count_nonzero(~mask))
 
     k_push = float(cfg.get("area.k.softout", 250.0))
-    min_gap = float(cfg.get("area.softout.min_gap", 0.0))
+    min_gap = float(params.get("min_gap", cfg.get("area.softout.min_gap", 0.0)))
     beta = float(cfg.get("area.softout.beta", 0.7))
     alpha_sp = float(cfg.get("area.softout.alpha", 0.35))
     gamma_out = float(cfg.get("area.softout.outside_weight", 0.5))
@@ -168,4 +165,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
 
     logger.debug("term_area_softout: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"term": "area.softout", "area_softout": S}
+    return float(E), F, {"term": "area.softout", "area_softout": S}

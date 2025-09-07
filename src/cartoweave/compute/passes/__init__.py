@@ -15,14 +15,12 @@ def get_pass_cfg(cfg: dict, name: str, defaults: dict | None = None) -> dict:
     return dict(d)
 
 from .capture import CapturePass
-from .weights import WeightsPass
 from .nan_guard import NaNGuardPass
 from .grad_clip import GradClipPass
 from .step_limit import StepLimitPass
 from .geom_preproc import GeomPreprocPass
 
 REGISTRY = {
-    "weights":    (WeightsPass, {}),
     "nan_guard":  (NaNGuardPass, {"on_nan": "zero", "on_inf": "clip"}),
     "grad_clip":  (GradClipPass, {"max_norm": None, "max_abs": None}),
     "step_limit": (StepLimitPass, {"max_step_norm": 1.5}),

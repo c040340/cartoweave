@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from cartoweave.compute.geom_anchor_resolver import anchor_position
-from cartoweave.utils.compute_common import ensure_vec2, get_eps, weight_of
+from cartoweave.utils.compute_common import ensure_vec2, get_eps
 from cartoweave.utils.kernels import EPS_NORM
 from cartoweave.utils.logging import logger
 
@@ -27,11 +27,10 @@ def _val(lab, key, default=None):
 
 
 @register("anchor.spring")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):  # noqa: N803
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):  # noqa: N803
     n = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
-    w = weight_of("anchor.spring", cfg, 0.0)
-    if phase != "anchor" or w <= 0.0 or P is None or P.size == 0:
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "anchor.spring"}
 
     k = float(cfg.get("anchor.k.spring", 10.0))
@@ -85,4 +84,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):  # noqa: N803
 
     logger.debug("term_anchor: skip_circle=%d", skip_circle)
     force = ensure_vec2(force, n)
-    return float(energy * w), force * w, {"term": "anchor.spring", "n": int(n)}
+    return float(energy), force, {"term": "anchor.spring", "n": int(n)}

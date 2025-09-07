@@ -4,7 +4,7 @@ import os
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, weight_of, ensure_vec2
+from cartoweave.utils.compute_common import get_eps, ensure_vec2
 from cartoweave.utils.kernels import softplus, sigmoid, smoothmax, softabs, EPS_DIST, EPS_NORM, EPS_ABS
 from cartoweave.utils.geometry import poly_signed_area, segment_rect_gate
 from cartoweave.utils.shape import as_nx2
@@ -64,11 +64,10 @@ def _legacy_aabb_gate(ax, ay, bx, by, cx, cy, w, h, pad=0.0):
 
 
 @register("area.cross")
-def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
+def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
-    w = weight_of("area.cross", cfg, 0.0)
-    if phase != "pre_anchor" or w <= 0.0 or P is None or P.size == 0:
+    if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.cross"}
 
     labels_all = scene.get("labels", [])
@@ -208,4 +207,4 @@ def evaluate(scene: dict, P: np.ndarray, cfg: dict, phase: str):
 
     logger.debug("term_area_cross: skip_circle=%d", skip_circle)
     F = ensure_vec2(F, L)
-    return float(E * w), F * w, {"term": "area.cross", "area_cross": S}
+    return float(E), F, {"term": "area.cross", "area_cross": S}

@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
+from typing import Literal, Dict
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, RootModel
 
 
 class Eps(BaseModel):
@@ -39,6 +39,24 @@ class Passes(BaseModel):
     capture: CapturePass
     grad_clip: GradClipPass
     step_limit: StepLimitPass
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TermParams(BaseModel):
+    enable: bool = False
+    k: float = 0.0
+
+    class Config:
+        extra = "allow"
+
+
+class ForcesPublic(RootModel[Dict[str, TermParams]]):
+    root: Dict[str, TermParams] = Field(default_factory=dict)
+
+
+class ComputePublic(BaseModel):
+    forces: ForcesPublic = Field(default_factory=ForcesPublic)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -116,12 +134,13 @@ class Solver(BaseModel):
 class Compute(BaseModel):
     eps: Eps
     passes: Passes
-    weights: dict[str, float] = Field(default_factory=dict)
     solver: Solver
+    public: ComputePublic = Field(default_factory=ComputePublic)
 
     model_config = ConfigDict(extra="forbid")
 
-__all__ = ["Compute"]
+
+__all__ = ["TermParams", "ForcesPublic", "ComputePublic", "Compute"]
 
 
 # ---------------------------------------------------------------------------

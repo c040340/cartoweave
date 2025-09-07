@@ -3,14 +3,13 @@
 - **Solve**: `ViewPack = solve(SolvePack)`
 - **Aggregator**: `compute.eval.energy_and_grad_full` (compute-only)
 - **Add force term**: create `compute/forces/<name>.py` and `@register("<key>")`
-- **Passes**: `schedule`, `capture`, `weights`, `nan_guard`, `grad_clip`, `step_limit`
+- **Passes**: `schedule`, `capture`, `nan_guard`, `grad_clip`, `step_limit`
 - **Schedule example**:
   ```python
-  sp.passes = [
-      "schedule",
-      {"name": "weights", "args": {"weights": {"anchor.spring": 2.0}}},
-      {"name": "capture", "args": {"every": 1}},
-  ]
+  sp.cfg.setdefault("compute", {}).setdefault("public", {}).setdefault("forces", {})[
+      "anchor.spring"
+  ] = {"enable": True, "k": 2.0}
+  sp.passes = ["schedule", {"name": "capture", "args": {"every": 1}}]
   sp.schedule = [{"solver": "lbfgs", "iters": 5}, {"solver": "semi", "iters": 5}]
   vp = solve(sp)
   ```
