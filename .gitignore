@@ -7,6 +7,7 @@ __pycache__/
 *.pyd
 .cashe/
 examples/examples/
+snapshots/
 
 # C extensions
 *.so
