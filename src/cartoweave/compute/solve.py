@@ -134,7 +134,10 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         .get("tuning", {})
         or {}
     )
-    per_action_iters = int(((tuning.get("warmup", {}) or {}).get("steps", 1)) or 1)
+    compute_cfg = (pack.cfg.get("compute", {}) if isinstance(pack.cfg, dict) else {}) or {}
+    solver_pub = ((compute_cfg.get("solver", {}) or {}).get("public", {}) or {})
+    use_warmup = bool(solver_pub.get("use_warmup", False))
+    per_action_iters = None
 
     capture_cfg = get_pass_cfg(
         (pm.cfg if isinstance(pm.cfg, dict) else {}),
@@ -180,14 +183,18 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             comps_full_i = expand_comps_subset(
                 comps_prev_full, active_idx, meta.get("comps", {})
             )
-            meta_i: Dict[str, Any] = {
-                "schema_version": "compute-v2",
-                "pass_id": pass_id,
-                "pass_name": pass_name,
-                "frame_in_pass": it,
-                "status": "ok",
-                "events": pm.pop_events(),
-            }
+            meta_i: Dict[str, Any] = {"schema_version": "compute-v2", "pass_id": pass_id, "pass_name": pass_name,
+                                      "frame_in_pass": it, "status": "ok", "events": pm.pop_events(),
+                                      "optimizer_step": {
+                                          "algo": pass_name,
+                                          "iter_in_algo": it,
+                                          "step_size": meta.get("step_size"),
+                                          "ls_evals": meta.get("ls_evals"),
+                                          "wolfe": meta.get("wolfe"),
+                                          "delta_E": meta.get("delta_E"),
+                                          "gnorm": float(np.linalg.norm(meta.get("G"))) if meta.get(
+                                              "G") is not None else None,
+                                      }}
             gnorm_i = float(
                 np.linalg.norm(meta.get("G"))
                 if meta.get("G") is not None and meta.get("G").size
@@ -209,6 +216,14 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             comps_prev_full = comps_full_i
             _last_iter_recorded = it
             t_global += 1
+
+        if use_warmup:
+            warmup_steps = int(((tuning.get("warmup", {}) or {}).get("steps", 10)) or 10)
+            # 你可以选择 on_iter=None（不记录 warmup 帧），或用 _on_iter（记录 warmup 帧）
+            P_warm, metrics_warm = run_iters(
+                P_curr, ctx, energy_fn, iters_override=warmup_steps, on_iter=_on_iter
+            )
+            P_curr = step_fn(P_curr, P_warm, metrics_warm)
 
         P_prop, metrics = run_iters(
             P_curr, ctx, energy_fn, iters_override=per_action_iters, on_iter=_on_iter
