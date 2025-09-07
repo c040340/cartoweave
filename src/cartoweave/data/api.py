@@ -45,5 +45,13 @@ def make_solvepack_from_data_defaults(
         scene0=scene0,
         cfg={"compute": compute_cfg or {}},
     )
+    gen_cfg = gen
+    save_path = getattr(gen_cfg, "save_path", None) or "./snapshots/default_pack.json"
+    from cartoweave.data.io import save_snapshot
+    try:
+        save_snapshot(pack, save_path, fmt="json")
+    except Exception as e:  # pragma: no cover - fail fast
+        raise RuntimeError(f"Autosave failed to '{save_path}': {e}")
+
     return pack
 

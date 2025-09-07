@@ -1,26 +1,85 @@
 data:
+  # ---- 数据来源 ----
+  # 控制 SolvePack 的生成方式：
+  #  - generate : 随机生成场景、标签和初始状态（受下方 generate 配置控制）
+  #  - load     : 从磁盘加载快照文件（见 data.load.path）
   source: generate
+
   generate:
-    counts: { points: 5, lines: 1, areas: 1 }
-    labels: null               # if null -> default to sum(counts); NOT a constraint
-    steps: 5
-    frame_size: [800, 600]
-    seed: 7
-    spacing: { min_point_dist: 8.0, margin: 12.0 }
-    shapes:  { area_fallback: polygon, line_min_vertices: 2 }
+    # ---- 基础场景元素数量 ----
+    counts:
+      points: 5   # 生成多少个点元素放入 scene.points 池
+      lines: 1    # 生成多少条折线放入 scene.lines 池（每条≥2顶点）
+      areas: 1    # 生成多少个多边形放入 scene.areas 池（每个≥3顶点）
+    labels: null   # 生成的 Label 总数 L
+                   # null -> 默认等于 points+lines+areas
+                   # 注意：不再强制等于几何数量，可小于或大于，总数≠几何总数时将复用或丢弃几何
+                   # 可显式指定整数值以控制标签数
+
+    steps: 5       # 求解的最大步数或迭代次数（具体含义由 compute 层解释）
+                   # 必须 ≥1
+
+    frame_size: [800, 600]   # 场景边界的宽高，决定生成几何和随机点的空间范围
+                             # 单位通常是像素或世界坐标，取决于可视化
+
+    seed: 7        # 随机数种子，确保生成的场景可复现
+                   # 设为 null 可每次运行得到不同随机场景
+
+    spacing:
+      min_point_dist: 8.0   # 生成点之间的最小间距（避免重叠）
+      margin: 12.0          # 距离画布边缘的安全边距
+
+    shapes:
+      area_fallback: polygon   # 当采样区域失败时的回退形状
+                              # 候选: polygon | capsule | rectangle
+      line_min_vertices: 2    # 每条折线最少顶点数，>=2
+
+    # ---- 折线路径生成参数 ----
     route_gen:
-      min_vertex_spacing_scale: 1.0
-      inset_margin_scale: 0.05
-      segment_len_scale: 0.10
-      angle_noise_sigma: 0.0
+      min_vertex_spacing_scale: 1.0   # 顶点间距比例因子（基于 frame_size 缩放）
+      inset_margin_scale: 0.05        # 折线距边界的内缩比例
+      segment_len_scale: 0.10         # 目标段长相对于 frame_size 的比例
+      angle_noise_sigma: 0.0          # 顶点角度的随机扰动标准差（弧度）
+                                      # 设置 >0 可生成不规则折线
+
+    # ---- 多边形生成参数 ----
     area_gen:
-      inset_margin_scale: 0.04
-      min_edge_spacing_scale: 0.04
-      n_vertices_min: 3
-      n_vertices_max: 7
+      inset_margin_scale: 0.04        # 多边形距边界的内缩比例
+      min_edge_spacing_scale: 0.04    # 边与边之间的最小间隔比例
+      n_vertices_min: 3              # 多边形最少顶点数
+      n_vertices_max: 7              # 多边形最多顶点数
+
+    # ---- 标签锚点分配策略 ----
     anchors:
-      policy: round_robin
-      modes: { line: midpoint, area: centroid }
-    # label_mix: { point: 1.0, line: 1.0, area: 1.0 }
-  behaviors: []
-  load: { path: "" }
+      policy: round_robin             # 分配标签时如何选择几何：
+                                      # round_robin : 按几何顺序依次分配（复用）
+                                      # random      : 随机分配到可用几何
+                                      # fixed       : 标签数>几何数时重复分配第一个几何
+      modes:
+        line: projected               # 线标签的锚点模式：
+                                      # midpoint    : 取折线整体中点
+                                      # centroid    : 取折线所有顶点平均
+                                      # projected   : 将 P0 投影到折线上
+        area: nearest_edge            # 区域标签的锚点模式：
+                                      # centroid    : 多边形重心
+                                      # center      : 外接矩形中心
+                                      # nearest_edge: 投影到最近边界点
+    # ---- 标签类型比例（可选）----
+    # 控制生成多少点标签/线标签/面标签
+    # 缺省时按照几何池的数量比率抽样；允许重复引用几何
+    # label_mix:
+    #   point: 1.0
+    #   line: 1.0
+    #   area: 1.0
+
+    # ---- 自动保存路径 ----
+    save_path: "./snapshots/default_pack.json"   # 生成 SolvePack 后自动覆盖保存的路径
+                                                 # 建议使用相对路径 + .json 后缀
+                                                 # 每次运行都会覆盖，确保 load 可立即读取
+
+  behaviors: []       # 行为/动作序列，可留空
+                      # 例如 [{"action": "move", "args": {...}}, ...]
+
+  load:
+    path: ""          # 当 data.source == load 时，从此路径读取 SolvePack 快照
+                      # 必须是 save_snapshot 生成的文件，支持相对路径

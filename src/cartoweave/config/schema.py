@@ -197,6 +197,7 @@ class DataGenerate(BaseModel):
     route_gen: DataRouteGen
     area_gen: DataAreaGen
     anchors: DataAnchors
+    save_path: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

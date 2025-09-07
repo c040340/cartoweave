@@ -7,16 +7,11 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Any
 
 import numpy as np
+from dataclasses import asdict, is_dataclass
 
-from cartoweave.contracts.solvepack import (
-    Scene,
-    LabelState,
-    AnchorSpec,
-    Behavior,
-    BehaviorOp,
-)
+from cartoweave.contracts.solvepack import Scene, Label
 
-__all__ = ["load_snapshot"]
+__all__ = ["load_snapshot", "save_snapshot"]
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -33,55 +28,22 @@ def _load_npz(path: Path) -> Dict[str, Any]:  # pragma: no cover - rarely used
 
 
 def _parse_scene(obj: Dict[str, Any]) -> Scene:
-    pts = np.asarray(obj.get("points", []), dtype=float)
-    lines = [np.asarray(l, float) for l in obj.get("lines", [])]
-    areas = []
-    for a in obj.get("areas", []):
-        exterior = np.asarray(a.get("exterior", []), float)
-        holes = [np.asarray(h, float) for h in a.get("holes", [])]
-        areas.append({"exterior": exterior, "holes": holes})
-    frame_size = tuple(obj.get("frame_size", [1920.0, 1080.0]))
-    labels = obj.get("labels", [])
-    WH = np.asarray(obj.get("WH", np.zeros((len(labels), 2))), float)
-    return Scene(points=pts, lines=lines, areas=areas, frame_size=frame_size, labels=labels, WH=WH)
+    return Scene.model_validate(obj)
 
 
-def _parse_labels(raw: List[Dict[str, Any]]) -> List[LabelState]:
-    out: List[LabelState] = []
+def _parse_labels(raw: List[Dict[str, Any]]) -> List[Label]:
+    out: List[Label] = []
     for lm in raw:
-        anc_raw = lm.get("anchor")
-        anc = None
-        if isinstance(anc_raw, dict):
-            anc = AnchorSpec(kind=anc_raw.get("kind"), index=int(anc_raw.get("index", 0)), t=anc_raw.get("t"))
-        WH = np.asarray(lm.get("WH", [0, 0]), float)
-        out.append(LabelState(kind=lm.get("kind", "none"), WH=WH, anchor=anc, meta=lm.get("meta", {})))
+        if isinstance(lm, dict):
+            out.append(Label.model_validate(lm))
     return out
 
 
-def _parse_behaviors(raw: List[Dict[str, Any]]) -> List[Behavior]:
-    out: List[Behavior] = []
-    for b in raw or []:
-        ops = b.get("ops", {}) or {}
-        mut = []
-        for m in ops.get("mutate", []):
-            mut.append({"id": int(m.get("id")), "set": m.get("set", {})})
-        ops_norm = {
-            "activate": [int(i) for i in ops.get("activate", [])],
-            "deactivate": [int(i) for i in ops.get("deactivate", [])],
-            "mutate": mut,
-        }
-        out.append(
-            Behavior(
-                iters=int(b.get("iters", 0)),
-                ops=ops_norm,
-                solver=b.get("solver", "lbfgs"),
-                params=b.get("params", {}),
-            )
-        )
-    return out
+def _parse_behaviors(raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [dict(b) for b in (raw or [])]
 
 
-def load_snapshot(path: str) -> Tuple[Scene, np.ndarray, np.ndarray, List[LabelState], List[Behavior]]:
+def load_snapshot(path: str) -> Tuple[Scene, np.ndarray, np.ndarray, List[Label], List[Dict[str, Any]]]:
     """Load a snapshot from ``path`` which may be ``.json`` or ``.npz``."""
 
     p = Path(path)
@@ -94,9 +56,9 @@ def load_snapshot(path: str) -> Tuple[Scene, np.ndarray, np.ndarray, List[LabelS
     else:
         raise ValueError(f"unsupported snapshot format: {path}")
 
-    scene_obj = obj.get("scene")
+    scene_obj = obj.get("scene0") or obj.get("scene")
     if scene_obj is None:
-        raise ValueError("snapshot missing 'scene'")
+        raise ValueError("snapshot missing 'scene0'")
     scene = _parse_scene(scene_obj)
 
     P0 = np.asarray(obj.get("P0"), float)
@@ -112,4 +74,49 @@ def load_snapshot(path: str) -> Tuple[Scene, np.ndarray, np.ndarray, List[LabelS
         raise ValueError("labels0 length mismatch")
 
     return scene, P0, active0, labels0, behaviors
+
+
+def _to_serializable(obj: Any):
+    """Convert objects into JSON-serializable structures."""
+
+    if hasattr(obj, "model_dump"):
+        return _to_serializable(obj.model_dump())
+    if is_dataclass(obj):
+        return {k: _to_serializable(v) for k, v in asdict(obj).items()}
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (list, tuple)):
+        return [_to_serializable(x) for x in obj]
+    if isinstance(obj, (float, int, str, bool)) or obj is None:
+        return obj
+    if isinstance(obj, dict):
+        return {k: _to_serializable(v) for k, v in obj.items()}
+    try:
+        return float(obj)
+    except Exception:  # pragma: no cover - rare
+        return repr(obj)
+
+
+def save_snapshot(pack, path: str, fmt: str = "json") -> None:
+    """Save a SolvePack snapshot to ``path`` in JSON format."""
+
+    if fmt.lower() != "json":
+        raise ValueError(f"Unsupported snapshot format: {fmt}")
+    from cartoweave.contracts.solvepack import SolvePack  # type: ignore
+
+    obj = {
+        "L": pack.L,
+        "P0": _to_serializable(np.asarray(pack.P0, dtype=float)),
+        "active0": _to_serializable(np.asarray(pack.active0, dtype=bool)),
+        "labels0": _to_serializable(pack.labels0),
+        "scene0": _to_serializable(pack.scene0),
+        "cfg": _to_serializable(pack.cfg),
+        "rng_seed": _to_serializable(getattr(pack, "rng_seed", None)),
+        "uid": _to_serializable(getattr(pack, "uid", None)),
+        "created_at": _to_serializable(getattr(pack, "created_at", None)),
+    }
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(obj, ensure_ascii=False))
 
