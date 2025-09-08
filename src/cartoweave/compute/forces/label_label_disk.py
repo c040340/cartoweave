@@ -2,7 +2,7 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -18,6 +18,17 @@ from ._common import (
     normalize_WH_from_labels,
     ensure_vec2,
 )
+
+
+def radius_from_wh(w: float, h: float, mode: str = "max") -> float:
+    mode = mode.lower()
+    if mode == "min":
+        return 0.5 * min(w, h)
+    if mode == "avg":
+        return 0.25 * (w + h)
+    if mode == "diag":
+        return 0.5 * math.hypot(w, h)
+    return 0.5 * max(w, h)
 
 
 @register("ll.disk")
@@ -49,15 +60,6 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     k_in = float(0.0 if tc.get("k_in") is None else tc.get("k_in"))
     radius_mode = str((tc.get("mode") or "max")).lower()
 
-    def radius_from_wh(w: float, h: float) -> float:
-        if radius_mode == "min":
-            return 0.5 * min(w, h)
-        if radius_mode == "avg":
-            return 0.25 * (w + h)
-        if radius_mode == "diag":
-            return 0.5 * math.hypot(w, h)
-        return 0.5 * max(w, h)
-
     v0 = math.log(2.0) / max(beta, 1e-8)
     e0 = v0 + eps_sep
     if k_in <= 0.0:
@@ -73,12 +75,12 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         xi, yi = float(P[i, 0]), float(P[i, 1])
         if wi <= 0.0 and hi <= 0.0:
             continue
-        ri = radius_from_wh(wi, hi)
+        ri = radius_from_wh(wi, hi, radius_mode)
         for jj in range(ii + 1, len(idxs)):
             j = idxs[jj]
             wj, hj = float(WH[j, 0]), float(WH[j, 1])
             xj, yj = float(P[j, 0]), float(P[j, 1])
-            rj = radius_from_wh(wj, hj)
+            rj = radius_from_wh(wj, hj, radius_mode)
             dx, dy = xi - xj, yi - yj
             rc = math.hypot(dx, dy) + eps
             s = rc - (ri + rj)
@@ -99,3 +101,57 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "ll.disk", "ll.disk": src}
+
+
+def _pairwise_force_disk(src_xy: np.ndarray, src_r: float, xy: np.ndarray, params: dict) -> np.ndarray:
+    """Force from a disk ``src_xy`` acting on sample points ``xy``."""
+
+    xy = np.asarray(xy, float)
+    dx = xy[:, 0] - src_xy[0]
+    dy = xy[:, 1] - src_xy[1]
+    rc = np.hypot(dx, dy) + 1e-9
+    s = rc - src_r
+    beta = float(12.0 if params.get("beta") is None else params.get("beta"))
+    ker = params.get("kernel") or {}
+    pwr = float(2.0 if ker.get("exponent") is None else ker.get("exponent"))
+    eps_sep = float(1e-6 if ker.get("soft_eps") is None else ker.get("soft_eps"))
+    k_out = float(0.3 if params.get("k_out") is None else params.get("k_out"))
+    k_in = params.get("k_in")
+    if k_in is None or k_in <= 0.0:
+        v0 = math.log(2.0) / max(beta, 1e-8)
+        e0 = v0 + eps_sep
+        k_in = k_out / ((e0 ** pwr) * max(v0, 1e-8))
+    c = softplus(s, beta) + eps_sep
+    v = softplus(-s, beta)
+    sc = sigmoid(beta * s)
+    sv = sigmoid(-beta * s)
+    fmag = invdist_force_mag(c, k_out, pwr) * sc + (k_in * v * sv)
+    fx = fmag * dx / rc
+    fy = fmag * dy / rc
+    return np.stack([fx, fy], axis=1)
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample ``ll.disk`` field induced by existing labels."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    labels_xy = np.asarray(scene.get("labels_xy", []), float)
+    WH = np.asarray(scene.get("WH"), float) if scene.get("WH") is not None else np.zeros((labels_xy.shape[0], 2), float)
+    if labels_xy.size == 0:
+        return np.zeros_like(xy, float)
+
+    F = np.zeros_like(xy, float)
+    radius_mode = str((params.get("mode") or "max")).lower()
+    for p, wh in zip(labels_xy, WH):
+        r = radius_from_wh(float(wh[0]), float(wh[1]), radius_mode)
+        F += _pairwise_force_disk(np.asarray(p, float), r, xy, params)
+
+    if not np.isfinite(F).all():
+        raise ValueError("ll.disk probe produced non-finite values")
+    return F
+
+
+register_probe("ll.disk")(probe)

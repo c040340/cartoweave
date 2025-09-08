@@ -6,17 +6,43 @@ Each force term lives in ``compute/forces/<name>.py`` and registers an
 """
 
 from __future__ import annotations
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Optional
 import numpy as np
 
-REGISTRY: Dict[str, Callable[[dict, np.ndarray, dict, dict], Tuple[float, np.ndarray, dict]]] = {}
+REGISTRY: Dict[str, Callable] = {}
+PROBES: Dict[str, Callable] = {}
 
-def register(name: str):
+
+def register(name: str, *, probe: Optional[Callable] = None):
     """Decorator registering a compute-side force implementation."""
+
     def deco(fn):
         REGISTRY[name] = fn
+        if probe is not None:
+            PROBES[name] = probe
         return fn
+
     return deco
+
+
+def register_probe(name: str):
+    """Decorator registering only a probe implementation for ``name``."""
+
+    def deco(fn):
+        PROBES[name] = fn
+        return fn
+
+    return deco
+
+
+def get_evaluate(term: str) -> Optional[Callable]:
+    return REGISTRY.get(term)
+
+
+def get_probe(term: str) -> Optional[Callable]:
+    """Return the registered ``probe`` callable for ``term`` if any."""
+
+    return PROBES.get(term)
 
 
 def _sub(cfg: dict, *path, default=None):
@@ -110,4 +136,12 @@ from .area_cross import evaluate as _across_eval  # area.cross
 from .area_softout import evaluate as _asoft_eval  # area.softout
 from .label_label_rect import evaluate as _llrect_eval  # ll.rect
 
-__all__ = ["REGISTRY", "register", "term_params_map", "enabled_terms"]
+__all__ = [
+    "REGISTRY",
+    "register",
+    "register_probe",
+    "get_evaluate",
+    "get_probe",
+    "term_params_map",
+    "enabled_terms",
+]

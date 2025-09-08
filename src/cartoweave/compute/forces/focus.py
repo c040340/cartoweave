@@ -2,7 +2,7 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register, term_cfg, eps_params
+from . import register, register_probe, term_cfg, eps_params
 from ._common import (
     read_labels_aligned,
     get_mode,
@@ -26,11 +26,21 @@ def _anchor(lab):
     a = getattr(lab, "anchor", None)
     if a is None:
         return None
-    return {
-        "kind": getattr(a, "kind", None),
-        "index": getattr(a, "index", None),
-        "t": getattr(a, "t", None),
-    }
+    return {"kind": getattr(a, "kind", None), "index": getattr(a, "index", None), "t": getattr(a, "t", None)}
+
+
+def _focus_force_at(xy: np.ndarray, center: np.ndarray, sigma_xy: np.ndarray, delta: float, k: float) -> np.ndarray:
+    """Closed-form focus attraction force at ``xy`` points."""
+
+    xy = np.asarray(xy, dtype=float)
+    rx = (xy[:, 0] - center[0]) / sigma_xy[0]
+    ry = (xy[:, 1] - center[1]) / sigma_xy[1]
+    Q = rx * rx + ry * ry
+    root = np.sqrt(1.0 + Q / (delta * delta))
+    denom = np.maximum(root, 1e-12)
+    Fx = -k * rx / (sigma_xy[0] * denom)
+    Fy = -k * ry / (sigma_xy[1] * denom)
+    return np.stack([Fx, Fy], axis=1)
 
 
 @register("focus.attract")
@@ -76,6 +86,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     E = 0.0
     info = []
 
+    center_xy = np.array([Cx, Cy], float)
+    sig_xy = np.array([sigx, sigy], float)
     for i in idxs:
         lab = labels[i]
         w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
@@ -85,16 +97,13 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             if kind and kind != "none":
                 continue
         x, y = float(P[i, 0]), float(P[i, 1])
+        Fi = _focus_force_at(np.array([[x, y]], float), center_xy, sig_xy, delta, k_attract)[0]
         rx = (x - Cx) / sigx
         ry = (y - Cy) / sigy
         Q = rx * rx + ry * ry
         root = (1.0 + Q / (delta * delta)) ** 0.5
         E_i = k_attract * (delta * delta) * (root - 1.0)
-        denom = max(root, eps)
-        dEdx = k_attract * (rx / (sigx * denom))
-        dEdy = k_attract * (ry / (sigy * denom))
-        fx = -dEdx
-        fy = -dEdy
+        fx, fy = float(Fi[0]), float(Fi[1])
         F[i, 0] += fx
         F[i, 1] += fy
         E += E_i
@@ -102,3 +111,35 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "focus.attract", "focus_huber": info}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample focus attraction field at world coordinates ``xy``."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    frame_size = scene.get("frame_size", (1000.0, 1000.0))
+    W, H = float(frame_size[0]), float(frame_size[1])
+
+    center = params.get("center")
+    if center is None:
+        center = scene.get("focus_center")
+    if center is None:
+        center = (0.5, 0.5)
+    Cx, Cy = float(center[0]) * W, float(center[1]) * H
+
+    wh = params.get("wh") or [0.20, 0.15]
+    sigx = wh[0] * W
+    sigy = wh[1] * H
+    sigma = float(8.0 if params.get("sigma") is None else params.get("sigma"))
+    k = float(0.8 if params.get("k_attract") is None else params.get("k_attract"))
+
+    F = _focus_force_at(xy, np.array([Cx, Cy], float), np.array([sigx, sigy], float), sigma, k)
+    if not np.isfinite(F).all():
+        raise ValueError("focus.probe produced non-finite values")
+    return F
+
+
+register_probe("focus.attract")(probe)

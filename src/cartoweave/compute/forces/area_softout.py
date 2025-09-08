@@ -2,7 +2,7 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -147,3 +147,83 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "area.softout", "area_softout": S}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample the ``area.softout`` field at arbitrary world coordinates.
+
+    The implementation mirrors :func:`evaluate` but treats ``xy`` points as
+    zero-size probes that interact with area polygons defined in ``scene``.
+    """
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    areas = scene.get("areas", []) or []
+    if not areas:
+        return np.zeros_like(xy, float)
+
+    k_push = float(250.0 if params.get("k_push") is None else params.get("k_push"))
+    min_gap = float(0.0 if params.get("min_gap") is None else params.get("min_gap"))
+    beta = float(0.7 if params.get("beta") is None else params.get("beta"))
+    alpha_sp = float(0.35 if params.get("alpha") is None else params.get("alpha"))
+    gamma_out = float(0.5 if params.get("outside_weight") is None else params.get("outside_weight"))
+    lambda_out = float(0.10 if params.get("in_decay") is None else params.get("in_decay"))
+    lambda_in = float(0.06 if params.get("out_decay") is None else params.get("out_decay"))
+
+    F = np.zeros_like(xy, float)
+    M = xy.shape[0]
+
+    for poly in areas:
+        if poly is None:
+            continue
+        arr = np.asarray(poly, float).reshape(-1, 2)
+        if arr.shape[0] < 3:
+            continue
+        ccw = (poly_signed_area(arr) > 0.0)
+        nE = arr.shape[0]
+        for i in range(M):
+            px, py = float(xy[i, 0]), float(xy[i, 1])
+            m_list: list[float] = []
+            n_list: list[tuple[float, float]] = []
+            for k in range(nE):
+                ax, ay = float(arr[k, 0]), float(arr[k, 1])
+                bx, by = float(arr[(k + 1) % nE, 0]), float(arr[(k + 1) % nE, 1])
+                qx, qy, _, tx, ty = project_point_to_segment(px, py, ax, ay, bx, by)
+                nx_in, ny_in = (-ty, tx) if ccw else (ty, -tx)
+                dx, dy = px - qx, py - qy
+                s_k = nx_in * dx + ny_in * dy - min_gap
+                m_list.append(s_k)
+                n_list.append((nx_in, ny_in))
+            if not m_list:
+                continue
+            v = np.asarray(m_list, float)
+            wts = softmin_weights_np(v, beta)
+            m_eff = float((wts * v).sum())
+            nx_eff = float((wts * np.asarray([n[0] for n in n_list])).sum())
+            ny_eff = float((wts * np.asarray([n[1] for n in n_list])).sum())
+            nrm = math.hypot(nx_eff, ny_eff)
+            if nrm <= 1e-9:
+                continue
+            nx_eff /= nrm
+            ny_eff /= nrm
+            if m_eff >= 0.0:
+                r_in = softplus(m_eff, alpha_sp)
+                s_in = sigmoid(alpha_sp * m_eff)
+                t_in = softclip(lambda_in * m_eff, -80.0, 80.0, beta=8.0)
+                decay_in = math.exp(-t_in)
+                fmag = k_push * r_in * s_in * (decay_in ** 2)
+            else:
+                t_out = softclip(lambda_out * m_eff, -80.0, 80.0, beta=8.0)
+                decay_out = math.exp(t_out)
+                fmag = k_push * (gamma_out ** 2) * lambda_out * (decay_out ** 2)
+            F[i, 0] += -fmag * nx_eff
+            F[i, 1] += -fmag * ny_eff
+
+    if not np.isfinite(F).all():
+        raise ValueError("area.softout probe produced non-finite values")
+    return F
+
+
+register_probe("area.softout")(probe)

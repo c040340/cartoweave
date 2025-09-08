@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+import math
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.geometry import (
     project_point_to_segment,
     rect_half_extent_along_dir,
@@ -122,3 +123,48 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "ln.rect", "ln": int(segs.shape[0])}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample ``ln.rect`` field from line segments acting on probes."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    segs_raw = scene.get("lines") or []
+    if len(segs_raw) == 0:
+        return np.zeros_like(xy, float)
+
+    segs_arr = polylines_to_segments(segs_raw)
+    segs = segs_arr.reshape((segs_arr.shape[0], 4))
+    k_out = float(0.8 if params.get("k_out") is None else params.get("k_out"))
+
+    F = np.zeros_like(xy, float)
+    for ax, ay, bx, by in segs:
+        ax = float(ax)
+        ay = float(ay)
+        bx = float(bx)
+        by = float(by)
+        ex, ey = bx - ax, by - ay
+        L = math.hypot(ex, ey) + 1e-9
+        tx, ty = ex / L, ey / L
+        vx = xy[:, 0] - ax
+        vy = xy[:, 1] - ay
+        t = np.clip(vx * tx + vy * ty, 0.0, L)
+        qx = ax + t * tx
+        qy = ay + t * ty
+        dx = xy[:, 0] - qx
+        dy = xy[:, 1] - qy
+        dist_sq = dx * dx + dy * dy + 1e-9
+        dist = np.sqrt(dist_sq)
+        mag = k_out / dist_sq
+        F[:, 0] += mag * dx / dist
+        F[:, 1] += mag * dy / dist
+
+    if not np.isfinite(F).all():
+        raise ValueError("ln.rect probe produced non-finite values")
+    return F
+
+
+register_probe("ln.rect")(probe)

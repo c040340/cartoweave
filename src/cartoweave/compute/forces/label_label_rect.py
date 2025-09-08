@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -102,4 +102,40 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     M = len(idxs)
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "ll.rect", "pairs": int(M * (M - 1) // 2)}
+
+
+def _pairwise_force_rect(src_xy: np.ndarray, src_wh: np.ndarray, xy: np.ndarray, params: dict) -> np.ndarray:
+    """Force from a rectangular source at ``src_xy`` acting on probe points ``xy``."""
+
+    k_out = float(0.3 if params.get("k_out") is None else params.get("k_out"))
+    dx = xy[:, 0] - src_xy[0]
+    dy = xy[:, 1] - src_xy[1]
+    dist_sq = dx * dx + dy * dy + 1e-6
+    dist = np.sqrt(dist_sq)
+    mag = k_out / dist_sq
+    fx = -mag * dx / dist
+    fy = -mag * dy / dist
+    return np.stack([fx, fy], axis=1)
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample label-label rectangle field at ``xy`` points."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    labels_xy = np.asarray(scene.get("labels_xy", []), float)
+    WH = np.asarray(scene.get("WH"), float) if scene.get("WH") is not None else np.zeros((labels_xy.shape[0], 2), float)
+
+    F = np.zeros_like(xy, float)
+    for p, wh in zip(labels_xy, WH):
+        F += _pairwise_force_rect(np.asarray(p, float), np.asarray(wh, float), xy, params)
+
+    if not np.isfinite(F).all():
+        raise ValueError("ll.rect probe produced non-finite values")
+    return F
+
+
+register_probe("ll.rect")(probe)
 

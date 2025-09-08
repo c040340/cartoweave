@@ -22,6 +22,7 @@ from matplotlib.path import Path
 from ..utils.layout_mode import is_circle_label
 from .layout_style import LayoutStyle
 from .metrics import collect_solver_metrics
+from ..compute.forces import get_probe, term_params_map
 
 # Configuration is supplied externally.  Functions accept the relevant slices of
 # the viewer configuration so that callers can merge YAML defaults beforehand.
@@ -899,109 +900,272 @@ def draw_info(
         y -= dy
 
 
-def draw_field(ax, view_pack, t: int, viz_cfg: dict) -> None:
-    """Render the scalar potential field for frame ``t``."""
+def draw_field(ax, view_pack, t: int, viz_cfg: dict, _draw_field_splat=None) -> None:
+    """Render a force field for frame ``t`` using term probes (robust)."""
+    import numpy as np
+    from typing import List, Dict
+    import logging
 
+    # 延迟导入：与你工程的模块路径保持一致
+    from cartoweave.compute.forces import get_probe, REGISTRY
+
+    log = logging.getLogger(__name__)
+
+    # ---------- 取帧 ----------
     frames = getattr(view_pack, "frames", [])
-    src = getattr(view_pack, "sources", None)
-    if not frames or src is None:
+    if not frames:
+        ax.set_title("Field: no frames")
         return
     if t < 0 or t >= len(frames):
         t = 0
     fr = frames[t]
 
-    width, height = getattr(src, "frame_size", (1.0, 1.0))
-    field_cfg = viz_cfg.get("field", {})
-
+    # ---------- 解析 viz 配置 ----------
+    field_cfg = viz_cfg.get("field", {}) or {}
+    terms_cfg = field_cfg.get("terms")
+    res_short = int(field_cfg.get("resolution", 128)) or 128
+    aggregate = str(field_cfg.get("aggregate", "norm")).lower()
+    log_scale = bool(field_cfg.get("log_scale", False))
+    fallback_splat = bool(field_cfg.get("fallback_splat", True))
     kind_cfg = str(field_cfg.get("mode", "heatmap")).lower()
     kind = "3d" if "3d" in kind_cfg else "heatmap"
     cmap = str(field_cfg.get("cmap", "viridis"))
-    res_short = int(field_cfg.get("resolution", 128)) or 128
-    sigma = float(field_cfg.get("sigma", 1.2))  # 高斯核半径（以网格像素计）
     vmax = field_cfg.get("vmax", None)
+    extent = field_cfg.get("extent")
 
-    width = float(width)
-    height = float(height)
+    # ---------- frame size / extent ----------
+    # 优先顺序：viz.extent → view_pack.frame_size → fr.meta.frame_size → sources.frame_size → 兜底
+    width = height = None
+    xmin = ymin = 0.0
+    xmax = ymax = None
+
+    if extent and len(extent) == 4:
+        xmin, xmax, ymin, ymax = map(float, extent)
+        width = xmax - xmin
+        height = ymax - ymin
+    else:
+        fs = getattr(view_pack, "frame_size", None)
+        if isinstance(fs, (list, tuple)) and len(fs) == 2:
+            width, height = float(fs[0]), float(fs[1])
+        else:
+            meta = getattr(fr, "meta", {}) or {}
+            fs = meta.get("frame_size")
+            if fs and len(fs) == 2:
+                width, height = float(fs[0]), float(fs[1])
+            else:
+                src = getattr(view_pack, "sources", None)
+                if src is not None and hasattr(src, "frame_size"):
+                    fs = getattr(src, "frame_size", (1000.0, 1000.0))
+                    width, height = float(fs[0]), float(fs[1])
+                else:
+                    width, height = 1000.0, 1000.0
+        xmin, ymin = 0.0, 0.0
+        xmax, ymax = width, height
+
+    width = float(max(width, 1e-9))
+    height = float(max(height, 1e-9))
+
+    # ---------- 生成采样网格 ----------
     if width >= height:
         res_y = res_short
-        res_x = max(1, int(round(res_short * width / max(height, 1e-9))))
+        res_x = max(1, int(round(res_short * width / height)))
     else:
         res_x = res_short
-        res_y = max(1, int(round(res_short * height / max(width, 1e-9))))
+        res_y = max(1, int(round(res_short * height / width)))
 
-    # 若已预计算，直接画
-    field = getattr(fr, "field", None)
-    if field is not None:
-        draw_field_panel(ax, np.asarray(field, float), width, height, kind, cmap, vmax=vmax)
-        ax.set_title("field")
-        return
+    xs = np.linspace(xmin, xmax, res_x, endpoint=False)
+    ys = np.linspace(ymin, ymax, res_y, endpoint=False)
+    XX, YY = np.meshgrid(xs, ys)
+    XY = np.stack([XX.ravel(), YY.ravel()], axis=1)
 
-    # 1) 从 comps 聚合出总力（N,2）
-    P = np.asarray(fr.P, float)
-    comps = getattr(fr, "comps", {}) or {}
-    if not comps:
-        empty = np.zeros((res_y, res_x), float)
-        draw_field_panel(ax, empty, width, height, kind, cmap, vmax=vmax)
-        ax.set_title("field (empty)")
-        return
-    # ensure we account for every active force term (e.g. boundary, focus)
-    comps = normalize_comps_for_info(comps, P.shape[0])
+    # ---------- scene 构造（不强依赖 sources） ----------
+    src = getattr(view_pack, "sources", None)
+    labels = getattr(view_pack, "labels", [])
+    WH = getattr(view_pack, "WH", None)
+    scene = {
+        "frame_size": (width, height),
+        "areas": getattr(src, "areas", []) if src is not None else [],
+        "points": getattr(src, "points", np.zeros((0, 2))),
+        "lines": getattr(src, "lines", []) if src is not None else [],
+        "labels": labels,
+        "WH": WH,
+        "labels_xy": np.asarray(getattr(fr, "P", np.zeros((0, 2))), float),
+    }
 
-    first = next(iter(comps.values()))
-    totalF = np.zeros_like(np.asarray(first, float))
-    for arr in comps.values():
-        totalF += np.asarray(arr, float)
-    assert P.shape[0] == totalF.shape[0] and totalF.shape[1] == 2, "P and force shape mismatch"
+    # ---------- 规范化 terms ----------
+    def _normalize_terms(ts) -> List[str]:
+        # 默认从 comps keys 推断
+        if not ts:
+            ts = list((getattr(fr, "comps", {}) or {}).keys())
+        out: List[str] = []
+        for name in ts:
+            name = str(name)
+            if name in REGISTRY:
+                out.append(name)
+                continue
+            if "." not in name:
+                # 简写匹配：e.g. "focus" -> "focus.attract"
+                cands = [k for k in REGISTRY.keys() if k.split(".", 1)[0] == name]
+                if cands:
+                    out.extend(cands)
+                    continue
+            # 前缀匹配兜底
+            cands = [k for k in REGISTRY.keys() if k.startswith(name)]
+            if cands:
+                out.extend(cands)
+            else:
+                log.debug("Field: unknown term '%s' (skipped)", name)
+        # 去重保序
+        seen = set()
+        uniq = []
+        for k in out:
+            if k not in seen:
+                uniq.append(k)
+                seen.add(k)
+        return uniq
 
-    # 2) 规则网格
-    xs = np.linspace(0.0, width, res_x, endpoint=False)
-    ys = np.linspace(0.0, height, res_y, endpoint=False)
-    dx = xs[1] - xs[0]
-    dy = ys[1] - ys[0]
+    terms = _normalize_terms(terms_cfg)
 
-    # 3) 将散点力 splat 到网格（双线性 + 可选高斯）
-    Fx = np.zeros((res_y, res_x), float)
-    Fy = np.zeros((res_y, res_x), float)
+    # ---------- 参数映射（多源合并 + 安全默认） ----------
+    # 优先 defaults.compute → view_pack.compute → fr.params → 安全默认
+    compute_cfg_all: Dict = {}
+    # defaults.compute
+    defaults = getattr(view_pack, "defaults", None)
+    if isinstance(defaults, dict):
+        node = defaults.get("compute") or defaults
+        if isinstance(node, dict):
+            compute_cfg_all.update(node)
+    # view_pack.compute（若存在）
+    vp_compute = getattr(view_pack, "compute", None)
+    if isinstance(vp_compute, dict):
+        # 不破坏已有键，补充合并
+        for k, v in vp_compute.items():
+            if k not in compute_cfg_all:
+                compute_cfg_all[k] = v
 
-    gx = np.clip(np.floor((P[:, 0] / max(width, 1e-9)) * res_x).astype(int), 0, res_x - 1)
-    gy = np.clip(np.floor((P[:, 1] / max(height, 1e-9)) * res_y).astype(int), 0, res_y - 1)
-    for (ix, iy, f) in zip(gx, gy, totalF):
-        Fx[iy, ix] += float(f[0])
-        Fy[iy, ix] += float(f[1])
+    # 帧级 params（有些实现把 term 参数直接挂在 fr.params 或 fr.params["forces"]）
+    fr_params = getattr(fr, "params", None)
+    if isinstance(fr_params, dict):
+        # 合并进 forces
+        forces_slot = compute_cfg_all.setdefault("forces", {})
+        # 允许两种结构：扁平 term->params 或 分组 forces[group][name]
+        # 若 fr_params 下直接是 term 名，就并入
+        for k, v in fr_params.items():
+            if isinstance(v, dict):
+                # 若是分组，则再并一次
+                if k in ("ll", "ln", "pl", "area", "anchor", "boundary", "focus"):
+                    forces_slot.setdefault(k, {}).update(v)
+                else:
+                    # 认为是扁平
+                    if k not in forces_slot:
+                        forces_slot[k] = v
 
-    if sigma > 0:
-        rad = int(max(1, round(3 * sigma)))
-        k = np.arange(-rad, rad + 1, dtype=float)
-        g = np.exp(-0.5 * (k / sigma) ** 2)
-        g /= g.sum()
-
-        Fx = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=1, arr=Fx)
-        Fy = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=1, arr=Fy)
-        Fx = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=0, arr=Fx)
-        Fy = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=0, arr=Fy)
-
-    # 4) 计算散度 div(F) ≈ dFx/dx + dFy/dy（中心差分，周期边界）
-    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1)) / (2 * dx)
-    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0)) / (2 * dy)
-    divF = dFx_dx + dFy_dy
-
-    # 5) 解 Poisson: ∇²φ = divF，频域解（周期 BC）
-    div_hat = np.fft.rfft2(divF)
-    ky = 2 * np.pi * np.fft.fftfreq(res_y, d=dy)[:, None]
-    kx = 2 * np.pi * np.fft.rfftfreq(res_x, d=dx)[None, :]
-    denom = (kx ** 2 + ky ** 2)
-    denom[0, 0] = 1.0  # 避免除零，DC 分量设为 0 势基准
-    phi_hat = -div_hat / denom
-    phi_hat[0, 0] = 0.0  # 去除未定常数
-    phi = np.fft.irfft2(phi_hat, s=divF.shape)
-
-    # 6) 归一化（改善可视化）：零均值 / min-max
-    phi = phi - np.mean(phi)
-    if vmax is None:
-        m = np.max(np.abs(phi)) or 1.0
-        vmax_local = m
+    # 如果项目里提供了 term_params_map，就优先使用；否则走我们自定义解析
+    if term_params_map is not None:
+        pmap = term_params_map(compute_cfg_all)
     else:
-        vmax_local = vmax
+        # 自定义：支持 flat 和 group.name 两种
+        forces = compute_cfg_all.get("forces", {}) or {}
+        pmap: Dict[str, Dict] = {}
+        # 扁平
+        for k, v in forces.items():
+            if isinstance(v, dict) and "." in k:
+                pmap[k] = v
+        # 分组
+        for g, gdict in forces.items():
+            if isinstance(gdict, dict):
+                for n, v in gdict.items():
+                    if isinstance(v, dict):
+                        pmap[f"{g}.{n}"] = v
 
-    draw_field_panel(ax, phi, width, height, kind, cmap, vmax=vmax_local)
-    ax.set_title("potential φ (∇²φ=div F)")
+    def _params_for(term: str) -> Dict:
+        p = dict(pmap.get(term, {}) or {})
+        # 安全默认
+        p.setdefault("enable", True)
+        p.setdefault("k", float(field_cfg.get("k", 1.0)))
+        return p
+
+    # ---------- 累加 probe ----------
+    F = np.zeros_like(XY)
+    used_terms: List[str] = []
+    for term in terms:
+        probe = get_probe(term)
+        if probe is None:
+            continue
+        params = _params_for(term)
+        if not params.get("enable", True):
+            log.debug("Field: term '%s' disabled by params", term)
+            continue
+        try:
+            Fi = probe(scene, params, XY)
+            Fi = np.asarray(Fi, float)
+            if Fi.shape != XY.shape:
+                raise ValueError(f"probe('{term}') returned shape {Fi.shape}, expected {XY.shape}")
+            if not np.all(np.isfinite(Fi)):
+                raise ValueError(f"probe('{term}') produced non-finite values")
+            F += Fi
+            used_terms.append(term)
+        except Exception as e:
+            log.warning("Field: probe('%s') failed: %s", term, e)
+
+    # ---------- 渲染 ----------
+    if used_terms:
+        Fx = F[:, 0].reshape(res_y, res_x)
+        Fy = F[:, 1].reshape(res_y, res_x)
+        if aggregate == "div":
+            dx = (xmax - xmin) / max(res_x, 1)
+            dy = (ymax - ymin) / max(res_y, 1)
+            dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1)) / (2 * dx)
+            dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0)) / (2 * dy)
+            field = dFx_dx + dFy_dy
+            label = "div"
+        else:
+            field = np.sqrt(Fx * Fx + Fy * Fy)
+            if log_scale:
+                field = np.log1p(field)
+            label = "|F|"
+        draw_field_panel(ax, field, width, height, kind, cmap, vmax=vmax)
+        ax.set_title(f"Field (probe): {' + '.join(used_terms)} | {label} | {res_x}x{res_y}")
+        return
+
+    # ---------- fallback: label-splat ----------
+    if fallback_splat:
+        try:
+            P = np.asarray(fr.P, float)
+            comps = getattr(fr, "comps", {}) or {}
+            if comps and P.size:
+                comps = normalize_comps_for_info(comps, P.shape[0])
+                totalF = np.zeros_like(P)
+                for arr in comps.values():
+                    totalF += np.asarray(arr, float)
+                Fx = np.zeros((res_y, res_x), float)
+                Fy = np.zeros((res_y, res_x), float)
+                gx = np.clip(
+                    np.floor(((P[:, 0] - xmin) / max(width, 1e-9)) * res_x).astype(int),
+                    0,
+                    res_x - 1,
+                )
+                gy = np.clip(
+                    np.floor(((P[:, 1] - ymin) / max(height, 1e-9)) * res_y).astype(int),
+                    0,
+                    res_y - 1,
+                )
+                for (ix, iy, f) in zip(gx, gy, totalF):
+                    Fx[iy, ix] += float(f[0])
+                    Fy[iy, ix] += float(f[1])
+                field = np.linalg.norm(np.stack([Fx, Fy], axis=2), axis=2)
+                if log_scale:
+                    field = np.log1p(np.abs(field))
+                draw_field_panel(ax, field, width, height, kind, cmap, vmax=vmax)
+                ax.set_title(
+                    f"Field (fallback: label-splat): {' + '.join(terms)} | {aggregate} | {res_x}x{res_y}"
+                )
+                return
+        except Exception as e:
+            log.warning("Field: fallback splat failed: %s", e)
+
+    # ---------- 空场 ----------
+    empty = np.zeros((res_y, res_x), float)
+    draw_field_panel(ax, empty, width, height, kind, cmap, vmax=vmax)
+    ax.set_title("Field (no-probe, no-fallback)")
+

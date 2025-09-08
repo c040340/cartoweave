@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.geometry import (
     project_point_to_segment,
     poly_signed_area,
@@ -168,3 +168,76 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = ensure_vec2(F, N)
     return float(E_total), F, {"term": "area.embed", "area_embed": S}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample the ``area.embed`` force field.
+
+    This mirrors the analytic structure of :func:`evaluate` but omits terms
+    involving label size, treating ``xy`` as zero-size probes.
+    """
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    areas = scene.get("areas", []) or []
+    if not areas:
+        return np.zeros_like(xy, float)
+
+    k_embed = float(200.0 if params.get("k_embed") is None else params.get("k_embed"))
+    k_tan = float(30.0 if params.get("k_tan") is None else params.get("k_tan"))
+    beta_edge = float(6.0 if params.get("beta_edge") is None else params.get("beta_edge"))
+    tan_gate = params.get("tan_gate") or {}
+    gate_eta = float(2.0 if tan_gate.get("eta") is None else tan_gate.get("eta"))
+    gate_slack = float(1.0 if tan_gate.get("slack") is None else tan_gate.get("slack"))
+    eps_abs = float(params.get("eps_abs") or 1e-3)
+
+    F = np.zeros_like(xy, float)
+    M = xy.shape[0]
+
+    for poly in areas:
+        if poly is None:
+            continue
+        arr = np.asarray(poly, float).reshape(-1, 2)
+        nE = arr.shape[0]
+        if nE < 3:
+            continue
+        ccw = (poly_signed_area(arr) > 0.0)
+        for i in range(M):
+            px, py = float(xy[i, 0]), float(xy[i, 1])
+            s_list: list[float] = []
+            u_list: list[float] = []
+            n_list: list[tuple[float, float]] = []
+            t_list: list[tuple[float, float]] = []
+            for k in range(nE):
+                ax, ay = float(arr[k, 0]), float(arr[k, 1])
+                bx, by = float(arr[(k + 1) % nE, 0]), float(arr[(k + 1) % nE, 1])
+                qx, qy, _, tx, ty = project_point_to_segment(px, py, ax, ay, bx, by)
+                nx_in, ny_in = (-ty, tx) if ccw else (ty, -tx)
+                dx, dy = px - qx, py - qy
+                s_k = nx_in * dx + ny_in * dy
+                u_k = tx * dx + ty * dy
+                s_list.append(s_k)
+                u_list.append(u_k)
+                n_list.append((nx_in, ny_in))
+                t_list.append((tx, ty))
+            if not s_list:
+                continue
+            s_arr = np.asarray(s_list, float)
+            u_arr = np.asarray(u_list, float)
+            n_arr = np.asarray(n_list, float)
+            t_arr = np.asarray(t_list, float)
+            sabs = softabs_np(s_arr, eps_abs)
+            wgt = softmin_weights_np(sabs, beta_edge)
+            ds = s_arr  # zero-size probe -> r_n = 0
+            g = sigmoid_np(((gate_slack) - sabs) / max(gate_eta, 1e-9))
+            grad = (k_embed * ds)[:, None] * n_arr + (k_tan * g * u_arr)[:, None] * t_arr
+            F[i] += -(wgt[:, None] * grad).sum(axis=0)
+
+    if not np.isfinite(F).all():
+        raise ValueError("area.embed probe produced non-finite values")
+    return F
+
+
+register_probe("area.embed")(probe)

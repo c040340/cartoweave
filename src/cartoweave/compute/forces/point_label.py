@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -114,3 +114,34 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "pl.rect", "pl": int(N * M)}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample ``pl.rect`` field caused by static points."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    pts = scene.get("points")
+    if pts is None or len(pts) == 0:
+        return np.zeros_like(xy, float)
+
+    k_out = float(0.8 if params.get("k_out") is None else params.get("k_out"))
+    pts = np.asarray(pts, float).reshape(-1, 2)
+
+    dx = xy[:, None, 0] - pts[None, :, 0]
+    dy = xy[:, None, 1] - pts[None, :, 1]
+    dist_sq = dx * dx + dy * dy + 1e-9
+    dist = np.sqrt(dist_sq)
+    mag = k_out / dist_sq
+    fx = (mag * dx / dist).sum(axis=1)
+    fy = (mag * dy / dist).sum(axis=1)
+    F = np.stack([fx, fy], axis=1)
+
+    if not np.isfinite(F).all():
+        raise ValueError("pl.rect probe produced non-finite values")
+    return F
+
+
+register_probe("pl.rect")(probe)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -123,3 +123,49 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         pass
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "boundary.wall", "boundary": src}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample boundary repulsion field at ``xy`` points."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    W, H = scene.get("frame_size", (1000.0, 1000.0))
+    W, H = float(W), float(H)
+
+    k_wall = float(params.get("k_wall", 240.0))
+    ker = kernel_params(params, defaults={"model": "inv_pow", "exponent": 3.0, "soft_eps": 0.3})
+    power = ker["kernel_exponent"]
+    eps_div = ker["kernel_soft_eps"]
+    beta_d = float((params.get("beta") or {}).get("dist", 3.0))
+    pad = float(params.get("pad", 0.0))
+    k_in = float(params.get("k_in", 0.0))
+    y_down = bool(params.get("y_down", True))
+
+    sL = xy[:, 0] - pad
+    sR = (W - pad) - xy[:, 0]
+    sT = xy[:, 1] - pad
+    sB = (H - pad) - xy[:, 1]
+
+    def piece(s: np.ndarray) -> np.ndarray:
+        c = softplus(s, beta_d) + eps_div
+        v = softplus(-s, beta_d)
+        sc = sigmoid(beta_d * s)
+        sv = sigmoid(-beta_d * s)
+        F_outm = invdist_force_mag(c, k_wall, power) * sc
+        F_inm = k_in * v * sv
+        return F_outm + F_inm
+
+    Fx = piece(sL) - piece(sR)
+    Fy = piece(sT) - piece(sB)
+    if not y_down:
+        Fy = -Fy
+    F = np.stack([Fx, Fy], axis=1)
+    if not np.isfinite(F).all():
+        raise ValueError("boundary.probe produced non-finite values")
+    return F
+
+
+register_probe("boundary.wall")(probe)
