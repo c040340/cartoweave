@@ -11,11 +11,16 @@ from typing import Optional
 from matplotlib.widgets import Slider
 
 from .defaults import VIZ_DEFAULTS
+from cartoweave.config.loader import load_viz_defaults
 from . import panels
+from .layout_style import get_layout_style_from_cfg
 
 
 def _merge_viz_cfg(user_cfg: dict | None) -> dict:
-    cfg = dict(VIZ_DEFAULTS) if isinstance(VIZ_DEFAULTS, dict) else {}
+    cfg = VIZ_DEFAULTS.copy()
+    cfg.update(load_viz_defaults() or {})
+    cfg.update(user_cfg or {})
+    '''cfg = dict(VIZ_DEFAULTS) if isinstance(VIZ_DEFAULTS, dict) else {}
     if user_cfg:
         panels_default = cfg.get("panels", {})
         panels_user = user_cfg.get("panels", {})
@@ -23,7 +28,7 @@ def _merge_viz_cfg(user_cfg: dict | None) -> dict:
         if panels_default or panels_user:
             m = dict(panels_default)
             m.update(panels_user)
-            cfg["panels"] = m
+            cfg["panels"] = m'''
     return cfg
 
 @dataclass
@@ -93,6 +98,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
     """Multi-panel ViewPack viewer."""
 
     cfg = _merge_viz_cfg(viz_cfg or {})
+    style = get_layout_style_from_cfg(cfg)
     frames = getattr(view_pack, "frames", []) or []
     T = len(frames)
     if T == 0:
@@ -119,7 +125,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         ax = ax_layout
         ax.clear()
         if hasattr(panels, "draw_layout"):
-            panels.draw_layout(ax, view_pack, t, cfg)
+            panels.draw_layout(ax, view_pack, t, style=style)
         ax.figure.canvas.draw_idle()
 
     def redraw_forces(t: int):

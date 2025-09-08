@@ -90,5 +90,17 @@ def load_data_defaults(path: str = "configs/data.yaml") -> DataConfig:
     return profile.data
 
 
+def load_viz_defaults(path: str = "configs/viz.yaml") -> DataConfig:
+    """Read ``configs/data.yaml`` and return a validated :class:`DataConfig`."""
+
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"viz config not found: {path}")
+    with p.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    # profile = ProfileData.model_validate(raw)
+    return raw
+
+
 # Backwards-compatible alias
 load_configs = load_compute_config

@@ -19,6 +19,7 @@ from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 
 from ..utils.layout_mode import is_circle_label
+from .layout_style import LayoutStyle
 
 # Configuration is supplied externally.  Functions accept the relevant slices of
 # the viewer configuration so that callers can merge YAML defaults beforehand.
@@ -189,7 +190,7 @@ def _draw_layout_panel(
     lines: Any = None,
     areas: Any = None,
     anchors: Optional[np.ndarray] = None,
-    viz_layout: Mapping[str, Any],
+    style: LayoutStyle,
 ) -> List[Tuple[int, plt.Artist]]:
     """Render the main layout panel.
 
@@ -199,23 +200,32 @@ def _draw_layout_panel(
     """
 
     ax.clear()
-    ax.set_aspect("equal")
+    if style.equal_aspect:
+        ax.set_aspect("equal")
     ax.set_xlim(0, frame_w)
-    ax.set_ylim(frame_h, 0)  # origin in the top-left corner
-    ax.set_facecolor("#FFFFFFFF")  # white background
+    if style.invert_y:
+        ax.set_ylim(frame_h, 0)
+    else:
+        ax.set_ylim(0, frame_h)
+    ax.set_facecolor(style.background)
 
     # add simple tick marks to help gauge scale
     ax.set_xticks(np.linspace(0, frame_w, 5))
     ax.set_yticks(np.linspace(0, frame_h, 5))
-    ax.grid(True, color="#DDDDDDFF", lw=0.5)  # light gray grid
+    ax.grid(style.show_grid, color=style.grid_color, lw=style.grid_lw)
 
     # --- background geometry -------------------------------------------------
-    cfg = viz_layout
-    colors = cfg["colors"]
 
     pts = _as_vec2(points)
     if pts is not None:
-        ax.scatter(pts[:, 0], pts[:, 1], c=colors["points"], s=18, zorder=1)
+        ax.scatter(
+            pts[:, 0],
+            pts[:, 1],
+            c=style.points_color,
+            s=style.point_size,
+            zorder=1,
+            edgecolors="none",
+        )
 
     if isinstance(lines, (list, tuple)):
         for pl in lines:
@@ -224,8 +234,8 @@ def _draw_layout_panel(
                 ax.plot(
                     arr[:, 0],
                     arr[:, 1],
-                    color=colors["lines"],
-                    lw=cfg["line_width"],
+                    color=style.lines_color,
+                    lw=style.line_width,
                     zorder=0,
                 )
 
@@ -236,9 +246,11 @@ def _draw_layout_panel(
                 path = Path(arr, closed=True)
                 patch = PathPatch(
                     path,
-                    facecolor=to_rgba(colors["areas"], alpha=cfg["area_face_alpha"]),
-                    edgecolor=colors["areas"],
-                    lw=cfg["area_edge_width"],
+                    facecolor=to_rgba(
+                        style.areas_face_color, alpha=style.areas_face_alpha
+                    ),
+                    edgecolor=style.areas_edge_color,
+                    lw=style.areas_edge_width,
                 )
                 ax.add_patch(patch)
 
@@ -276,9 +288,9 @@ def _draw_layout_panel(
             circ = Circle(
                 (x, y),
                 radius=radius,
-                facecolor=colors.get("label_fill", "#F2F2FFCC"),
-                edgecolor=colors.get("label_edge", "#2B6CB0FF"),
-                lw=cfg["label_edge_width"],
+                facecolor=style.labels_fill_color,
+                edgecolor=style.labels_edge_color,
+                lw=style.label_edge_width,
                 picker=True,
                 zorder=5,
             )
@@ -289,9 +301,9 @@ def _draw_layout_panel(
                 (x - w / 2, y - h / 2),
                 w,
                 h,
-                facecolor=colors["label_fill"],
-                edgecolor=colors["label_edge"],
-                lw=cfg["label_edge_width"],
+                facecolor=style.labels_fill_color,
+                edgecolor=style.labels_edge_color,
+                lw=style.label_edge_width,
                 picker=True,
                 zorder=5,
             )
@@ -304,7 +316,7 @@ def _draw_layout_panel(
                 _label_text(labels[i], i),
                 ha="center",
                 va="center",
-                fontsize=cfg["label_fontsize"],
+                fontsize=style.label_fontsize,
                 zorder=6,
             )
 
@@ -312,41 +324,42 @@ def _draw_layout_panel(
             ax.plot(
                 [anchor_xy[0], x],
                 [anchor_xy[1], y],
-                color=colors["anchor_line"],
-                lw=cfg["line_width"],
+                color=style.anchor_line_color,
+                lw=style.line_width,
                 linestyle='--',
             )
             ax.scatter(
                 anchor_xy[0],
                 anchor_xy[1],
-                marker='x',
-                s=(cfg.get("anchor_marker_size", 4.0) * 2) ** 2,
-                c=colors["anchor_marker_edge"],
-                lw=cfg["line_width"],
+                marker='o',
+                s=(style.anchor_marker_size * 2) ** 2,
+                facecolors=style.anchor_marker_face,
+                edgecolors=style.anchor_marker_edge,
+                linewidths=style.line_width,
                 zorder=4,
             )
 
     return patches
 
 
-def draw_layout(ax: plt.Axes, *args, **kwargs):
+def draw_layout(ax: plt.Axes, *args, style: LayoutStyle, **kwargs):
     """Dispatch to draw the layout panel.
 
     Supports two calling conventions:
 
     1. ``draw_layout(ax, pos, labels, rect_wh, *, frame_w, frame_h, ...)`` or
        the same with keyword arguments ``pos=...``, ``labels=...``, etc.
-    2. ``draw_layout(ax, view_pack, t, viz_cfg)``.
+    2. ``draw_layout(ax, view_pack, t, style=style)``.
     """
 
     if args and isinstance(args[0], np.ndarray):
-        return _draw_layout_panel(ax, *args, **kwargs)
+        return _draw_layout_panel(ax, *args, style=style, **kwargs)
 
     if "pos" in kwargs:
         pos = kwargs.pop("pos")
         labels = kwargs.pop("labels")
         rect_wh = kwargs.pop("rect_wh")
-        return _draw_layout_panel(ax, pos, labels, rect_wh, **kwargs)
+        return _draw_layout_panel(ax, pos, labels, rect_wh, style=style, **kwargs)
 
     if not args:
         raise TypeError("draw_layout expected ViewPack or position array")
@@ -355,7 +368,6 @@ def draw_layout(ax: plt.Axes, *args, **kwargs):
     if len(args) < 2:
         raise TypeError("draw_layout expected time index")
     t = int(args[1])
-    viz_cfg = args[2] if len(args) > 2 else kwargs
 
     fr = view_pack.frames[t]
     src = getattr(view_pack, "sources", None)
@@ -371,7 +383,6 @@ def draw_layout(ax: plt.Axes, *args, **kwargs):
     ]
     rect_wh = getattr(view_pack, "WH", None)
     anchors = getattr(fr, "anchors", None)
-    viz_layout = viz_cfg.get("layout", {}) if isinstance(viz_cfg, dict) else {}
 
     return _draw_layout_panel(
         ax,
@@ -384,7 +395,7 @@ def draw_layout(ax: plt.Axes, *args, **kwargs):
         lines=lines,
         areas=areas,
         anchors=anchors,
-        viz_layout=viz_layout,
+        style=style,
     )
 
 
