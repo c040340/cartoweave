@@ -8,8 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, m
 
 
 class Eps(BaseModel):
-    div: float = Field(gt=0)
-    sqrt: float = Field(gt=0)
+    numeric: float = Field(gt=0)
+    dist: float = Field(gt=0)
+    abs: float = Field(gt=0)
     proj: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
@@ -18,13 +19,15 @@ class Eps(BaseModel):
 class CapturePass(BaseModel):
     every: int = Field(ge=1)
     final_always: bool
+    limit: int | None = Field(default=None, ge=1)
 
     model_config = ConfigDict(extra="forbid")
 
 
 class GradClipPass(BaseModel):
     enable: bool
-    norm_max: float = Field(gt=0)
+    max_norm: float | None = Field(default=None, gt=0)
+    max_abs: float | None = Field(default=None, gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -83,6 +86,23 @@ class SolverTuningLBFGSB(BaseModel):
 
 class SolverTuningStopping(BaseModel):
     gtol: float = Field(gt=0)
+    ftol: float = Field(gt=0)
+    xtol: float = Field(gt=0)
+    max_stall_iters: int | None = Field(default=None, ge=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SolverTuningSemiNewton(BaseModel):
+    sn_max_outer: int = Field(ge=1)
+    sn_dt: float = Field(gt=0)
+    sn_hvp_eps: float = Field(gt=0)
+    sn_cg_tol: float = Field(gt=0)
+    sn_cg_maxit: int = Field(ge=1)
+    sn_lm0: float = Field(gt=0)
+    sn_gtol: float = Field(gt=0)
+    sn_armijo_c1: float = Field(gt=0)
+    sn_max_backtrack: int = Field(ge=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -101,9 +121,10 @@ class SolverTuningWarmup(BaseModel):
 
 class SolverTuning(BaseModel):
     lbfgsb: SolverTuningLBFGSB
+    semi_newton: SolverTuningSemiNewton
     stopping: SolverTuningStopping
-    anti_jump: SolverTuningAntiJump
     warmup: SolverTuningWarmup
+    anti_jump: SolverTuningAntiJump
 
     model_config = ConfigDict(extra="forbid")
 
@@ -141,7 +162,6 @@ class Compute(BaseModel):
     eps: Eps
     passes: Passes
     solver: Solver
-    tuning_passes: TuningPasses | None = None
     public: ComputePublic = Field(default_factory=ComputePublic)
     tuning_passes: TuningPasses | None = None
 

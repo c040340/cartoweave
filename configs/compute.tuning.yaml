@@ -1,33 +1,51 @@
 compute:
   solver:
     tuning:
-      lbfgsb: { m: 10, maxiter: 300 }
-      stopping: { gtol: 1.0e-4 }
-      anti_jump: { step_cap_px: 30.0 }
-      warmup: { steps: 1 }
-  tuning_passes:
-    calibration: {}
+      lbfgsb:
+        m: 10
+        # 主循环最大迭代数；若未设置，主循环回退为 warmup.steps
+        maxiter: 300
+
+      semi_newton:
+        sn_max_outer: 60
+        sn_dt: 1.0
+        sn_hvp_eps: 1.0e-4
+        sn_cg_tol: 1.0e-4
+        sn_cg_maxit: 40
+        sn_lm0: 1.0e-3
+        sn_gtol: 1.0e-3
+        sn_armijo_c1: 1.0e-4
+        sn_max_backtrack: 8
+
+      stopping:
+        # ∥g∥∞ 阈值
+        gtol: 1.0e-6
+        # 能量变化阈值
+        ftol: 1.0e-9
+        # 步长×梯度 阈值
+        xtol: 1.0e-9
+        # 连续停滞的最大轮数（可选）
+        max_stall_iters: null
+
+      warmup:
+        # 进入主循环前的预迭代步数；也作为主循环 maxiter 的回退
+        steps: 10
+
+      anti_jump:
+        # 单步最大位移（像素）；与 passes.step_limit 取较小值
+        step_cap_px: 30.0
 
   passes:
     calibration:
-      shape_profile:
-        enable: false
-        name: default      # default | sparse | dense
-        sigma_scale: 1.0
-        scope: once        # once | always
-      auto_k:
-        enable: false
-        base_term: focus.attract
-        p_quantile: 0.95
-        clip_q: 0.995
-        min_activation: 0.05
-        hysteresis: 0.25
-        clamp: { min: 0.33, max: 3.0 }
-        scope: once        # once | always
-        targets:
-          anchor.spring: 1.0
-          boundary.wall: 0.6
-          pl.rect: 0.8
-          ll.rect: 0.4
-          area.cross: 0.8
-          area.softout: 0.5
+      # 细节参数放 tuning，不对外暴露实现细节
+      target: energy_min
+      max_iters: 20
+      search:
+        k_scale_min: 0.5
+        k_scale_max: 2.0
+        exponent_min: 1.5
+        exponent_max: 3.5
+      weights:
+        energy: 1.0
+        overlap: 0.0
+        aspect: 0.0

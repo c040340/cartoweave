@@ -13,7 +13,5 @@ sp = make_solvepack_from_data_defaults(
 sp.validate()
 init_logging_from_cfg(getattr(sp, "cfg", None))
 view = solve(sp)
-print(
-    "frames:", view.summary.get("frames_captured"),
-    "E_last:", view.summary.get("E_last"),
-)
+final_E = view.frames[-1].E if view.frames else None
+print("frames:", view.num_frames(), "E_last:", final_E)

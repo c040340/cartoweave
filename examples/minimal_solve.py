@@ -12,7 +12,10 @@ def main() -> None:
     sp.validate()
     init_logging_from_cfg(getattr(sp, "cfg", None))
     view = solve(sp)
-    print("[minimal_solve] final positions", view.last.P)
+    if view.frames:
+        print("[minimal_solve] final positions", view.frames[-1].P)
+    else:
+        print("[minimal_solve] no frames")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,19 @@
 compute:
-  eps: { div: 1e-9, sqrt: 1e-9, proj: 1e-9 }
   solver:
     internals:
-      clip: { force_abs_max: 1.0e6, energy_abs_max: 1.0e6 }
+      clip:
+        energy_abs_max: 1.0e6
+        force_abs_max: 1.0e6
       stability:
         exp_clip: 40.0
         eps_norm: 1.0e-12
+
+  eps:
+    # get_eps(cfg) 读取的通用数值 ε（此前缺失）
+    numeric: 1.0e-12
+    # 距离核的软底 ε
+    dist: 1.0e-6
+    # softabs 平滑 ε
+    abs: 1.0e-3
+    # 投影/单位化等操作 ε
+    proj: 1.0e-9

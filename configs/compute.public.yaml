@@ -1,13 +1,38 @@
 compute:
   solver:
     public:
+      # 求解模式：lbfgsb | semi_newton
       mode: lbfgsb
+      # 是否启用暖启动（暖启动步数见 tuning.warmup.steps）
       use_warmup: true
-      log_level: debug  # 可选: none | info | debug；作为全局日志等级来源
+      # 全局日志等级：none | info | debug
+      log_level: debug
+
   passes:
-    capture: { every: 1, final_always: true }
-    grad_clip: { enable: false, norm_max: 1000.0 }
-    step_limit: { max_step_norm: null }
+    capture:
+      # 每隔多少个迭代记录一帧；1 表示每步记录
+      every: 1
+      # 是否无论如何都追加“最终帧”
+      final_always: true
+      # 最多记录多少帧；null 表示不限制
+      limit: null
+
+    grad_clip:
+      enable: false
+      # L2 范数裁剪阈值（推荐使用 max_norm 作为规范键）
+      max_norm: 1000.0
+      # 逐元素绝对值上限；null 表示不启用
+      max_abs: null
+
+    step_limit:
+      # 单步位移的 L2 上限；null 表示不限制
+      max_step_norm: null
+
+  # 若 calibration 需要对外开关（可选）：
+  # passes:
+  #   calibration:
+  #     enable: false
+
   public:
     forces:
       anchor.spring:
