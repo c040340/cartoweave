@@ -85,7 +85,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         ai = int(a["index"]) if a["index"] is not None else -1
         if ai < 0 or ai >= len(areas):
             continue
-        poly = areas[ai].get("polygon", None)
+        poly = areas[ai]
         if poly is None:
             continue
         arr = np.asarray(poly, float).reshape(-1, 2)
