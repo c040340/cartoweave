@@ -177,7 +177,7 @@ def grid_extent(width: float, height: float) -> Tuple[float, float, float, float
 # Drawing primitives
 # ---------------------------------------------------------------------------
 
-def draw_layout(
+def _draw_layout_panel(
     ax: plt.Axes,
     pos: np.ndarray,
     labels: Sequence[Dict[str, Any]],
@@ -327,6 +327,65 @@ def draw_layout(
             )
 
     return patches
+
+
+def draw_layout(ax: plt.Axes, *args, **kwargs):
+    """Dispatch to draw the layout panel.
+
+    Supports two calling conventions:
+
+    1. ``draw_layout(ax, pos, labels, rect_wh, *, frame_w, frame_h, ...)`` or
+       the same with keyword arguments ``pos=...``, ``labels=...``, etc.
+    2. ``draw_layout(ax, view_pack, t, viz_cfg)``.
+    """
+
+    if args and isinstance(args[0], np.ndarray):
+        return _draw_layout_panel(ax, *args, **kwargs)
+
+    if "pos" in kwargs:
+        pos = kwargs.pop("pos")
+        labels = kwargs.pop("labels")
+        rect_wh = kwargs.pop("rect_wh")
+        return _draw_layout_panel(ax, pos, labels, rect_wh, **kwargs)
+
+    if not args:
+        raise TypeError("draw_layout expected ViewPack or position array")
+
+    view_pack = args[0]
+    if len(args) < 2:
+        raise TypeError("draw_layout expected time index")
+    t = int(args[1])
+    viz_cfg = args[2] if len(args) > 2 else kwargs
+
+    fr = view_pack.frames[t]
+    src = getattr(view_pack, "sources", None)
+    frame_w = getattr(src, "frame_size", (1.0, 1.0))[0]
+    frame_h = getattr(src, "frame_size", (1.0, 1.0))[1]
+    points = getattr(src, "points", None)
+    lines = getattr(src, "lines", None)
+    areas_dict = getattr(src, "areas", None)
+    areas = [
+        a.get('xy')
+        for a in areas_dict
+        if isinstance(a, dict) and 'xy' in a and a['xy'] is not None
+    ]
+    rect_wh = getattr(view_pack, "WH", None)
+    anchors = getattr(fr, "anchors", None)
+    viz_layout = viz_cfg.get("layout", {}) if isinstance(viz_cfg, dict) else {}
+
+    return _draw_layout_panel(
+        ax,
+        fr.P,
+        getattr(view_pack, "labels", []),
+        rect_wh if rect_wh is not None else np.zeros_like(fr.P),
+        frame_w=float(frame_w),
+        frame_h=float(frame_h),
+        points=points,
+        lines=lines,
+        areas=areas,
+        anchors=anchors,
+        viz_layout=viz_layout,
+    )
 
 
 def draw_force_panel(
@@ -499,4 +558,20 @@ def draw_field_panel(
         ax.set_ylabel("y")
         ax.set_xticks([])
         ax.set_yticks([])
+
+
+def draw_forces(ax, view_pack, t: int, viz_cfg: dict) -> None:
+    """Placeholder forces panel drawing."""
+    ax.set_title("forces")
+
+
+def draw_info(ax, view_pack, t: int, viz_cfg: dict) -> None:
+    """Placeholder info panel drawing."""
+    ax.set_title("info", pad=8)
+    ax.set_axis_off()
+
+
+def draw_field(ax, view_pack, t: int, viz_cfg: dict) -> None:
+    """Placeholder field panel drawing."""
+    ax.set_title("field")
 

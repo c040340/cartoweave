@@ -1,3 +1,3 @@
-from .vp_view import show_vp, render_frame, VizOpts
+from .vp_view import show_vp
 
-__all__ = ["show_vp", "render_frame", "VizOpts"]
+__all__ = ["show_vp"]
