@@ -24,6 +24,7 @@ class GradClipPass(ComputePass):
         """Scale ``G`` and all component forces if thresholds are exceeded."""
 
         stats = self.stats
+        pm = getattr(self, "pm", None)
 
         def _wrapped(P, labels, scene, active_mask, cfg):
             conf = get_pass_cfg(
@@ -63,6 +64,17 @@ class GradClipPass(ComputePass):
                     stats["clipped_frames"] += 1
                     if scale < stats["max_scale_down"] or stats["max_scale_down"] == 0.0:
                         stats["max_scale_down"] = scale
+                    if pm is not None:
+                        pm.emit_event(
+                            {
+                                "pass": "grad_clip",
+                                "info": "clipped",
+                                "scale": float(scale),
+                                "gnorm_before": float(gnorm),
+                                "max_norm": float(mn),
+                                "global_iter": getattr(pm, "eval_index", 0),
+                            }
+                        )
 
             return E, G, comps
 

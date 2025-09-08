@@ -24,9 +24,14 @@ class NaNGuardPass(ComputePass):
         """Check the output of ``energy_fn`` and zero-out non-finite values."""
 
         stats = self.stats
+        pm = getattr(self, "pm", None)
 
         def _wrapped(P, labels, scene, active_mask, cfg):
-            conf = get_pass_cfg(cfg, "nan_guard", {"on_nan": self.on_nan, "on_inf": self.on_inf})
+            conf = get_pass_cfg(
+                cfg, "nan_guard", {"enable": True, "on_nan": self.on_nan, "on_inf": self.on_inf}
+            )
+            if not conf.get("enable", True):
+                return energy_fn(P, labels, scene, active_mask, cfg)
             ef = float(cfg_get(cfg, "passes.nan_guard.e_fallback", 0.0))
             E, G, comps = energy_fn(P, labels, scene, active_mask, cfg)
             hit_nan = False
@@ -66,6 +71,18 @@ class NaNGuardPass(ComputePass):
                     stats["nan_frames"] += 1
                 if hit_inf:
                     stats["inf_frames"] += 1
+
+                if pm is not None:
+                    pm.emit_event(
+                        {
+                            "pass": "nan_guard",
+                            "info": "sanitized",
+                            "nan": bool(hit_nan),
+                            "inf": bool(hit_inf),
+                            "e_fallback": float(ef),
+                            "global_iter": getattr(pm, "eval_index", 0),
+                        }
+                    )
 
             return E, G, comps2
 

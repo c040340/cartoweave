@@ -18,10 +18,19 @@ compute:
       mode: both              # both|energy_only|state_only（若实现仅支持 both，可后续收紧）
       final_always: true      # 无论如何总是记录最终一帧
       limit: null             # 最多记录帧数；null 表示不限制
+    calibration:
+      enable: false           # 你可按需改 true
+    action:
+      enable: true            # 是否执行场景 action
+    geom_preproc:
+      enable: true
+      tiny_eps: 1.0e-9
     grad_clip:
       enable: false           # 是否启用梯度裁剪
       max_norm: 1000.0        # L2 范数上限
       max_abs: null           # 每分量绝对值上限（可选）
+    nan_guard:
+      enable: true            # 数值保护开关
     step_limit:
       max_step_norm: null     # 单步位移上限（像素或坐标单位）
 

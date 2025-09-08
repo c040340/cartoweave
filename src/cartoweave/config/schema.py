@@ -39,7 +39,23 @@ class StepLimitPass(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ActionPass(BaseModel):
+    enable: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class GeomPreprocPass(BaseModel):
+    enable: bool = True
+    tiny_eps: float = Field(default=1e-9, gt=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class NanGuardPass(BaseModel):
+    enable: bool = True
+    on_nan: str = "zero"
+    on_inf: str = "clip"
     e_fallback: float = 0.0
 
     model_config = ConfigDict(extra="forbid")
@@ -66,6 +82,8 @@ class Passes(BaseModel):
     step_limit: StepLimitPass
     nan_guard: NanGuardPass
     calibration: CalibrationPass
+    action: ActionPass = ActionPass()
+    geom_preproc: GeomPreprocPass = GeomPreprocPass()
 
     model_config = ConfigDict(extra="forbid")
 

@@ -41,7 +41,16 @@ class GeomPreprocPass(ComputePass):
         return cleaned, collapsed, dropped
 
     def wrap_energy(self, energy_fn):
+        from . import get_pass_cfg  # local import to avoid cycles
+
         pm = getattr(self, "pm", None)
+        cfg = getattr(pm, "cfg", {}) if pm else {}
+        conf = get_pass_cfg(cfg, "geom_preproc", {"enable": True, "tiny_eps": self.tiny_eps})
+
+        if not conf.get("enable", True):
+            return energy_fn
+
+        self.tiny_eps = float(conf.get("tiny_eps", self.tiny_eps))
         tiny = self.tiny_eps
 
         def _wrapped(P, labels, scene, mask, cfg):
@@ -82,8 +91,9 @@ class GeomPreprocPass(ComputePass):
                         {
                             "pass": "geom_preproc",
                             "stage_id": 0,
-                            "global_iter": pm.eval_index,
+                            "global_iter": getattr(pm, "eval_index", 0),
                             "info": "cleanup",
+                            "tiny_eps": float(tiny),
                             "metrics": {
                                 "collapsed": collapsed,
                                 "dropped_segments": dropped,
