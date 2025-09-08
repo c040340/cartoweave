@@ -1,6 +1,7 @@
 """Spring force pulling labels toward resolved anchors."""
 from __future__ import annotations
 
+import math
 import numpy as np
 
 from cartoweave.compute.geom_anchor_resolver import anchor_position
@@ -23,6 +24,9 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     tc = term_cfg(cfg, "anchor", "spring")
     kernel_params(tc, defaults={"model": "poly", "exponent": 2.0, "soft_eps": 0.0})
 
+    zero_dist = float(0.0 if tc.get("zero_dist") is None else tc.get("zero_dist"))
+    zero_dist = max(0.0, zero_dist)
+
     N = int(P.shape[0])
     labels = read_labels_aligned(scene, P)
     modes = [get_mode(l) for l in labels]
@@ -42,11 +46,16 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     for i in range(N):
         if not mask[i]:
             continue
-        dx = P[i, 0] - anchors[i, 0]
-        dy = P[i, 1] - anchors[i, 1]
-        E += 0.5 * k_local * (dx * dx + dy * dy)
-        F[i, 0] -= k_local * dx
-        F[i, 1] -= k_local * dy
+        dx = float(P[i, 0] - anchors[i, 0])
+        dy = float(P[i, 1] - anchors[i, 1])
+        dist = math.hypot(dx, dy)
+        if dist <= zero_dist:
+            continue
+        d = dist - zero_dist
+        E += 0.5 * k_local * (d * d)
+        scale = -k_local * d / max(dist, 1e-12)
+        F[i, 0] += scale * dx
+        F[i, 1] += scale * dy
 
     return float(E), ensure_vec2(F, N), {"term": "anchor.spring"}
 

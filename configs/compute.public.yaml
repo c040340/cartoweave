@@ -106,4 +106,5 @@ compute:
           spring:
             enable: true
             k_local: 1.0
+            zero_dist: 65.0
             only_free: true

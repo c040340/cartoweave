@@ -19,15 +19,15 @@ compute:
       ema_alpha: 1.0             # EMA 系数（1.0 表示立即应用）
       base_term: focus.attract   # 基准力项
       target_rel:                # 各力项相对于基准力的目标比例
-        ll.rect: 1.0             # label-label rectangle repulsion
-        ll.disk: 1.0             # label-label disk repulsion
-        boundary.wall: 1.0       # canvas boundary wall
-        anchor.spring: 1.0       # anchor spring
-        pl.rect: 1.0             # point-label rectangle repulsion
-        ln.rect: 1.0             # line-label rectangle repulsion
-        area.embed: 1.0          # area embedding term
-        area.cross: 1.0          # area cross term
-        area.softout: 1.0        # area outside soft penalty
+        ll.rect: 2.5             # label-label rectangle repulsion
+        ll.disk: 2.5             # label-label disk repulsion
+        boundary.wall: 3.0       # canvas boundary wall
+        anchor.spring: 2.0       # anchor spring
+        pl.rect: 1.2             # point-label rectangle repulsion
+        ln.rect: 1.2             # line-label rectangle repulsion
+        area.embed: 2.0          # area embedding term
+        area.cross: 4.0          # area cross term
+        area.softout: 0.6        # area outside soft penalty
         focus.attract: 1.0       # focus attraction (基准力)
   solver:
     tuning:

@@ -148,6 +148,7 @@ class TermParams(BaseModel):
     sat_p0: float | None = None
     outside_weight: float | None = None
     in_decay: float | None = None
+    zero_dist: float | None = None
     out_decay: float | None = None
     ratio_in: float | None = None
     tan_gate: TanGate | None = None
