@@ -657,31 +657,33 @@ def draw_field_panel(
     height: float,
     kind: str = "3d",
     cmap: str = "viridis",
+    vmin: float | None = None,
+    vmax: float | None = None,
+    add_colorbar: bool = False,
 ) -> None:
-    """Render a scalar field either as a heatmap or as a 3‑D surface.
+    """Render a scalar field either as a heatmap or as a 3-D surface.
 
     Parameters
     ----------
     ax:
         Matplotlib axis used for drawing.
     field:
-        Two dimensional array containing the scalar values.
+        2D array of scalar values.
     width, height:
-        Dimensions of the frame the field corresponds to.
+        Frame dimensions.
     kind:
-        ``"heatmap"`` for a 2‑D colour map, ``"3d"`` for a surface plot or
-        ``"none"`` for an empty panel.
+        "heatmap" | "3d" | "none".
     cmap:
-        Name of the Matplotlib colormap to use.  Defaults to ``"viridis"``.
+        Matplotlib colormap name.
+    vmin, vmax:
+        Optional color scaling limits for consistent comparisons across frames.
+    add_colorbar:
+        If True, add a colorbar for the artist drawn.
     """
-
-    # ``Axes3D.clear`` resets the plot and also removes any previously set
-    # axis limits.  When no field data is available Matplotlib would otherwise
-    # draw an empty panel without any frame or axes which looks as if the plot
-    # failed to render.  Explicitly reset sensible limits so that a coordinate
-    # frame remains visible even for missing data.
     ax.cla()
     arr = None if field is None else np.asarray(field, dtype=float)
+
+    # 空内容：保留坐标框架，避免“看起来像没渲染”
     if kind == "none" or arr is None or arr.ndim != 2:
         ax.set_xlim(0, float(width))
         ax.set_ylim(float(height), 0)
@@ -700,30 +702,48 @@ def draw_field_panel(
                 ax.text(0.5, 0.5, "no field", ha="center", va="center", transform=ax.transAxes)
         return
 
+    # 归一化器（同时适配 heatmap 和 3D surface）
+    norm = None
+    if (vmin is not None) or (vmax is not None):
+        norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
     if kind == "3d":
         ny, nx = arr.shape
         xs = np.linspace(0.0, float(width), nx)
         ys = np.linspace(0.0, float(height), ny)
         X, Y = np.meshgrid(xs, ys)
-        ax.plot_surface(X, Y, arr, cmap=cmap)
+
+        # 注意：plot_surface 支持 norm/cmap（通过 ScalarMappable）
+        surf = ax.plot_surface(X, Y, arr, cmap=cmap, norm=norm, antialiased=True)
+
         ax.set_xlim(0, float(width))
-        ax.set_ylim(float(height), 0)
+        ax.set_ylim(float(height), 0)  # y 轴向下与 2D 视图一致
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_zlabel("value")
+
         z_span = float(arr.max() - arr.min()) or 1.0
         xy_scale = max(float(width), float(height), 1.0)
         z_aspect = min(z_span, xy_scale)
         ax.set_box_aspect((float(width), float(height), z_aspect))
-    else:
+
+        if add_colorbar:
+            ax.figure.colorbar(surf, ax=ax, fraction=0.046, pad=0.04)
+
+    else:  # heatmap
         extent = grid_extent(width, height)
-        ax.imshow(arr, origin="upper", cmap=cmap, extent=extent, aspect="auto")
+        im = ax.imshow(
+            arr, origin="upper", cmap=cmap, extent=extent, aspect="auto", norm=norm
+        )
         ax.set_xlim(0, float(width))
         ax.set_ylim(float(height), 0)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_xticks([])
         ax.set_yticks([])
+
+        if add_colorbar:
+            ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
 
 def draw_forces(
@@ -876,6 +896,133 @@ def draw_info(
 
 
 def draw_field(ax, view_pack, t: int, viz_cfg: dict) -> None:
-    """Placeholder field panel drawing."""
-    ax.set_title("field")
+    """
+    Render a field for frame t.
+    Modes:
+      - "force":  |F| heatmap via Gaussian splatting
+      - "potential": scalar potential φ solved from ∇²φ = div(F)
+      - (optional) "energy": if frame provides per-label energies
+    """
+    frames = getattr(view_pack, "frames", [])
+    src = getattr(view_pack, "sources", None)
+    if not frames or src is None:
+        return
+    if t < 0 or t >= len(frames):
+        t = 0
+    fr = frames[t]
 
+    width, height = getattr(src, "frame_size", (1.0, 1.0))
+    field_cfg = viz_cfg.get("field", {})
+    mode = str(field_cfg.get("mode", "force")).lower()
+    if '3d' in mode: mode = '3d'
+    cmap = str(field_cfg.get("cmap", "viridis"))
+    res = int(field_cfg.get("resolution", 128)) or 128
+    sigma = float(field_cfg.get("sigma", 1.2))  # 高斯核半径（以网格像素计）
+    vmax = field_cfg.get("vmax", None)
+
+    # 若已预计算，直接画
+    field = getattr(fr, "field", None)
+    if field is not None:
+        draw_field_panel(ax, np.asarray(field, float), float(width), float(height), mode, cmap, vmax=vmax)
+        ax.set_title("field")
+        return
+
+    # 1) 从 comps 聚合出总力（N,2）
+    comps = getattr(fr, "comps", {}) or {}
+    if not comps:
+        # 无分力信息，回退为空图
+        empty = np.zeros((res, res), float)
+        draw_field_panel(ax, empty, float(width), float(height), mode, cmap, vmax=vmax)
+        ax.set_title("field (empty)")
+        return
+
+    # sum forces
+    first = next(iter(comps.values()))
+    totalF = np.zeros_like(np.asarray(first, float))
+    for arr in comps.values():
+        totalF += np.asarray(arr, float)
+    P = np.asarray(fr.P, float)
+    assert P.shape[0] == totalF.shape[0] and totalF.shape[1] == 2, "P and force shape mismatch"
+
+    # 2) 规则网格
+    xs = np.linspace(0.0, float(width), res, endpoint=False)
+    ys = np.linspace(0.0, float(height), res, endpoint=False)
+    dx = xs[1] - xs[0]
+    dy = ys[1] - ys[0]
+
+    # 3) 将散点力 splat 到网格（双线性 + 可选高斯）
+    Fx = np.zeros((res, res), float)
+    Fy = np.zeros((res, res), float)
+
+    # 3.1 先双线性权重
+    gx = np.clip(np.floor((P[:, 0] / max(width, 1e-9)) * res).astype(int), 0, res - 1)
+    gy = np.clip(np.floor((P[:, 1] / max(height, 1e-9)) * res).astype(int), 0, res - 1)
+    for (ix, iy, f) in zip(gx, gy, totalF):
+        Fx[iy, ix] += float(f[0])
+        Fy[iy, ix] += float(f[1])
+
+    # 3.2 高斯平滑（频域卷积，避免 seaborn/scipy 依赖）
+    if sigma > 0:
+        # 生成高斯核（分离卷积更快）
+        rad = int(max(1, round(3 * sigma)))
+        k = np.arange(-rad, rad + 1, dtype=float)
+        g = np.exp(-0.5 * (k / sigma) ** 2)
+        g /= g.sum()
+
+        # 对 x 方向卷积
+        Fx = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=1, arr=Fx)
+        Fy = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=1, arr=Fy)
+        # 对 y 方向卷积
+        Fx = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=0, arr=Fx)
+        Fy = np.apply_along_axis(lambda v: np.convolve(v, g, mode="same"), axis=0, arr=Fy)
+
+    if mode == "force":
+        mag = np.sqrt(Fx * Fx + Fy * Fy)
+        draw_field_panel(ax, mag, float(width), float(height), mode, cmap, vmax=vmax)
+        ax.set_title("|F| field")
+        return
+
+    elif mode == "potential":
+        # 4) 计算散度 div(F) ≈ dFx/dx + dFy/dy（中心差分，周期边界）
+        #   用 np.roll 实现简单稳定的周期梯度
+        dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1)) / (2 * dx)
+        dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0)) / (2 * dy)
+        divF = dFx_dx + dFy_dy
+
+        # 5) 解 Poisson: ∇²φ = divF，频域解（周期 BC）
+        #   φ_hat = - divF_hat / (kx^2 + ky^2)，k=(0除外)
+        div_hat = np.fft.rfft2(divF)
+        ky = 2 * np.pi * np.fft.fftfreq(res, d=dy)[:, None]
+        kx = 2 * np.pi * np.fft.rfftfreq(res, d=dx)[None, :]
+        denom = (kx ** 2 + ky ** 2)
+        denom[0, 0] = 1.0  # 避免除零，DC 分量设为 0 势基准
+        phi_hat = -div_hat / denom
+        phi_hat[0, 0] = 0.0  # 去除未定常数
+        phi = np.fft.irfft2(phi_hat, s=divF.shape)
+
+        # 6) 归一化（改善可视化）：零均值 / min-max
+        phi = phi - np.mean(phi)
+        if vmax is None:
+            # 自动对称限制，凸显梯度
+            m = np.max(np.abs(phi)) or 1.0
+            vmax_local = m
+        else:
+            vmax_local = vmax
+
+        draw_field_panel(ax, phi, float(width), float(height), mode, cmap, vmax=vmax_local)
+        ax.set_title("potential φ (∇²φ=div F)")
+        return
+
+    elif mode == "energy":
+        # 若未来 fr.comps 或 fr 提供 per-label scalar energy，可核密度估计
+        # 目前回退到 |F|
+        mag = np.sqrt(Fx * Fx + Fy * Fy)
+        draw_field_panel(ax, mag, float(width), float(height), mode, cmap, vmax=vmax)
+        ax.set_title("energy (fallback to |F|)")
+        return
+
+    else:
+        # 未知模式回退
+        mag = np.sqrt(Fx * Fx + Fy * Fy)
+        draw_field_panel(ax, mag, float(width), float(height), mode, cmap, vmax=vmax)
+        ax.set_title(f"field ({mode}→|F|)")
