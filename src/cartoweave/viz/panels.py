@@ -366,10 +366,11 @@ def _draw_layout_panel(
         ax.scatter(
             pts[:, 0],
             pts[:, 1],
+            marker="x",
             c=style.points_color,
             s=style.point_size,
             zorder=1,
-            edgecolors="none",
+            linewidths=style.line_width,
         )
 
     if isinstance(lines, (list, tuple)):
@@ -427,8 +428,9 @@ def _draw_layout_panel(
             continue
         lab = labels[i] if i < len(labels) else {}
         if is_circle_label(lab):
-            if anchor_xy is not None:
-                x, y = anchor_xy
+            if anchor_xy is None:
+                continue
+            x, y = anchor_xy
             radius = float(min(w, h)) / 2.0
             circ = Circle(
                 (x, y),
@@ -476,10 +478,9 @@ def _draw_layout_panel(
             ax.scatter(
                 anchor_xy[0],
                 anchor_xy[1],
-                marker='o',
+                marker='x',
+                c=style.anchor_marker_edge,
                 s=(style.anchor_marker_size * 2) ** 2,
-                facecolors=style.anchor_marker_face,
-                edgecolors=style.anchor_marker_edge,
                 linewidths=style.line_width,
                 zorder=4,
             )
