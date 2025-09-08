@@ -145,6 +145,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
     solver_pub = ((compute_cfg.get("solver", {}) or {}).get("public", {}) or {})
     use_warmup = bool(solver_pub.get("use_warmup", True))
     per_action_iters = True
+    warmup_steps = 0
 
     capture_cfg = get_pass_cfg(
         (pm.cfg if isinstance(pm.cfg, dict) else {}),
@@ -191,18 +192,24 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             comps_full_i = expand_comps_subset(
                 comps_prev_full, active_idx, meta.get("comps", {})
             )
-            meta_i: Dict[str, Any] = {"schema_version": "compute-v2", "pass_id": pass_id, "pass_name": pass_name,
-                                      "frame_in_pass": it, "status": "ok", "events": pm.pop_events(),
-                                      "optimizer_step": {
-                                          "algo": pass_name,
-                                          "iter_in_algo": it,
-                                          "step_size": meta.get("step_size"),
-                                          "ls_evals": meta.get("ls_evals"),
-                                          "wolfe": meta.get("wolfe"),
-                                          "delta_E": meta.get("delta_E"),
-                                          "gnorm": float(np.linalg.norm(meta.get("G"))) if meta.get(
-                                              "G") is not None else None,
-                                      }}
+            meta_i: Dict[str, Any] = {
+                "schema_version": "compute-v2",
+                "status": "ok",
+                "events": pm.pop_events(),
+                "optimizer_step": {
+                    "algo": pass_name,
+                    "iter_in_algo": it,
+                    "step_size": meta.get("step_size"),
+                    "ls_evals": meta.get("ls_evals"),
+                    "wolfe": meta.get("wolfe"),
+                    "delta_E": meta.get("delta_E"),
+                    "gnorm": float(np.linalg.norm(meta.get("G"))) if meta.get("G") is not None else None,
+                },
+            }
+            # ensure viz contract: pass_id, pass_name, frame_in_pass
+            meta_i.setdefault("pass_id", pass_id)  # viz contract
+            meta_i.setdefault("pass_name", pass_name)  # viz contract
+            meta_i.setdefault("frame_in_pass", it)  # iteration index for viz
             gnorm_i = float(
                 np.linalg.norm(meta.get("G"))
                 if meta.get("G") is not None and meta.get("G").size
@@ -236,7 +243,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
 
         if per_action_iters is not None:
             P_prop, metrics = run_iters(
-                P_curr, ctx, energy_fn, iters_override=per_action_iters, on_iter=_on_iter
+                P_curr, ctx, energy_fn, iters_override=per_action_iters, on_iter=None
             )
             P_curr = step_fn(P_curr, P_prop, metrics)
 
@@ -251,14 +258,15 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
 
         meta_base: Dict[str, Any] = {
             "schema_version": "compute-v2",
-            "pass_id": pass_id,
-            "pass_name": pass_name,
-            "frame_in_pass": "final",
             "status": "ok",
             "reason": "",
             "timings_ms": {},
             "events": pm.pop_events(),
         }
+        # ensure viz contract: pass_id, pass_name, frame_in_pass
+        meta_base.setdefault("pass_id", pass_id)  # viz contract
+        meta_base.setdefault("pass_name", pass_name)  # viz contract
+        meta_base.setdefault("frame_in_pass", "final")  # final marker by default for viz
         if event is not None:
             meta_base["optimizer_step"] = event
 
@@ -267,20 +275,21 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             comps_prev_full, active_idx, metrics.get("comps", {})
         )
 
-        iters = int(metrics.get("iters", len(reports)))
+        iters = warmup_steps if use_warmup else int(metrics.get("iters", len(reports)))
         need_final = cap_final and (_last_iter_recorded != (iters - 1))
         if cap_limit is not None and isinstance(cap_limit, int):
             if len(recorder.frames) >= cap_limit:
                 need_final = False
         if need_final:
             metrics_all_final = metrics_all
+            meta_final = {**meta_base, "frame_in_pass": "final"}  # enforce string marker for viz
             recorder.record_frame(
                 t=t_global,
                 P_full=P_full,
                 comps_full=comps_full,
                 E=metrics.get("E", 0.0),
                 active_mask=active.copy(),
-                meta_base=meta_base,
+                meta_base=meta_final,
                 metrics=metrics_all_final,
                 field=None,
                 G_snapshot=metrics.get("G"),
