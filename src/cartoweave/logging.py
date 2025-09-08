@@ -17,8 +17,18 @@ def _normalize(level: Optional[str]) -> int:
 
 
 def level_from_cfg(cfg: Optional[Mapping[str, Any]]) -> int:
-    """Return default logging level (legacy config key removed)."""
-    return logging.WARNING
+    """
+    仅从 compute.solver.public.log_level 读取；若不存在或为空，则返回 WARNING。
+    注意：不读取其它 YAML；本项目只在 compute.public.yaml 中配置。
+    """
+    if not isinstance(cfg, Mapping):
+        return logging.WARNING
+    try:
+        comp = cfg.get("compute", {}) or {}
+        solver_pub = (comp.get("solver", {}) or {}).get("public", {}) or {}
+        return _normalize(solver_pub.get("log_level", "none"))
+    except Exception:
+        return logging.WARNING
 
 
 def init_logging(level: int | str | None = None) -> None:
