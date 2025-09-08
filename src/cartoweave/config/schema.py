@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import math
-from typing import Literal, Dict
+from typing import Dict, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
 
 class Eps(BaseModel):
@@ -53,8 +53,7 @@ class TermParams(BaseModel):
     enable: bool = False
     k: float = 0.0
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class ForcesPublic(RootModel[Dict[str, TermParams]]):
