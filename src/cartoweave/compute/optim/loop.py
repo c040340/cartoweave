@@ -4,6 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from . import run_solver
+
 EPS = 10.0 ** -12
 
 OnIter = Optional[Callable[[int, np.ndarray, Dict[str, Any]], None]]
@@ -46,17 +48,79 @@ def run_iters(
     report: bool = False,
     on_iter: OnIter = None,
 ) -> Tuple[np.ndarray, List[StepReport]]:
-    """Run a minimal gradient loop with basic stopping criteria.
+    """Run optimisation iterations depending on ``ctx.mode``.
 
-    - Calls energy_fn(P, ctx.labels, ctx.scene, ctx.active, ctx.cfg)
-    - Performs a simple gradient descent step
-    - Stops on tolerance or max iterations.
-    Returns (P_final, reports).
+    For ``lbfgs``/``lbfgsb`` and ``semi_newton`` modes the dedicated solver is
+    dispatched via :func:`run_solver`.  Otherwise a minimal gradient-descent loop
+    is executed, matching the previous behaviour.
     """
+
+    comp = (ctx.cfg or {}).get("compute", {}) if ctx.cfg else {}
+
+    if ctx.mode in {"lbfgs", "lbfgsb", "semi_newton"}:
+        # ------------------------------------------------------------------
+        # Delegation to specialised solvers
+        # ------------------------------------------------------------------
+        solver_name = "lbfgs" if ctx.mode in {"lbfgs", "lbfgsb"} else ctx.mode
+        last: Dict[str, Any] = {}
+
+        def _eval(P: np.ndarray) -> Tuple[float, np.ndarray, Dict[str, Any]]:
+            E, G, comps = energy_fn(P, ctx.labels, ctx.scene, ctx.active, comp)
+            last.update({"E": E, "G": G, "P": P, "comps": comps})
+            return E, G, comps
+
+        def _energy(P: np.ndarray) -> float:
+            E, _, _ = _eval(P)
+            return float(E)
+
+        def _grad(P: np.ndarray) -> np.ndarray:
+            _, G, _ = _eval(P)
+            return np.asarray(G, float)
+
+        reps: List[StepReport] = []
+        k = 0
+
+        def _cb(info: Dict[str, Any]):
+            nonlocal k
+            g = np.asarray(info.get("G"), float)
+            P_iter = np.asarray(info.get("P"), float)
+            E_iter = float(info.get("E", 0.0))
+            g_inf = float(np.max(np.abs(g))) if g.size else 0.0
+            x_inf = float(np.max(np.abs(P_iter))) if P_iter.size else 0.0
+            if report:
+                reps.append(StepReport(k=-1, it=k, E=E_iter, g_inf=g_inf, x_inf=x_inf))
+            if on_iter is not None:
+                comps_iter = last.get("comps", {})
+                try:
+                    on_iter(k, P_iter, {"E": E_iter, "G": g, "comps": comps_iter})
+                except Exception:
+                    pass
+            k += 1
+
+        res = run_solver(solver_name, P0, _energy, _grad, ctx.params or {}, callback=_cb)
+        P_final = np.asarray(res.get("P", P0), float)
+        if report and not reps:
+            # ensure at least one report for downstream consumers
+            E_fin, G_fin, _ = _eval(P_final)
+            g_inf_fin = float(np.max(np.abs(G_fin))) if G_fin.size else 0.0
+            x_inf_fin = float(np.max(np.abs(P_final))) if P_final.size else 0.0
+            reps.append(
+                StepReport(
+                    k=-1,
+                    it=int(res.get("iters", 0)),
+                    E=float(E_fin),
+                    g_inf=g_inf_fin,
+                    x_inf=x_inf_fin,
+                )
+            )
+        return P_final, reps
+
+    # ----------------------------------------------------------------------
+    # Basic gradient descent fallback
+    # ----------------------------------------------------------------------
     P = P0.astype(float, copy=True)
     reps: List[StepReport] = []
     step = float(ctx.params.get("step", 1e-2) if ctx.params else 1e-2)
-    comp = (ctx.cfg or {}).get("compute", {}) if ctx.cfg else {}
     solver_cfg = comp.get("solver") or {}
     stop_cfg = ((solver_cfg.get("tuning") or {}).get("stop") or {})
     gtol = float(stop_cfg.get("gtol", 1.0e-4))

@@ -5,6 +5,7 @@ from cartoweave.data.api import make_solvepack_from_data_defaults
 def _make_pack(iters: int, every: int = 1, limit: int | None = None, final: bool = True):
     compute_cfg = {
         "solver": {
+            "public": {"mode": "gd"},
             "tuning": {
                 "stop": {"gtol": -1, "ftol": -1, "xtol": -1},
                 "warmup": {"steps": iters},

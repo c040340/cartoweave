@@ -51,11 +51,11 @@ def _build_run_iters(pack: SolvePack):
     ):
         mode = (((comp.get("solver") or {}).get("public") or {}).get("mode", "lbfgsb"))
         tuning = ((comp.get("solver") or {}).get("tuning") or {})
+        mode_cfg = dict(tuning.get(mode) or {})
         if iters_override is not None:
             iters = iters_override
         else:
-            mode_cfg = tuning.get(mode) or {}
-            if mode == "lbfgsb":
+            if mode in {"lbfgsb", "lbfgs"}:
                 iters = mode_cfg.get("lbfgs_maxiter")
             elif mode == "semi_newton":
                 iters = mode_cfg.get("sn_max_outer")
@@ -63,6 +63,11 @@ def _build_run_iters(pack: SolvePack):
                 iters = mode_cfg.get("maxiter")
             if iters in (None, 0):
                 iters = 400
+        # propagate iteration count into params for solvers that expect it
+        if mode in {"lbfgsb", "lbfgs"}:
+            mode_cfg.setdefault("lbfgs_maxiter", int(iters))
+        elif mode == "semi_newton":
+            mode_cfg.setdefault("sn_max_outer", int(iters))
         eng_ctx = _EngineCtx(
             labels=ctx["labels"],
             scene=ctx["scene"],
@@ -70,7 +75,7 @@ def _build_run_iters(pack: SolvePack):
             cfg=pack.cfg,
             iters=int(iters),
             mode=mode,
-            params={},
+            params=mode_cfg,
         )
         logger.debug("begin run_iters: mode=%s iters=%s", mode, iters)
         p_new, reports = _run_iters(p0, eng_ctx, energy_fn, report=True, on_iter=on_iter)
