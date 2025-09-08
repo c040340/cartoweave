@@ -4,6 +4,7 @@ from typing import Dict, Any
 import numpy as np
 from .base import ComputePass
 from . import get_pass_cfg
+from cartoweave.utils.config import get as cfg_get
 
 
 class NaNGuardPass(ComputePass):
@@ -25,8 +26,8 @@ class NaNGuardPass(ComputePass):
         stats = self.stats
 
         def _wrapped(P, labels, scene, active_mask, cfg):
-            conf = get_pass_cfg(cfg, "nan_guard", {"e_fallback": 0.0, "on_nan": self.on_nan, "on_inf": self.on_inf})
-            ef = float(conf.get("e_fallback", 0.0))
+            conf = get_pass_cfg(cfg, "nan_guard", {"on_nan": self.on_nan, "on_inf": self.on_inf})
+            ef = float(cfg_get(cfg, "passes.nan_guard.e_fallback", 0.0))
             E, G, comps = energy_fn(P, labels, scene, active_mask, cfg)
             hit_nan = False
             hit_inf = False

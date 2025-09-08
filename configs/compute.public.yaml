@@ -1,39 +1,29 @@
+# compute.public.yaml (CLEANED)
+# 公开参数：创作者/高级用户常改。已移除未被实现消费的键：
+# - compute.solver.public.log_level
+# 已添加：
+# - compute.public.forces.area.cross.use_legacy_gate: false  # 为旧 gate 兼容开关；默认关闭
+
 compute:
   solver:
     public:
-      # 求解模式：lbfgsb | semi_newton
-      mode: lbfgsb
-      # 是否启用暖启动（暖启动步数见 tuning.warmup.steps）
-      use_warmup: true
+      mode: lbfgsb            # 求解器选择：lbfgsb | semi_newton
+      use_warmup: true        # 是否在正式求解前做预热（warm-up）
       # 全局日志等级：none | info | debug
       log_level: debug
 
   passes:
     capture:
-      # 每隔多少个迭代记录一帧；1 表示每步记录
-      every: 1
-      # 决定在哪些阶段记录迭代帧：none | warmup | main | both
-      mode: both
-      # 是否无论如何都追加“最终帧”
-      final_always: true
-      # 最多记录多少帧；null 表示不限制
-      limit: null
-
+      every: 1                # 录帧频率；1 表示每步都录
+      mode: both              # both|energy_only|state_only（若实现仅支持 both，可后续收紧）
+      final_always: true      # 无论如何总是记录最终一帧
+      limit: null             # 最多记录帧数；null 表示不限制
     grad_clip:
-      enable: false
-      # L2 范数裁剪阈值（推荐使用 max_norm 作为规范键）
-      max_norm: 1000.0
-      # 逐元素绝对值上限；null 表示不启用
-      max_abs: null
-
+      enable: false           # 是否启用梯度裁剪
+      max_norm: 1000.0        # L2 范数上限
+      max_abs: null           # 每分量绝对值上限（可选）
     step_limit:
-      # 单步位移的 L2 上限；null 表示不限制
-      max_step_norm: null
-
-  # 若 calibration 需要对外开关（可选）：
-  # passes:
-  #   calibration:
-  #     enable: false
+      max_step_norm: null     # 单步位移上限（像素或坐标单位）
 
   public:
     forces:
@@ -42,87 +32,66 @@ compute:
           enable: true
           k: 0.8
           kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          beta:   { sep: 6.0, in: 6.0 }
-          g_eps:  1.0e-6
-          eps:    { abs: 1.0e-3 }
+          beta: { sep: 6.0, in: 6.0 }
+          g_eps: 1.0e-6
+          eps: { abs: 0.001 }
       ln:
         rect:
           enable: true
-          k: 0.8
-          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          beta:   { sep: 6.0, in: 6.0 }
-          g_eps:  1.0e-6
-          eps:    { abs: 1.0e-3 }
+          k: 0.6
+          kernel: { model: inv_pow, exponent: 1.5, soft_eps: 1.0e-6 }
+          beta: { sep: 6.0, in: 6.0 }
+          g_eps: 1.0e-6
+          eps: { abs: 0.001 }
       ll:
         rect:
           enable: true
-          k: 0.3
+          k: 0.4
           kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          beta:   { sep: 6.0, in: 6.0 }
-          g_eps:  1.0e-6
-          eps:    { abs: 1.0e-3 }
+          beta: { sep: 6.0, in: 6.0 }
+          g_eps: 1.0e-6
+          eps: { abs: 0.001 }
         disk:
-          enable: false
-          k: 0.3
-          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 5.0e-1 }
-          beta:   { sep: 6.0 }
-          mode: max
+          enable: true
+          k: 0.4
+          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+          beta: { sep: 6.0, in: 6.0 }
+          g_eps: 1.0e-6
+          eps: { abs: 0.001 }
       area:
         cross:
           enable: true
-          k: 0.8
-          kernel:
-            model: logcosh
-            gate_gamma: 8.0
-            exponent: 1.0
-            soft_eps: 1.0e-6
-          min_gap: 1.5
-          alpha: 0.35
-          eta: 2.0
+          k: 1.0
+          use_legacy_gate: false     # 旧 gate 兼容开关（默认关闭）
+          min_gap: 0.5
+          tan_gate: { eta: 2.0, slack: 0.0 }
+          gate_min_interior: 0.0
           tan_cap_scale: 1.0
-          gate_min_interior: 0.6
-          kappa: 8.0
-          beta_smax: 8.0
-          use_logcosh: true
-          sat_p0: 2.0
-          eps: { abs: 1.0e-3 }
-        softout:
-          enable: true
-          k: 0.5
-          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          min_gap: 0.0
-          beta: 0.7
-          alpha: 0.35
-          outside_weight: 0.5
-          in_decay: 0.10
-          out_decay: 0.06
-          eps: { abs: 1.0e-3 }
+          outside_weight: 1.0
         embed:
           enable: false
-          k: 0.4
-          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          ratio_in: 0.60
-          beta_edge: 6.0
-          tan_gate: { eta: 2.0, slack: 1.0 }
-          eps: { abs: 1.0e-3 }
+          k: 0.8
+          ratio_in: 0.9
+          in_decay: 0.2
+          out_decay: 0.1
+        softout:
+          enable: false
+          k: 0.8
+          pad: 0.1
+          y_down: 0.0
       boundary:
         wall:
           enable: false
-          k: 0.3
-          kernel: { model: inv_pow, exponent: 3.0, soft_eps: 3.0e-1 }
-          beta: { dist: 3.0 }
-          pad: 0.0
-          y_down: true
+          k: 0.5
+          alpha: 1.0
       focus:
         attract:
           enable: false
-          k: 0.8
+          k: 1.0
           center: [0.0, 0.0]
-          sigma: { x: 100.0, y: 100.0 }
-          delta: 8.0
-          only_free: false
+          sigma: { x: 1.0, y: 1.0 }
       anchor:
         spring:
-          enable: true
-          k: 1.0
-          kernel: { model: poly, exponent: 2.0, soft_eps: 0.0 }
+          enable: false
+          k: 0.1
+          only_free: true

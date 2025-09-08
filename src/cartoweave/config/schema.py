@@ -39,16 +39,17 @@ class StepLimitPass(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class Passes(BaseModel):
-    capture: CapturePass
-    grad_clip: GradClipPass
-    step_limit: StepLimitPass
+class NanGuardPass(BaseModel):
+    e_fallback: float = 0.0
 
     model_config = ConfigDict(extra="forbid")
 
 
-class TuningPasses(BaseModel):
-    calibration: dict | None = None
+class Passes(BaseModel):
+    capture: CapturePass
+    grad_clip: GradClipPass
+    step_limit: StepLimitPass
+    nan_guard: NanGuardPass
 
     model_config = ConfigDict(extra="forbid")
 
@@ -121,6 +122,7 @@ class TermParams(BaseModel):
     sigma: Dict[str, float] | None = None
     delta: float | None = None
     only_free: bool | None = None
+    use_legacy_gate: bool | None = None
     mode: str | None = None
 
     model_config = ConfigDict(extra="forbid")
@@ -139,20 +141,18 @@ class ComputePublic(BaseModel):
 class SolverPublic(BaseModel):
     mode: str
     use_warmup: bool
-    log_level: Literal["none", "info", "debug"] = "none"
 
     model_config = ConfigDict(extra="forbid")
 
 
 class SolverTuningLBFGSB(BaseModel):
-    m: int = Field(ge=1)
-    maxiter: int = Field(ge=1)
+    lbfgs_pgtol: float = Field(gt=0)
+    lbfgs_maxiter: int = Field(ge=1)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class SolverTuningStopping(BaseModel):
-    gtol: float = Field(gt=0)
+class SolverTuningStop(BaseModel):
     ftol: float = Field(gt=0)
     xtol: float = Field(gt=0)
     max_stall_iters: int | None = Field(default=None, ge=1)
@@ -164,18 +164,11 @@ class SolverTuningSemiNewton(BaseModel):
     sn_max_outer: int = Field(ge=1)
     sn_dt: float = Field(gt=0)
     sn_hvp_eps: float = Field(gt=0)
-    sn_cg_tol: float = Field(gt=0)
-    sn_cg_maxit: int = Field(ge=1)
+    sn_cg_maxiter: int = Field(ge=1)
+    sn_cg_rtol: float = Field(gt=0)
+    sn_cg_atol: float = Field(ge=0)
     sn_lm0: float = Field(gt=0)
     sn_gtol: float = Field(gt=0)
-    sn_armijo_c1: float = Field(gt=0)
-    sn_max_backtrack: int = Field(ge=0)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class SolverTuningAntiJump(BaseModel):
-    step_cap_px: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -189,29 +182,19 @@ class SolverTuningWarmup(BaseModel):
 class SolverTuning(BaseModel):
     lbfgsb: SolverTuningLBFGSB
     semi_newton: SolverTuningSemiNewton
-    stopping: SolverTuningStopping
+    stop: SolverTuningStop
     warmup: SolverTuningWarmup
-    anti_jump: SolverTuningAntiJump
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class SolverInternalsClip(BaseModel):
-    force_abs_max: float = Field(gt=0)
-    energy_abs_max: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
 
 class SolverInternalsStability(BaseModel):
-    exp_clip: float
     eps_norm: float = Field(gt=0)
 
     model_config = ConfigDict(extra="forbid")
 
 
 class SolverInternals(BaseModel):
-    clip: SolverInternalsClip
     stability: SolverInternalsStability
 
     model_config = ConfigDict(extra="forbid")
@@ -230,12 +213,11 @@ class Compute(BaseModel):
     passes: Passes
     solver: Solver
     public: ComputePublic = Field(default_factory=ComputePublic)
-    tuning_passes: TuningPasses | None = None
 
     model_config = ConfigDict(extra="forbid")
 
 
-__all__ = ["TermParams", "ForcesPublic", "ComputePublic", "TuningPasses", "Compute"]
+__all__ = ["TermParams", "ForcesPublic", "ComputePublic", "Compute"]
 
 
 # ---------------------------------------------------------------------------

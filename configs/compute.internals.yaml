@@ -1,19 +1,20 @@
+# compute.internals.yaml (CLEANED)
+# 内部参数：数值稳定与公差，尽量不暴露给普通用户。已移除未实现的键：
+# - compute.solver.internals.clip.*
+# - compute.solver.internals.stability.exp_clip
+# 已添加：
+# - compute.passes.nan_guard.e_fallback  # NaN/Inf 兜底能量，通常不需要修改
+
 compute:
   solver:
     internals:
-      clip:
-        energy_abs_max: 1.0e6
-        force_abs_max: 1.0e6
       stability:
-        exp_clip: 40.0
-        eps_norm: 1.0e-12
-
+        eps_norm: 1.0e-12       # 向量范数时的数值 eps
   eps:
-    # get_eps(cfg) 读取的通用数值 ε（此前缺失）
-    numeric: 1.0e-12
-    # 距离核的软底 ε
-    dist: 1.0e-6
-    # softabs 平滑 ε
-    abs: 1.0e-3
-    # 投影/单位化等操作 ε
-    proj: 1.0e-9
+    numeric: 1.0e-12            # 全局数值 eps
+    dist: 1.0e-06               # 距离计算 eps
+    abs: 0.001                  # 绝对公差阈值
+    proj: 1.0e-09               # 投影/约束 eps
+  passes:
+    nan_guard:
+      e_fallback: 0.0           # 发生 NaN/Inf 时使用的兜底能量

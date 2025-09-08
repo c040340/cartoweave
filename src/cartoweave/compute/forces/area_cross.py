@@ -87,7 +87,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     E = 0.0
     S = [[] for _ in range(P.shape[0])]
 
-    use_legacy_gate = bool(cfg.get("area.cross.use_legacy_gate", False) or os.getenv("AREA_CROSS_USE_LEGACY_GATE"))
+    use_legacy_gate = bool(tc.get("use_legacy_gate", False) or os.getenv("AREA_CROSS_USE_LEGACY_GATE"))
 
     for i in idxs:
         lab = labels[i]

@@ -1,51 +1,33 @@
+# compute.tuning.yaml (CLEANED)
+# 细调参数：数值调优、终止条件等。已移除未实现的键：
+# - compute.solver.tuning.lbfgsb.m
+# - compute.solver.tuning.anti_jump.step_cap_px
+# - compute.passes.calibration.*（未启用的校准 pass）
+# 已添加（代码中有读取）：
+# - compute.solver.tuning.lbfgsb.lbfgs_pgtol
+# - compute.solver.tuning.lbfgsb.lbfgs_maxiter
+
 compute:
   solver:
     tuning:
       lbfgsb:
-        m: 10
-        # 主循环最大迭代数；若未设置，主循环回退为 warmup.steps
-        maxiter: 300
+        lbfgs_pgtol: 1.0e-9     # 投影梯度阈值（若后续统一到 SciPy 语义，可在装配处映射到 gtol）
+        lbfgs_maxiter: 400      # 最大迭代步数（可映射到 maxiter）
 
       semi_newton:
-        sn_max_outer: 50
+        sn_max_outer: 30
         sn_dt: 1.0
         sn_hvp_eps: 1.0e-4
-        sn_cg_tol: 1.0e-6
-        sn_cg_maxit: 200
+        sn_cg_maxiter: 200
+        sn_cg_rtol: 1.0e-5
+        sn_cg_atol: 0.0
         sn_lm0: 1.0e-3
         sn_gtol: 1.0e-5
-        sn_armijo_c1: 1.0e-4
-        sn_max_backtrack: 10
 
-      stopping:
-        # ∥g∥∞ 阈值
-        gtol: 1.0e-4
-        # 能量变化阈值
+      stop:
         ftol: 1.0e-9
-        # 步长×梯度 阈值
         xtol: 1.0e-9
-        # 连续停滞的最大轮数（可选）
         max_stall_iters: null
 
       warmup:
-        # 进入主循环前的预迭代步数；也作为主循环 maxiter 的回退
         steps: 10
-
-      anti_jump:
-        # 单步最大位移（像素）；与 passes.step_limit 取较小值
-        step_cap_px: 30.0
-
-  passes:
-    calibration:
-      # 细节参数放 tuning，不对外暴露实现细节
-      target: energy_min
-      max_iters: 20
-      search:
-        k_scale_min: 0.5
-        k_scale_max: 2.0
-        exponent_min: 1.5
-        exponent_max: 3.5
-      weights:
-        energy: 1.0
-        overlap: 0.0
-        aspect: 0.0

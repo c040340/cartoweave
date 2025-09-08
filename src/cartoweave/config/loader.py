@@ -67,14 +67,6 @@ def load_compute_config(
         _ensure_only_compute(overrides)
         cfg = deep_update(cfg, overrides.get("compute", {}))
 
-    passes = cfg.get("passes")
-    if isinstance(passes, dict) and "calibration" in passes:
-        tp = cfg.setdefault("tuning_passes", {})
-        if not isinstance(tp, dict):
-            tp = {}
-            cfg["tuning_passes"] = tp
-        tp["calibration"] = passes.pop("calibration")
-
     _reject_legacy_weights({"compute": cfg})
 
     model = Compute.model_validate(cfg)

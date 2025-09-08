@@ -8,7 +8,7 @@ def test_merge_files():
     comp = cfg["compute"]
     assert comp["solver"]["public"]["mode"] == "lbfgsb"
     assert comp["passes"]["capture"]["every"] == 1
-    assert comp["solver"]["tuning"]["lbfgsb"]["m"] == 10
+    assert comp["solver"]["tuning"]["lbfgsb"]["lbfgs_maxiter"] == 400
 
 
 def test_legacy_keys_rejected():

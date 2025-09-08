@@ -4,6 +4,14 @@ import numpy as np
 from scipy.optimize import minimize
 
 from ...utils.logging import logger
+from ...utils.config import get as cfg_get
+
+
+def build_lbfgs_options(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract L-BFGS options from compute config."""
+    pgtol = float(cfg_get(cfg, "compute.solver.tuning.lbfgsb.lbfgs_pgtol", 1e-9))
+    maxiter = int(cfg_get(cfg, "compute.solver.tuning.lbfgsb.lbfgs_maxiter", 400))
+    return {"gtol": pgtol, "maxiter": maxiter}
 
 
 def run_lbfgs(
@@ -32,8 +40,8 @@ def run_lbfgs(
     L = P0.shape[0]
     x0 = P0.reshape(-1).astype(float)
 
-    pgtol = float(params.get("lbfgs_pgtol", 1e-3))
-    maxiter = int(params.get("lbfgs_maxiter", 150))
+    pgtol = float(params.get("lbfgs_pgtol", 1e-9))
+    maxiter = int(params.get("lbfgs_maxiter", 400))
 
     last_E = float(energy_fn(P0))
     last_G = np.asarray(grad_fn(P0), float)

@@ -21,9 +21,9 @@ def _make_pack():
         "solver": {
             "public": {"use_warmup": True},
             "tuning": {
-                "stopping": {"gtol": -1, "ftol": -1, "xtol": -1},
+                "stop": {"ftol": -1, "xtol": -1, "max_stall_iters": None},
                 "warmup": {"steps": 1},
-                "lbfgsb": {"maxiter": 1},
+                "lbfgsb": {"lbfgs_maxiter": 1},
             },
         },
         "passes": {"capture": {"every": 1, "mode": "both", "final_always": True}},
