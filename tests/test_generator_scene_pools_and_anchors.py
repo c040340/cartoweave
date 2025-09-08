@@ -34,7 +34,8 @@ def _build_pack(P0, labels0, active0, scene0):
 def test_default_label_count_and_anchor_refs():
     gen = _make_gen(5, 1, 1, labels=None)
     rng = np.random.default_rng(0)
-    P0, labels0, active0, scene0 = generate_scene(gen, rng)
+    P0, labels0, scene0 = generate_scene(gen, rng)
+    active0 = np.ones(len(labels0), dtype=bool)
     assert len(scene0.points) == 5
     assert len(scene0.lines) == 1
     assert len(scene0.areas) == 1
@@ -55,7 +56,8 @@ def test_default_label_count_and_anchor_refs():
 def test_labels_exceed_geometry():
     gen = _make_gen(5, 1, 1, labels=10)
     rng = np.random.default_rng(0)
-    P0, labels0, active0, scene0 = generate_scene(gen, rng)
+    P0, labels0, scene0 = generate_scene(gen, rng)
+    active0 = np.ones(len(labels0), dtype=bool)
     assert len(labels0) == 10
     _build_pack(P0, labels0, active0, scene0)
 
@@ -63,7 +65,8 @@ def test_labels_exceed_geometry():
 def test_labels_fewer_than_geometry():
     gen = _make_gen(5, 1, 1, labels=3)
     rng = np.random.default_rng(0)
-    P0, labels0, active0, scene0 = generate_scene(gen, rng)
+    P0, labels0, scene0 = generate_scene(gen, rng)
+    active0 = np.ones(len(labels0), dtype=bool)
     assert len(labels0) == 3
     _build_pack(P0, labels0, active0, scene0)
 
@@ -71,7 +74,7 @@ def test_labels_fewer_than_geometry():
 def test_labels_do_not_carry_geometry():
     gen = _make_gen(2, 1, 1, labels=None)
     rng = np.random.default_rng(0)
-    _, labels0, _, _ = generate_scene(gen, rng)
+    _, labels0, _ = generate_scene(gen, rng)
     for lbl in labels0:
         assert not hasattr(lbl, "polyline")
         assert not hasattr(lbl, "polygon")

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import string
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Sequence
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -32,22 +33,52 @@ def random_text_lines(rng: np.random.Generator, len_range: Tuple[int, int]) -> l
     return strings
 
 
+def _candidate_font_paths(path: str) -> Sequence[Path]:
+    p = Path(path)
+    here = Path(__file__).resolve()
+    roots = [
+        here.parents[2],              # repo root: .../src/cartoweave/data -> repo/
+        here.parents[1],              # .../src/cartoweave/
+        here.parents[0],              # .../src/
+    ]
+    # 1) 原样（若已是绝对路径或相对当前工作目录）
+    yield p
+    # 2) 相对源码树的 assets/
+    for r in roots:
+        yield (r / "assets" / p.name)
+        yield (r / p)  # 以配置相对 repo root 的写法
+
 def load_font(path: str, size: int) -> ImageFont.FreeTypeFont:
-    """Load a TrueType font, falling back to PIL's default on failure."""
+    last_err = None
+    for cand in _candidate_font_paths(path):
+        try:
+            if cand.exists():
+                return ImageFont.truetype(str(cand), size)
+        except Exception as e:
+            last_err = e
+    # 如果你希望测试环境里“宁可降级也不要炸”，保留兜底，但明确记录：
     try:
-        return ImageFont.truetype(path, size)
-    except Exception:  # pragma: no cover - IOError/OSError variants
+        return ImageFont.truetype(str(Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")), size)
+    except Exception:
+        # 最后兜底到位图字体，但注意部分 API 不支持
         return ImageFont.load_default()
 
 
 def _measure_line_bbox(text: str, font: ImageFont.FreeTypeFont) -> tuple[int, int]:
+    # 1) 首选 FreeType 的 getbbox
     if hasattr(font, "getbbox"):
         l, t, r, b = font.getbbox(text)
-    else:  # pragma: no cover - older Pillow versions
+        return r - l, b - t
+    # 2) 再试 textbbox
+    try:
         img = Image.new("L", (1, 1), 0)
         draw = ImageDraw.Draw(img)
         l, t, r, b = draw.textbbox((0, 0), text, font=font)
-    return r - l, b - t
+        return r - l, b - t
+    except Exception:
+        # 3) 最后兜底到 textsize（老 API，位图也支持）
+        w, h = draw.textsize(text, font=font)
+        return w, h
 
 
 def measure_text_block(

@@ -17,7 +17,7 @@ def test_generate_scene_shapes_and_ranges():
     cfg = load_data_defaults("configs/data.yaml")
     assert cfg.generate is not None
     rng = np.random.default_rng(1)
-    P0, labels0, active0, scene0 = generate_scene(cfg.generate, rng)
+    P0, labels0, scene0 = generate_scene(cfg.generate, rng)
     assert P0.shape[1] == 2
     counts = cfg.generate.counts
     assert len(scene0.points) == counts.points

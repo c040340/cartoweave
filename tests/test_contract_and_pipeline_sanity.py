@@ -71,7 +71,8 @@ def test_schema_guards():
 def test_generator_behavior_and_anchor_reuse():
     rng = np.random.default_rng(0)
     gen = _make_gen(5, 1, 1, labels=None)
-    P0, labels0, active0, scene0 = generate_scene(gen, rng)
+    P0, labels0, scene0 = generate_scene(gen, rng)
+    active0 = np.ones(len(labels0), dtype=bool)
     assert len(labels0) == 7
     for lbl in labels0:
         t = lbl.anchor.target
@@ -86,7 +87,8 @@ def test_generator_behavior_and_anchor_reuse():
     _build_pack(P0, labels0, active0, scene0)
 
     gen.labels = 10
-    P0, labels0, active0, scene0 = generate_scene(gen, rng)
+    P0, labels0, scene0 = generate_scene(gen, rng)
+    active0 = np.ones(len(labels0), dtype=bool)
     assert len(labels0) == 10
     anchors = [
         (lbl.anchor.target, lbl.anchor.index)
@@ -97,7 +99,8 @@ def test_generator_behavior_and_anchor_reuse():
     _build_pack(P0, labels0, active0, scene0)
 
     gen.labels = 3
-    P0, labels0, active0, scene0 = generate_scene(gen, rng)
+    P0, labels0, scene0 = generate_scene(gen, rng)
+    active0 = np.ones(len(labels0), dtype=bool)
     assert len(labels0) == 3
     _build_pack(P0, labels0, active0, scene0)
 

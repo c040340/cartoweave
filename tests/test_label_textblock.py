@@ -10,7 +10,7 @@ def test_labels_have_text_and_wh():
     assert cfg.generate is not None
     gen = cfg.generate
     rng = np.random.default_rng(0)
-    P0, labels0, active0, scene0 = generate_scene(gen, rng)
+    P0, labels0, scene0 = generate_scene(gen, rng)
     txt_cfg = gen.text
     font = load_font(txt_cfg.font.path, int(txt_cfg.font.size))
     len_min, len_max = map(int, txt_cfg.len_range)
