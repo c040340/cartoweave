@@ -61,7 +61,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     WH = normalize_WH_from_labels(labels, N, "boundary.wall")
 
     # ===== 你原来的参数读取与主循环从这里继续 =====
-    k_wall = float(tc.get("k", 240.0))
+    k_wall = float(tc.get("k_wall", 240.0))
     ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 3.0, "soft_eps": 0.3})
     power = ker["kernel_exponent"]
     eps_div = ker["kernel_soft_eps"]

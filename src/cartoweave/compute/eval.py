@@ -56,15 +56,11 @@ def energy_and_grad_full(
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
         params = pmap.get(name, {})
-        k = float(params.get("k", 0.0))
-        if k <= 0.0:
-            continue
         e_i, f_i, _ = fn(sc, P, params, cfg)
         f_i = np.asarray(f_i if f_i is not None else np.zeros_like(P), float)
-        energy_total += k * float(e_i)
-        f_scaled = k * f_i
-        comps[name] = f_scaled
-        fsum_ext += f_scaled
+        energy_total += float(e_i)
+        comps[name] = f_i
+        fsum_ext += f_i
 
     # Phase 2: anchor
     sc["_ext_dir"] = fsum_ext.copy()
@@ -73,14 +69,10 @@ def energy_and_grad_full(
         if fn is None:
             raise KeyError(f"[TERM MISSING] '{name}' is not registered in compute.forces")
         params = pmap.get(name, {})
-        k = float(params.get("k", 0.0))
-        if k <= 0.0:
-            continue
         e_i, f_i, _ = fn(sc, P, params, cfg)
         f_i = np.asarray(f_i if f_i is not None else np.zeros_like(P), float)
-        energy_total += k * float(e_i)
-        f_scaled = k * f_i
-        comps[name] = f_scaled
+        energy_total += float(e_i)
+        comps[name] = f_i
 
     # ∇E = -ΣF
     for f_i in comps.values():

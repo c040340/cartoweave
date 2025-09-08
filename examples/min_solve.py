@@ -6,7 +6,7 @@ from cartoweave.logging import init_logging_from_cfg
 
 sp = make_solvepack_from_data_defaults(
     compute_cfg={
-        "public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}}},
+        "public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}},
         "passes": {"capture": {"every": 1, "final_always": True}},
     }
 )

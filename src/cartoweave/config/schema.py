@@ -123,7 +123,6 @@ class TanGate(BaseModel):
 
 class TermParams(BaseModel):
     enable: bool = False
-    k: float = 0.0
     k_out: float | None = None
     k_in: float | None = None
     k_wall: float | None = None
@@ -131,6 +130,8 @@ class TermParams(BaseModel):
     k_embed: float | None = None
     k_tan: float | None = None
     k_cross: float | None = None
+    k_local: float | None = None
+    k_attract: float | None = None
     kernel: Kernel | None = None
     beta: BetaParams | float | None = None
     beta_edge: float | None = Field(default=None, gt=0)

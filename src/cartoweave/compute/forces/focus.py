@@ -42,8 +42,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     epss = eps_params(cfg, tc, defaults={})
     eps = epss["eps_numeric"]
 
-    k = float(0.8 if tc.get("k") is None else tc.get("k"))
-    if k <= 0.0:
+    k_attract = float(0.8 if tc.get("k_attract") is None else tc.get("k_attract"))
+    if k_attract <= 0.0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
 
     center = tc.get("center", None)
@@ -89,10 +89,10 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         ry = (y - Cy) / sigy
         Q = rx * rx + ry * ry
         root = (1.0 + Q / (delta * delta)) ** 0.5
-        E_i = k * (delta * delta) * (root - 1.0)
+        E_i = k_attract * (delta * delta) * (root - 1.0)
         denom = max(root, eps)
-        dEdx = k * (rx / (sigx * denom))
-        dEdy = k * (ry / (sigy * denom))
+        dEdx = k_attract * (rx / (sigx * denom))
+        dEdy = k_attract * (ry / (sigy * denom))
         fx = -dEdx
         fy = -dEdy
         F[i, 0] += fx

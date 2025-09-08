@@ -220,7 +220,7 @@ class CalibrationPass(ComputePass):
 
         alpha = float(conf.get("ema_alpha", self.ema_alpha))
 
-        # We update k in cfg.public.forces.<group>.<name>.k to match the rest of the project.
+        # We update k_* values in cfg.public.forces.<group>.<name> to match the rest of the project.
         forces_cfg = cfg.setdefault("public", {}).setdefault("forces", {})
 
         for term, scale in scales.items():
@@ -233,31 +233,37 @@ class CalibrationPass(ComputePass):
             if not isinstance(term_cfg, dict):
                 continue
 
-            k_old = term_cfg.get("k")
-            if k_old is None:
+            k_keys = [k for k in term_cfg.keys() if k.startswith("k_")]
+            if not k_keys:
                 continue
 
-            prev = self.prev_k.get(term, float(k_old))
-            k_new = float(k_old) * float(scale)
-            if alpha < 1.0:
-                k_new = (1.0 - alpha) * prev + alpha * k_new
+            for kk in k_keys:
+                k_old = term_cfg.get(kk)
+                if k_old is None:
+                    continue
 
-            term_cfg["k"] = float(k_new)
+                prev = self.prev_k.get(f"{term}:{kk}", float(k_old))
+                k_new = float(k_old) * float(scale)
+                if alpha < 1.0:
+                    k_new = (1.0 - alpha) * prev + alpha * k_new
 
-            # Emit an event so the recorder can attach it to frame.meta.events
-            if hasattr(self, "pm") and self.pm is not None:
-                self.pm.emit_event({
-                    "pass": "calibration",
-                    "info": "k_update",
-                    "term": term,
-                    "k_old": float(k_old),
-                    "k_new": float(k_new),
-                    "scale": float(scale),
-                    "ema_alpha": float(alpha),
-                    "global_iter": getattr(self.pm, "eval_index", 0),
-                })
+                term_cfg[kk] = float(k_new)
 
-            self.prev_k[term] = float(k_new)
+                # Emit an event so the recorder can attach it to frame.meta.events
+                if hasattr(self, "pm") and self.pm is not None:
+                    self.pm.emit_event({
+                        "pass": "calibration",
+                        "info": "k_update",
+                        "term": term,
+                        "param": kk,
+                        "k_old": float(k_old),
+                        "k_new": float(k_new),
+                        "scale": float(scale),
+                        "ema_alpha": float(alpha),
+                        "global_iter": getattr(self.pm, "eval_index", 0),
+                    })
+
+                self.prev_k[f"{term}:{kk}"] = float(k_new)
             logger.info(f"[calibration] term={term} k={k_new:.3g}")
 
 

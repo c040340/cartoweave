@@ -36,71 +36,74 @@ compute:
 
   public:
     forces:
-      pl:
-        rect:
-          enable: true
-          k: 0.8
-          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          beta: { sep: 6.0, in: 6.0 }
-          g_eps: 1.0e-6
-          eps: { abs: 0.001 }
-      ln:
-        rect:
-          enable: true
-          k: 0.6
-          kernel: { model: inv_pow, exponent: 1.5, soft_eps: 1.0e-6 }
-          beta: { sep: 6.0, in: 6.0 }
-          g_eps: 1.0e-6
-          eps: { abs: 0.001 }
-      ll:
-        rect:
-          enable: true
-          k: 0.4
-          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          beta: { sep: 6.0, in: 6.0 }
-          g_eps: 1.0e-6
-          eps: { abs: 0.001 }
-        disk:
-          enable: false
-          k: 0.4
-          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-          beta: { sep: 6.0, in: 6.0 }
-          g_eps: 1.0e-6
-          eps: { abs: 0.001 }
-      area:
-        cross:
-          enable: true
-          k: 1.0
-          use_legacy_gate: false     # 旧 gate 兼容开关（默认关闭）
-          min_gap: 0.5
-          tan_gate: { eta: 2.0, slack: 0.0 }
-          gate_min_interior: 0.0
-          tan_cap_scale: 1.0
-          outside_weight: 1.0
-        embed:
-          enable: true
-          k: 0.8
-          ratio_in: 0.9
-          in_decay: 0.2
-          out_decay: 0.1
-        softout:
-          enable: true
-          k: 0.8
-          pad: 0.1
-          y_down: 0.0
-      boundary:
-        wall:
-          enable: true
-          k: 0.5
-          alpha: 1.0
-      focus:
-        attract:
-          enable: true
-          k: 1.0
-          center: [0.44, 0.39]
-          sigma: { x: 1.0, y: 1.0 }
-      anchor:
-        spring:
-          enable: true
-          k: 1.0
-          only_free: true
+        pl:
+          rect:
+            enable: true
+            k_out: 0.8
+            k_in: 0.8
+            kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+            beta: { sep: 6.0, in: 6.0 }
+            g_eps: 1.0e-6
+            eps: { abs: 0.001 }
+        ln:
+          rect:
+            enable: true
+            k_out: 0.6
+            k_in: 0.6
+            kernel: { model: inv_pow, exponent: 1.5, soft_eps: 1.0e-6 }
+            beta: { sep: 6.0, in: 6.0 }
+            g_eps: 1.0e-6
+            eps: { abs: 0.001 }
+        ll:
+          rect:
+            enable: true
+            k_out: 0.4
+            k_in: 0.4
+            kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+            beta: { sep: 6.0, in: 6.0 }
+            g_eps: 1.0e-6
+            eps: { abs: 0.001 }
+          disk:
+            enable: false
+            k_out: 0.4
+            kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+            beta: { sep: 6.0, in: 6.0 }
+            g_eps: 1.0e-6
+            eps: { abs: 0.001 }
+        area:
+          cross:
+            enable: true
+            k_cross: 1.0
+            use_legacy_gate: false     # 旧 gate 兼容开关（默认关闭）
+            min_gap: 0.5
+            tan_gate: { eta: 2.0, slack: 0.0 }
+            gate_min_interior: 0.0
+            tan_cap_scale: 1.0
+            outside_weight: 1.0
+          embed:
+            enable: true
+            k_embed: 0.8
+            ratio_in: 0.9
+            in_decay: 0.2
+            out_decay: 0.1
+          softout:
+            enable: true
+            k_push: 0.8
+            pad: 0.1
+            y_down: 0.0
+        boundary:
+          wall:
+            enable: true
+            k_wall: 0.5
+            alpha: 1.0
+        focus:
+          attract:
+            enable: true
+            k_attract: 1.0
+            center: [0.44, 0.39]
+            sigma: { x: 1.0, y: 1.0 }
+        anchor:
+          spring:
+            enable: true
+            k_local: 1.0
+            only_free: true

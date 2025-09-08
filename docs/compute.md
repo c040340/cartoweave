@@ -8,7 +8,7 @@
   ```python
   sp.cfg.setdefault("compute", {}).setdefault("public", {}).setdefault("forces", {})[
       "anchor.spring"
-  ] = {"enable": True, "k": 2.0}
+    ] = {"enable": True, "k_local": 2.0}
   sp.passes = ["schedule", {"name": "capture", "args": {"every": 1}}]
   sp.schedule = [{"solver": "lbfgs", "iters": 5}, {"solver": "semi", "iters": 5}]
   vp = solve(sp)

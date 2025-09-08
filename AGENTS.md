@@ -72,7 +72,7 @@
 
 ### Stage / 阶段
 ```json
-{"name":"pre_anchor","scale":{"anchor.k.spring":0.4}}
+{"name":"pre_anchor","scale":{"anchor.k_local.spring":0.4}}
 ```
 
 ### History Record / 求解记录

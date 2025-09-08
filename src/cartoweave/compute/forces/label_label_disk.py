@@ -40,8 +40,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     WH = normalize_WH_from_labels(labels, N, "ll.disk")
 
-    k_default = float(tc.get("k", 0.3))
-    k_out = float(k_default if tc.get("k_out") is None else tc.get("k_out"))
+    k_out = float(0.3 if tc.get("k_out") is None else tc.get("k_out"))
     p = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 0.5})
     pwr = p["kernel_exponent"]
     eps_sep = p["kernel_soft_eps"]

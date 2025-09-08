@@ -43,9 +43,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     F = np.zeros_like(P)
     E = 0.0
 
-    k_default = float(tc.get("k", 0.3))
-    k_out = float(k_default if tc.get("k_out") is None else tc.get("k_out"))
-    k_in = float(k_default if tc.get("k_in") is None else tc.get("k_in"))
+    k_out = float(0.3 if tc.get("k_out") is None else tc.get("k_out"))
+    k_in = float(0.3 if tc.get("k_in") is None else tc.get("k_in"))
     ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 1e-6})
     pwr = ker["kernel_exponent"]
     eps_d = ker["kernel_soft_eps"]

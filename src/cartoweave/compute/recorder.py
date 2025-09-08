@@ -123,7 +123,14 @@ class Recorder:
         summary = {
             "frames_captured": len(self.frames),
             "terms_used": [
-                {"name": name, "k": float(pmap.get(name, {}).get("k", 0.0))}
+                {
+                    "name": name,
+                    "k_params": {
+                        k: float(v)
+                        for k, v in pmap.get(name, {}).items()
+                        if k.startswith("k_") and v is not None
+                    },
+                }
                 for name in terms
             ],
             "time_ms": int((time.time() - self._t0) * 1000),

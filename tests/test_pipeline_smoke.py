@@ -22,7 +22,7 @@ def test_pipeline_smoke():
         labels0=labels,
         active0=[True, True, True],
         scene0=scene,
-        cfg={"compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}}}}},
+        cfg={"compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}}}},
     )
     p = np.asarray(pack.P0, float)
     active = np.asarray(pack.active0, bool)

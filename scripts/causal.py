@@ -9,10 +9,10 @@ labels = [{"mode": "rect"}] * L
 scene = {"WH": np.ones((L, 2)), "frame_size": (1920, 1080)}
 
 cfg0 = {
-    "public": {"forces": {"anchor.spring": {"enable": True, "k": 1.0}, "ll.disk": {"enable": True, "k": 1.0}}}
+    "public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}, "ll.disk": {"enable": True, "k_out": 1.0}}}
 }
 cfgw = {
-    "public": {"forces": {"anchor.spring": {"enable": True, "k": 2.0}, "ll.disk": {"enable": True, "k": 1.0}}}
+    "public": {"forces": {"anchor.spring": {"enable": True, "k_local": 2.0}, "ll.disk": {"enable": True, "k_out": 1.0}}}
 }
 
 E0, G0, C0 = energy_and_grad_full(P, labels, scene, mask, cfg0)
