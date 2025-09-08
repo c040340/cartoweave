@@ -7,9 +7,10 @@ _backend = setup_matplotlib_backend()
 
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 from matplotlib.widgets import Slider
 from matplotlib.artist import Artist
+from types import SimpleNamespace
 
 from .defaults import VIZ_DEFAULTS
 from cartoweave.config.loader import load_viz_defaults
@@ -39,7 +40,8 @@ class ViewAxes:
     ax_force: plt.Axes
     ax_info: plt.Axes
     ax_field: Optional[plt.Axes]
-    ax_bar: plt.Axes
+    ax_bar_action: plt.Axes
+    ax_bar_iter: plt.Axes
 
 
 def build_view_axes(field_kind: str = "3d") -> ViewAxes:
@@ -63,7 +65,9 @@ def build_view_axes(field_kind: str = "3d") -> ViewAxes:
     )
 
     main = outer[0]
-    bar = outer[1]
+    bar = outer[1].subgridspec(1, 2, width_ratios=[1, 3])
+    bar_action = bar[0]
+    bar_iter = bar[1]
 
     if field_kind == "none":
         gs_main = main.subgridspec(1, 2, width_ratios=[5.5, 5])
@@ -83,7 +87,8 @@ def build_view_axes(field_kind: str = "3d") -> ViewAxes:
         projection = "3d" if field_kind == "3d" else None
         ax_field = fig.add_subplot(gs_main[0, 2], projection=projection)
 
-    ax_bar = fig.add_subplot(bar)
+    ax_bar_action = fig.add_subplot(bar_action)
+    ax_bar_iter = fig.add_subplot(bar_iter)
 
     return ViewAxes(
         fig=fig,
@@ -91,7 +96,8 @@ def build_view_axes(field_kind: str = "3d") -> ViewAxes:
         ax_force=ax_force,
         ax_info=ax_info,
         ax_field=ax_field,
-        ax_bar=ax_bar,
+        ax_bar_action=ax_bar_action,
+        ax_bar_iter=ax_bar_iter,
     )
 
 
@@ -105,6 +111,16 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
     if T == 0:
         raise ValueError("ViewPack.frames is empty")
 
+    passes = getattr(view_pack, "passes", []) or []
+    if not passes:
+        passes = [SimpleNamespace(pass_id=0, pass_name="", t_start=0, t_end=T)]
+
+    pass_of_t: List[int] = [0] * T
+    for idx, p in enumerate(passes):
+        for tt in range(p.t_start, p.t_end):
+            if 0 <= tt < T:
+                pass_of_t[tt] = idx
+
     panels_cfg = cfg.get("panels", {})
     field_kind = "3d" if panels_cfg.get("field", False) else "none"
     axes = build_view_axes(field_kind=field_kind)
@@ -113,15 +129,35 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
     ax_force = axes.ax_force
     ax_info = axes.ax_info
     ax_field = axes.ax_field
-    ax_bar = axes.ax_bar
+    ax_bar_action = axes.ax_bar_action
+    ax_bar_iter = axes.ax_bar_iter
 
     if not panels_cfg.get("forces", True):
         ax_force.set_visible(False)
     if not panels_cfg.get("info", True):
         ax_info.set_visible(False)
 
-    state = {"t": 0, "sel": None}
+    state: Dict[str, int | None] = {"t": 0, "sel": None, "pass": 0}
     patches: List[Tuple[int, Artist]] = []
+
+    def _format_meta(meta: Dict[str, Any] | None) -> str:
+        if not isinstance(meta, dict):
+            return ""
+        line1 = f"{meta.get('pass_name', '')}:{meta.get('frame_in_pass', '')}"
+        events = meta.get("events") or []
+        line2 = ""
+        if isinstance(events, list) and events:
+            ev = events[-1]
+            if isinstance(ev, dict):
+                if ev.get("kind") == "optimizer_step":
+                    algo = ev.get("algo", "")
+                    it = ev.get("iter_in_algo", "")
+                    line2 = f"{algo} iter {it}"
+                else:
+                    p = ev.get("pass") or ev.get("kind") or ""
+                    info = ev.get("info") or ""
+                    line2 = f"{p} {info}".strip()
+        return f"{line1}\n{line2}".rstrip()
 
     def redraw_layout(t: int):
         ax = ax_layout
@@ -206,36 +242,55 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         if t_new == state["t"]:
             return
         state["t"] = t_new
+        p_idx = pass_of_t[t_new]
+        state["pass"] = p_idx
         redraw_layout(t_new)
         redraw_forces(t_new)
         redraw_info(t_new)
         redraw_field(t_new)
+        fr = frames[t_new]
+        meta_text.set_text(_format_meta(getattr(fr, "meta", None)))
         if sync_slider:
             try:
-                slider.set_val(t_new)
+                slider_action.set_val(p_idx)
+                p = passes[p_idx]
+                local_idx = t_new - p.t_start
+                slider_iter.valmax = max(p.t_end - p.t_start - 1, 0)
+                slider_iter.ax.set_xlim(0, slider_iter.valmax)
+                slider_iter.set_val(local_idx)
             except Exception:
                 pass
 
-    ax_bar.clear()
-    slider = Slider(ax_bar, "frame", 0, T - 1, valinit=0, valstep=1)
+    ax_bar_action.clear()
+    ax_bar_iter.clear()
+    slider_action = Slider(ax_bar_action, "pass", 0, len(passes) - 1, valinit=0, valstep=1)
+    first_len = max(passes[0].t_end - passes[0].t_start - 1, 0)
+    slider_iter = Slider(ax_bar_iter, "frame", 0, first_len, valinit=0, valstep=1)
+    meta_text = ax_bar_iter.text(
+        1.0,
+        1.0,
+        "",
+        transform=ax_bar_iter.transAxes,
+        ha="right",
+        va="bottom",
+    )
 
-    try:
-        last_ai = None
-        for i, fr in enumerate(frames):
-            ai = None
-            meta = getattr(fr, "meta", None)
-            if isinstance(meta, dict):
-                ai = meta.get("action_index")
-            if ai is not None and ai != last_ai:
-                ax_bar.axvline(i, color="0.7", lw=0.8, alpha=0.8)
-                last_ai = ai
-    except Exception:
-        pass
+    def on_action(val):
+        p_idx = int(val)
+        p = passes[p_idx]
+        slider_iter.valmax = max(p.t_end - p.t_start - 1, 0)
+        slider_iter.ax.set_xlim(0, slider_iter.valmax)
+        slider_iter.set_val(0)
+        set_t(p.t_start, sync_slider=False)
 
-    def on_slide(val):
-        set_t(int(val), sync_slider=False)
+    def on_iter(val):
+        p_idx = int(slider_action.val)
+        p = passes[p_idx]
+        t = p.t_start + int(val)
+        set_t(t, sync_slider=False)
 
-    slider.on_changed(on_slide)
+    slider_action.on_changed(on_action)
+    slider_iter.on_changed(on_iter)
 
     def on_key(event):
         if event.key in ("left", "a"):
