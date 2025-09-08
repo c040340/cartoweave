@@ -162,6 +162,8 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
 
     t_global = 0
     P_prev_full = P_curr.copy()
+    if P_prev_full.ndim == 2:
+        P_prev_full[~active] = np.nan
     comps_prev_full: Dict[str, np.ndarray] = {}
     for pass_id, action in enumerate(actions):
         pass_name = getattr(action, "type", None) or getattr(action, "pass_name", None) or "action"
@@ -181,6 +183,8 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         # update possibly mutated labels/active mask
         labels = ctx.get("labels", labels)
         active = np.asarray(ctx.get("active_ids", active), bool)
+        if P_prev_full.ndim == 2:
+            P_prev_full[~active] = np.nan
         active_idx = np.flatnonzero(active)
 
         _last_iter_recorded = -1

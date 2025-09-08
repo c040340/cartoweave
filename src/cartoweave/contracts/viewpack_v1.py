@@ -31,15 +31,24 @@ class VPFrame:
     def validate(self, N: int) -> None:
         if self.P.shape != (N, 2):
             raise ValueError(f"frame t={self.t}: P shape {self.P.shape} != ({N},2)")
-        if not np.isfinite(self.P).all():
-            raise ValueError(f"frame t={self.t}: P contains non-finite values")
 
+        # ADD: 先校验 active_mask，再基于 active 索引做有限性检查
         if self.active_mask.shape != (N,):
             raise ValueError(
                 f"frame t={self.t}: active_mask shape {self.active_mask.shape} != ({N},)"
             )
         if self.active_mask.dtype != np.bool_:
             raise ValueError(f"frame t={self.t}: active_mask must be boolean")
+        am = self.active_mask  # 便于后续使用
+
+        # DELETE: 全量有限性检查（会拒绝未激活=NaN）
+        # if not np.isfinite(self.P).all():
+        #     raise ValueError(f"frame t={self.t}: P contains non-finite values")
+
+        # ADD: 只检查激活元素为有限数；未激活允许为 NaN
+        if not np.isfinite(self.P[am]).all():
+            bad = np.where(~np.isfinite(self.P[am]))[0].tolist()
+            raise ValueError(f"frame t={self.t}: P has non-finite values at active indices {bad}")
 
         meta = self.meta
         required_keys = ["global_iter", "active_ids", "active_count", "events"]
@@ -67,9 +76,19 @@ class VPFrame:
                 raise ValueError(
                     f"frame t={self.t}: comp '{term}' shape {arr.shape} != ({N},2)"
                 )
-            if not np.isfinite(arr).all():
-                raise ValueError(f"frame t={self.t}: comp '{term}' has non-finite values")
-            if np.any(arr[~self.active_mask]):
+            # DELETE: 全量有限性检查
+            # if not np.isfinite(arr).all():
+            #     raise ValueError(f"frame t={self.t}: comp '{term}' has non-finite values")
+
+            # ADD: 仅对激活元素要求有限
+            if not np.isfinite(arr[am]).all():
+                bad = np.where(~np.isfinite(arr[am]))[0].tolist()
+                raise ValueError(
+                    f"frame t={self.t}: comp '{term}' has non-finite values at active indices {bad}"
+                )
+
+            # 保持：未激活处必须为零（既保证物理含义，也避免噪声）
+            if np.any(arr[~am]):
                 raise ValueError(
                     f"frame t={self.t}: comp '{term}' has nonzero forces where inactive"
                 )
@@ -79,20 +98,49 @@ class VPFrame:
 
         if "G_snapshot" in meta:
             G_snap = np.asarray(meta["G_snapshot"], dtype=float)
-            if G_snap.shape != (N, 2) or not np.isfinite(G_snap).all():
+            if G_snap.shape != (N, 2):
                 raise ValueError(
-                    f"frame t={self.t}: meta.G_snapshot invalid shape or non-finite"
+                    f"frame t={self.t}: meta.G_snapshot invalid shape"
                 )
+
+            # DELETE: 全量有限性检查
+            # if not np.isfinite(G_snap).all():
+            #     raise ValueError(
+            #         f"frame t={self.t}: meta.G_snapshot invalid shape or non-finite"
+            #     )
+
+            # ADD: 仅对激活元素要求有限
+            if not np.isfinite(G_snap[am]).all():
+                bad = np.where(~np.isfinite(G_snap[am]))[0].tolist()
+                raise ValueError(
+                    f"frame t={self.t}: meta.G_snapshot has non-finite values at active indices {bad}"
+                )
+
             comps_sum = np.zeros((N, 2), dtype=float)
             for arr in self.comps.values():
                 comps_sum += arr
-            if not np.allclose(G_snap, -comps_sum, atol=1e-6):
+
+            # DELETE: 全量守恒检查
+            # if not np.allclose(G_snap, -comps_sum, atol=1e-6):
+            #     raise ValueError(
+            #         f"frame t={self.t}: G_snapshot not conserved with components"
+            #     )
+
+            # ADD: 只在激活元素上检查守恒
+            if not np.allclose(G_snap[am], -comps_sum[am], atol=1e-6):
                 raise ValueError(
-                    f"frame t={self.t}: G_snapshot not conserved with components"
+                    f"frame t={self.t}: G_snapshot not conserved with components (active only)"
                 )
 
-        if self.field is not None and not np.isfinite(self.field).all():
-            raise ValueError(f"frame t={self.t}: field contains non-finite values")
+        # DELETE: 全量 field 有限性检查
+        # if self.field is not None and not np.isfinite(self.field).all():
+        #     raise ValueError(f"frame t={self.t}: field contains non-finite values")
+
+        # ADD: 如存在 field，仅对激活元素检查为有限
+        if self.field is not None:
+            # 允许未激活为 NaN；若 field 不是 (N,…) 结构，你可在此加形状断言
+            if not np.isfinite(self.field[am]).all():
+                raise ValueError(f"frame t={self.t}: field has non-finite values at active indices")
 
 
 @dataclass
