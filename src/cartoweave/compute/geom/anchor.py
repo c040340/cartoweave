@@ -1,9 +1,10 @@
 import numpy as np
-from cartoweave.layout_utils.geometry import (
+
+from cartoweave.compute.geometry import (
+    area_anchor_from_centroid_nearest_edge,
     poly_centroid,
     polyline_uniform_arc_centroid,
     project_point_to_polyline,
-    area_anchor_from_centroid_nearest_edge,
 )
 
 __all__ = ["anchor_xy"]
@@ -18,9 +19,9 @@ def line_midpoint_xy(coords: np.ndarray) -> np.ndarray:
 
 def line_endpoints_mid_xy(coords: np.ndarray) -> np.ndarray:
     pts = np.asarray(coords, float)
-    C = polyline_uniform_arc_centroid(pts, step_len=4.0)
-    Q, _, _ = project_point_to_polyline(C, pts)
-    return Q
+    c = polyline_uniform_arc_centroid(pts, step_len=4.0)
+    q, _, _ = project_point_to_polyline(c, pts)
+    return q
 
 
 def polygon_centroid_xy(poly: np.ndarray) -> np.ndarray:

@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from cartoweave.layout_utils.geometry import (
+from cartoweave.compute.geometry import (
     poly_centroid,
     project_point_to_polyline,
     project_point_to_segment,

@@ -3,7 +3,8 @@ from typing import Any, Dict, Tuple, Optional
 import math
 import numpy as np
 
-from .layout_utils.geometry import (
+# geometry utilities moved from layout_utils to compute.geometry
+from cartoweave.compute.geometry import (
     project_point_to_polyline,
     polyline_uniform_arc_centroid,
     area_anchor_from_centroid_nearest_edge,
