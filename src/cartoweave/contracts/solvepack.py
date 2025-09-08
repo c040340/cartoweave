@@ -169,7 +169,7 @@ class Label(BaseModel):
     thickness: float | None = None
     radius: float | None = None
     anchor: Anchor
-    ll_kernel: Literal["rect", "disk"] | None = None
+    ll_kernel: Literal["rect", "disk"] | None = "rect"
     mode: str | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 

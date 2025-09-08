@@ -50,6 +50,7 @@ def test_default_label_count_and_anchor_refs():
             assert 0 <= lbl.anchor.index < 1
         elif t == "area":
             assert 0 <= lbl.anchor.index < 1
+        assert lbl.ll_kernel == "rect"
     _build_pack(P0, labels0, active0, scene0)
 
 
