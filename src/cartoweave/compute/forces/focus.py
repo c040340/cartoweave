@@ -52,7 +52,9 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if center is None:
         fw, fh = scene.get("frame_size", (0.0, 0.0))
         center = np.array([float(fw) * 0.5, float(fh) * 0.5], dtype=float)
-    Cx, Cy = float(center[0]), float(center[1])
+    W, H = scene.get("frame_size", (1920.0, 1080.0))
+    W, H = float(W), float(H)
+    Cx, Cy = float(center[0]) * W, float(center[1]) * H
 
     sigma = tc.get("sigma") or {}
     sigx = float(100.0 if sigma.get("x") is None else sigma.get("x"))

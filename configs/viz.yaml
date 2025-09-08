@@ -14,10 +14,11 @@ layout:
     areas: "#F1C40F"
     label_fill: "#FFFFFF"
     label_edge: "#2D3436"
-    anchor_line: "#34495E"
+    anchor_line: "#95A5A6"
     anchor_marker_face: "#FFFFFF"
     anchor_marker_edge: "#2D3436"
   line_width: 1.0
+  anchor_line_width: 0.5
   area_face_alpha: 0.30
   area_edge_width: 1.0
   label_edge_width: 1.0

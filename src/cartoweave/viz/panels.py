@@ -473,7 +473,7 @@ def _draw_layout_panel(
                 [anchor_xy[0], x],
                 [anchor_xy[1], y],
                 color=style.anchor_line_color,
-                lw=style.line_width,
+                lw=style.anchor_line_width,
                 linestyle='--',
             )
             ax.scatter(
@@ -728,9 +728,8 @@ def draw_field_panel(
         if z_max - z_min <= 0:
             z_max = z_min + 1.0
         ax.set_zlim(z_min, z_max)
-
-        z_span = z_max - z_min
-        ax.set_box_aspect((float(width), float(height), z_span))
+        short_side = min(float(width), float(height))
+        ax.set_box_aspect((float(width), float(height), short_side * (2.0 / 3.0)))
 
         if add_colorbar:
             ax.figure.colorbar(surf, ax=ax, fraction=0.046, pad=0.04)

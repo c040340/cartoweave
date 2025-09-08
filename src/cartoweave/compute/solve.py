@@ -210,6 +210,9 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             if not comps_prev_full and sub_comps:
                 comps_prev_full = {k: np.zeros((N, 2), float) for k in sub_comps.keys()}
             comps_full_i = expand_comps_subset(comps_prev_full, active_idx, sub_comps)
+            g_vec = meta.get("G")
+            gnorm_val = float(np.linalg.norm(g_vec)) if g_vec is not None and g_vec.size else 0.0
+            ginf_val = float(np.max(np.abs(g_vec))) if g_vec is not None and g_vec.size else 0.0
             meta_i: Dict[str, Any] = {
                 "schema_version": "compute-v2",
                 "status": "ok",
@@ -221,19 +224,15 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
                     "ls_evals": meta.get("ls_evals"),
                     "wolfe": meta.get("wolfe"),
                     "delta_E": meta.get("delta_E"),
-                    "gnorm": float(np.linalg.norm(meta.get("G"))) if meta.get("G") is not None else None,
+                    "gnorm": gnorm_val if g_vec is not None else None,
+                    "g_inf": ginf_val if g_vec is not None else None,
                 },
             }
             # ensure viz contract: pass_id, pass_name, frame_in_pass
             meta_i.setdefault("pass_id", pass_id)  # viz contract
             meta_i.setdefault("pass_name", pass_name)  # viz contract
             meta_i.setdefault("frame_in_pass", it)  # iteration index for viz
-            gnorm_i = float(
-                np.linalg.norm(meta.get("G"))
-                if meta.get("G") is not None and meta.get("G").size
-                else 0.0
-            )
-            metrics_i = {"E": float(meta.get("E", 0.0)), "gnorm": gnorm_i}
+            metrics_i = {"E": float(meta.get("E", 0.0)), "gnorm": gnorm_val, "g_inf": ginf_val}
             recorder.record_frame(
                 t=t_global,
                 P_full=P_full_i,
@@ -279,6 +278,13 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
 
         metrics_all = {"E": float(metrics.get("E", 0.0)), "gnorm": float(metrics.get("gnorm", 0.0))}
         metrics_all.update({k: float(v) for k, v in m_extra.items()})
+        g_vec_final = metrics.get("G")
+        if (
+            g_vec_final is not None
+            and getattr(g_vec_final, "size", 0)
+            and "g_inf" not in metrics_all
+        ):
+            metrics_all["g_inf"] = float(np.max(np.abs(g_vec_final)))
 
         meta_base: Dict[str, Any] = {
             "schema_version": "compute-v2",

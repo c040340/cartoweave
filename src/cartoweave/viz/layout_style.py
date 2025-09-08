@@ -18,6 +18,7 @@ class LayoutStyle:
       - layout.colors.anchor_marker_face
       - layout.colors.anchor_marker_edge
       - layout.line_width
+      - layout.anchor_line_width
       - layout.area_face_alpha
       - layout.area_edge_width
       - layout.label_edge_width
@@ -47,6 +48,7 @@ class LayoutStyle:
     label_edge_width: float = 1.0
     label_fontsize: float = 10.0
     anchor_line_color: str = "#000000"
+    anchor_line_width: float = 1.0
     anchor_marker_face: str = "#FFFFFF"
     anchor_marker_edge: str = "#000000"
     anchor_marker_size: float = 4.0
@@ -62,6 +64,7 @@ REQUIRED_KEYS = [
     "layout.colors.anchor_marker_face",
     "layout.colors.anchor_marker_edge",
     "layout.line_width",
+    "layout.anchor_line_width",
     "layout.area_face_alpha",
     "layout.area_edge_width",
     "layout.label_edge_width",
@@ -101,6 +104,7 @@ def get_layout_style_from_cfg(cfg: Dict[str, Any]) -> LayoutStyle:
         points_color=_get(cfg, "layout.colors.points"),
         lines_color=_get(cfg, "layout.colors.lines"),
         line_width=_get(cfg, "layout.line_width"),
+        anchor_line_width=_get(cfg, "layout.anchor_line_width"),
         areas_face_color=_get(cfg, "layout.colors.areas"),
         areas_face_alpha=_get(cfg, "layout.area_face_alpha"),
         areas_edge_color=_get(cfg, "layout.colors.areas"),
