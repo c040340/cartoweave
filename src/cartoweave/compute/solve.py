@@ -197,9 +197,10 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             if it % cap_every != 0:
                 return
             P_full_i = expand_subset(P_prev_full, active_idx, P_iter[active_idx])
-            comps_full_i = expand_comps_subset(
-                comps_prev_full, active_idx, meta.get("comps", {})
-            )
+            sub_comps = meta.get("comps", {})
+            if not comps_prev_full and sub_comps:
+                comps_prev_full = {k: np.zeros((N, 2), float) for k in sub_comps.keys()}
+            comps_full_i = expand_comps_subset(comps_prev_full, active_idx, sub_comps)
             meta_i: Dict[str, Any] = {
                 "schema_version": "compute-v2",
                 "status": "ok",
@@ -285,9 +286,10 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             meta_base["optimizer_step"] = event
 
         P_full = expand_subset(P_prev_full, active_idx, P_curr[active_idx])
-        comps_full = expand_comps_subset(
-            comps_prev_full, active_idx, metrics.get("comps", {})
-        )
+        sub_comps_final = metrics.get("comps", {})
+        if not comps_prev_full and sub_comps_final:
+            comps_prev_full = {k: np.zeros((N, 2), float) for k in sub_comps_final.keys()}
+        comps_full = expand_comps_subset(comps_prev_full, active_idx, sub_comps_final)
 
         iters = int(metrics.get("iters", len(reports)))
         need_final = cap_final and (_last_iter_recorded != (iters - 1))
