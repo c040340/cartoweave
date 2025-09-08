@@ -69,3 +69,53 @@ def ensure_vec2(F: np.ndarray, N: int) -> np.ndarray:
         raise ValueError(f"force shape {F.shape} != (N,2)")
     return F
 
+
+def float_param(d: dict | None, key: str, default: float) -> float:
+    """Safely extract a finite float from ``d``.
+
+    ``params`` dictionaries coming from the UI may contain ``None`` or even
+    nested dictionaries when sliders are disabled.  Directly calling
+    ``float()`` on such values raises ``TypeError`` and would bubble up as an
+    exception from probe functions.  This helper gracefully falls back to a
+    provided default and also guards against non‑finite values like ``NaN`` or
+    ``±∞``.
+    """
+
+    if not isinstance(d, dict):  # malformed params container
+        v = default
+    else:
+        v = d.get(key, default)
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        v = default
+    if not np.isfinite(v):
+        v = default
+    return float(v)
+
+
+def poly_as_array(poly) -> np.ndarray | None:
+    """Return an ``(N,2)`` float array from a polygon-like input.
+
+    ``scene['areas']`` can contain bare coordinate lists or dictionaries
+    with a ``'poly'`` field.  Probes should skip malformed polygons rather
+    than raise ``TypeError``/``ValueError`` when visualizations toggle force
+    terms on and off.  This helper extracts the vertex array while guarding
+    against bad shapes and non-finite coordinates.
+    """
+
+    if isinstance(poly, dict):
+        poly = poly.get("poly")
+    if poly is None:
+        return None
+    arr = np.asarray(poly, float)
+    try:
+        arr = arr.reshape(-1, 2)
+    except Exception:
+        return None
+    if arr.shape[0] < 3:
+        return None
+    if not np.isfinite(arr).all():
+        arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+    return arr
+

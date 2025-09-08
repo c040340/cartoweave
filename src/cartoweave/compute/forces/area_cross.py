@@ -13,6 +13,8 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
+    poly_as_array,
 )
 
 def _anchor(lab):
@@ -101,10 +103,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             if ai == own_idx:
                 continue
             #poly = A.get("polygon", None)
-            if poly is None:
-                continue
-            arr = np.asarray(poly, float).reshape(-1, 2)
-            if arr.shape[0] < 3:
+            arr = poly_as_array(poly)
+            if arr is None:
                 continue
             ccw = (poly_signed_area(arr) > 0.0)
             fx_sum = fy_sum = 0.0
@@ -208,25 +208,25 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     if not areas:
         return np.zeros_like(xy, float)
 
-    k_cross = float(900.0 if params.get("k_cross") is None else params.get("k_cross"))
-    min_gap = float(1.5 if params.get("min_gap") is None else params.get("min_gap"))
-    eta_tan = float(2.0 if params.get("eta") is None else params.get("eta"))
-    alpha_sp = float(0.35 if params.get("alpha") is None else params.get("alpha"))
-    cap_scale = float(1.0 if params.get("tan_cap_scale") is None else params.get("tan_cap_scale"))
+    k_cross = float_param(params, "k_cross", 900.0)
+    min_gap = float_param(params, "min_gap", 1.5)
+    eta_tan = float_param(params, "eta", 2.0)
+    alpha_sp = float_param(params, "alpha", 0.35)
+    cap_scale = float_param(params, "tan_cap_scale", 1.0)
     use_lc = bool(params.get("use_logcosh", True))
-    p0_lc = float(2.0 if params.get("sat_p0") is None else params.get("sat_p0"))
-    g_min_int = float(0.6 if params.get("gate_min_interior") is None else params.get("gate_min_interior"))
-    kappa = float(8.0 if params.get("kappa") is None else params.get("kappa"))
-    beta_smax = float(8.0 if params.get("beta_smax") is None else params.get("beta_smax"))
-    eps_abs = float(params.get("eps_abs") or 1e-3)
-    eps = float(params.get("eps_numeric") or 1e-12)
+    p0_lc = float_param(params, "sat_p0", 2.0)
+    g_min_int = float_param(params, "gate_min_interior", 0.6)
+    kappa = float_param(params, "kappa", 8.0)
+    beta_smax = float_param(params, "beta_smax", 8.0)
+    eps_abs = float_param(params, "eps_abs", 1e-3)
+    eps = float_param(params, "eps_numeric", 1e-12)
 
     F = np.zeros_like(xy, float)
 
     for poly in areas:
-        if poly is None:
+        arr = poly_as_array(poly)
+        if arr is None:
             continue
-        arr = np.asarray(poly, float).reshape(-1, 2)
         n = arr.shape[0]
         if n < 2:
             continue
@@ -293,8 +293,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
             F[i, 0] += fx_sum
             F[i, 1] += fy_sum
 
-    if not np.isfinite(F).all():
-        raise ValueError("area.cross probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

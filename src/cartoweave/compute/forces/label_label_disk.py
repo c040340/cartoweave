@@ -17,6 +17,7 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
 )
 
 
@@ -111,13 +112,13 @@ def _pairwise_force_disk(src_xy: np.ndarray, src_r: float, xy: np.ndarray, param
     dy = xy[:, 1] - src_xy[1]
     rc = np.hypot(dx, dy) + 1e-9
     s = rc - src_r
-    beta = float(12.0 if params.get("beta") is None else params.get("beta"))
+    beta = float_param(params, "beta", 12.0)
     ker = params.get("kernel") or {}
-    pwr = float(2.0 if ker.get("exponent") is None else ker.get("exponent"))
-    eps_sep = float(1e-6 if ker.get("soft_eps") is None else ker.get("soft_eps"))
-    k_out = float(0.3 if params.get("k_out") is None else params.get("k_out"))
-    k_in = params.get("k_in")
-    if k_in is None or k_in <= 0.0:
+    pwr = float_param(ker, "exponent", 2.0)
+    eps_sep = float_param(ker, "soft_eps", 1e-6)
+    k_out = float_param(params, "k_out", 0.3)
+    k_in = float_param(params, "k_in", float("nan"))
+    if not np.isfinite(k_in) or k_in <= 0.0:
         v0 = math.log(2.0) / max(beta, 1e-8)
         e0 = v0 + eps_sep
         k_in = k_out / ((e0 ** pwr) * max(v0, 1e-8))
@@ -146,11 +147,12 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     F = np.zeros_like(xy, float)
     radius_mode = str((params.get("mode") or "max")).lower()
     for p, wh in zip(labels_xy, WH):
+        if not (np.isfinite(p).all() and np.isfinite(wh).all()):
+            continue
         r = radius_from_wh(float(wh[0]), float(wh[1]), radius_mode)
         F += _pairwise_force_disk(np.asarray(p, float), r, xy, params)
 
-    if not np.isfinite(F).all():
-        raise ValueError("ll.disk probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

@@ -22,6 +22,8 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
+    poly_as_array,
 )
 
 
@@ -92,10 +94,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             if ai == own_idx:
                 continue
             # poly = A.get("polygon", None)
-            if poly is None:
-                continue
-            arr = np.asarray(poly, float).reshape(-1, 2)
-            if arr.shape[0] < 3:
+            arr = poly_as_array(poly)
+            if arr is None:
                 continue
             m_list = []
             n_list = []
@@ -164,21 +164,21 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     if not areas:
         return np.zeros_like(xy, float)
 
-    k_push = float(250.0 if params.get("k_push") is None else params.get("k_push"))
-    min_gap = float(0.0 if params.get("min_gap") is None else params.get("min_gap"))
-    beta = float(0.7 if params.get("beta") is None else params.get("beta"))
-    alpha_sp = float(0.35 if params.get("alpha") is None else params.get("alpha"))
-    gamma_out = float(0.5 if params.get("outside_weight") is None else params.get("outside_weight"))
-    lambda_out = float(0.10 if params.get("in_decay") is None else params.get("in_decay"))
-    lambda_in = float(0.06 if params.get("out_decay") is None else params.get("out_decay"))
+    k_push = float_param(params, "k_push", 250.0)
+    min_gap = float_param(params, "min_gap", 0.0)
+    beta = float_param(params, "beta", 0.7)
+    alpha_sp = float_param(params, "alpha", 0.35)
+    gamma_out = float_param(params, "outside_weight", 0.5)
+    lambda_out = float_param(params, "in_decay", 0.10)
+    lambda_in = float_param(params, "out_decay", 0.06)
 
     F = np.zeros_like(xy, float)
     M = xy.shape[0]
 
     for poly in areas:
-        if poly is None:
+        arr = poly_as_array(poly)
+        if arr is None:
             continue
-        arr = np.asarray(poly, float).reshape(-1, 2)
         if arr.shape[0] < 3:
             continue
         ccw = (poly_signed_area(arr) > 0.0)
@@ -221,8 +221,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
             F[i, 0] += -fmag * nx_eff
             F[i, 1] += -fmag * ny_eff
 
-    if not np.isfinite(F).all():
-        raise ValueError("area.softout probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

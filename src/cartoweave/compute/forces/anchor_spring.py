@@ -13,6 +13,7 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
 )
 
 
@@ -71,12 +72,11 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     if anchors.size == 0:
         return np.zeros_like(xy, float)
 
-    k_local = float(1.0 if params.get("k_local") is None else params.get("k_local"))
+    k_local = float_param(params, "k_local", 1.0)
     if k_local <= 0.0:
         return np.zeros_like(xy, float)
 
-    zero_dist = float(0.0 if params.get("zero_dist") is None else params.get("zero_dist"))
-    zero_dist = max(0.0, zero_dist)
+    zero_dist = max(0.0, float_param(params, "zero_dist", 0.0))
 
     F = np.zeros_like(xy, float)
     for ax, ay in anchors:
@@ -88,8 +88,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
         F[:, 0] += scale * dx
         F[:, 1] += scale * dy
 
-    if not np.isfinite(F).all():
-        raise ValueError("anchor.spring probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

@@ -16,6 +16,7 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
 )
 
 
@@ -127,7 +128,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     if pts is None or len(pts) == 0:
         return np.zeros_like(xy, float)
 
-    k_out = float(0.8 if params.get("k_out") is None else params.get("k_out"))
+    k_out = float_param(params, "k_out", 0.8)
     pts = np.asarray(pts, float).reshape(-1, 2)
 
     dx = xy[:, None, 0] - pts[None, :, 0]
@@ -139,8 +140,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     fy = (mag * dy / dist).sum(axis=1)
     F = np.stack([fx, fy], axis=1)
 
-    if not np.isfinite(F).all():
-        raise ValueError("pl.rect probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

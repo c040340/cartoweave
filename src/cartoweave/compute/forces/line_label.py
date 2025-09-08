@@ -22,6 +22,7 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
 )
 
 
@@ -138,7 +139,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
 
     segs_arr = polylines_to_segments(segs_raw)
     segs = segs_arr.reshape((segs_arr.shape[0], 4))
-    k_out = float(0.8 if params.get("k_out") is None else params.get("k_out"))
+    k_out = float_param(params, "k_out", 0.8)
 
     F = np.zeros_like(xy, float)
     for ax, ay, bx, by in segs:
@@ -162,8 +163,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
         F[:, 0] += mag * dx / dist
         F[:, 1] += mag * dy / dist
 
-    if not np.isfinite(F).all():
-        raise ValueError("ln.rect probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

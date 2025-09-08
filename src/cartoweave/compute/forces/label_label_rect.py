@@ -16,6 +16,7 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
 )
 
 
@@ -107,7 +108,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 def _pairwise_force_rect(src_xy: np.ndarray, src_wh: np.ndarray, xy: np.ndarray, params: dict) -> np.ndarray:
     """Force from a rectangular source at ``src_xy`` acting on probe points ``xy``."""
 
-    k_out = float(0.3 if params.get("k_out") is None else params.get("k_out"))
+    k_out = float_param(params, "k_out", 0.3)
     dx = xy[:, 0] - src_xy[0]
     dy = xy[:, 1] - src_xy[1]
     dist_sq = dx * dx + dy * dy + 1e-6
@@ -126,14 +127,21 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
         raise AssertionError("xy must be (M,2)")
 
     labels_xy = np.asarray(scene.get("labels_xy", []), float)
-    WH = np.asarray(scene.get("WH"), float) if scene.get("WH") is not None else np.zeros((labels_xy.shape[0], 2), float)
+    WH = (
+        np.asarray(scene.get("WH"), float)
+        if scene.get("WH") is not None
+        else np.zeros((labels_xy.shape[0], 2), float)
+    )
+    if labels_xy.size == 0:
+        return np.zeros_like(xy, float)
 
     F = np.zeros_like(xy, float)
-    for p, wh in zip([a for a in labels_xy if labels_xy.any() != np.nan], WH):
+    for p, wh in zip(labels_xy, WH):
+        if not (np.isfinite(p).all() and np.isfinite(wh).all()):
+            continue
         F += _pairwise_force_rect(np.asarray(p, float), np.asarray(wh, float), xy, params)
 
-    if not np.isfinite(F).all():
-        raise ValueError("ll.rect probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

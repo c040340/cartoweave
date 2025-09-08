@@ -14,11 +14,18 @@ def safe_hypot(x: float, y: float, eps: float = EPS_NORM) -> float:
 def softabs(x: float, eps: float = EPS_ABS) -> float:
     return math.sqrt(x*x + eps*eps)
 
-def sigmoid(x: float) -> float:
-    if x >= 0:
-        z = math.exp(-x); return 1.0/(1.0+z)
-    else:
-        z = math.exp(x);  return z/(1.0+z)
+def sigmoid(x: float | np.ndarray) -> float | np.ndarray:
+    """Numerically stable sigmoid supporting scalars or arrays."""
+    z = np.asarray(x, dtype=float)
+    out = np.empty_like(z, dtype=float)
+    pos = z >= 0
+    neg = ~pos
+    out[pos] = 1.0 / (1.0 + np.exp(-z[pos]))
+    ez = np.exp(z[neg])
+    out[neg] = ez / (1.0 + ez)
+    if out.shape == ():
+        return float(out)
+    return out
 
 def softplus(x: float | np.ndarray, beta: float) -> float | np.ndarray:
     """Stable softplus supporting scalars or numpy arrays."""
@@ -42,14 +49,22 @@ def logcosh_energy(x: float, p0: float) -> float:
 def d_logcosh(x: float, p0: float) -> float:
     return math.tanh(x / max(p0, 1e-9))
 
-def invdist_energy(c: float, k: float, p: float) -> float:
-    cc = max(c, 1e-12)
+def invdist_energy(c: float | np.ndarray, k: float, p: float) -> float | np.ndarray:
+    cc = np.maximum(np.asarray(c, dtype=float), 1e-12)
     if p == 1.0:
-        return k * math.log(cc)
-    return k * (cc ** (1.0 - p)) / (p - 1.0)
+        out = k * np.log(cc)
+    else:
+        out = k * (cc ** (1.0 - p)) / (p - 1.0)
+    if out.shape == ():
+        return float(out)
+    return out
 
-def invdist_force_mag(c: float, k: float, p: float) -> float:
-    return k / (max(c, 1e-12) ** p)
+def invdist_force_mag(c: float | np.ndarray, k: float, p: float) -> float | np.ndarray:
+    cc = np.maximum(np.asarray(c, dtype=float), 1e-12)
+    out = k / (cc ** p)
+    if out.shape == ():
+        return float(out)
+    return out
 
 def softmin_weights(vals: np.ndarray, beta: float) -> np.ndarray:
     v = np.asarray(vals, float)

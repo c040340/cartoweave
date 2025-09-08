@@ -132,6 +132,7 @@ class TermParams(BaseModel):
     k_cross: float | None = None
     k_local: float | None = None
     k_attract: float | None = None
+    intro_times: float | None = None
     kernel: Kernel | None = None
     beta: BetaParams | float | None = None
     beta_edge: float | None = Field(default=None, gt=0)

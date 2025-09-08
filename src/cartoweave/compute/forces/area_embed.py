@@ -20,6 +20,8 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
+    poly_as_array,
 )
 
 
@@ -86,12 +88,10 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         if ai < 0 or ai >= len(areas):
             continue
         poly = areas[ai]
-        if poly is None:
+        arr = poly_as_array(poly)
+        if arr is None:
             continue
-        arr = np.asarray(poly, float).reshape(-1, 2)
         nE = arr.shape[0]
-        if nE < 3:
-            continue
         if w_i <= 0.0 and h_i <= 0.0:
             continue
         hx, hy = 0.5 * w_i, 0.5 * h_i
@@ -185,24 +185,22 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     if not areas:
         return np.zeros_like(xy, float)
 
-    k_embed = float(200.0 if params.get("k_embed") is None else params.get("k_embed"))
-    k_tan = float(30.0 if params.get("k_tan") is None else params.get("k_tan"))
-    beta_edge = float(6.0 if params.get("beta_edge") is None else params.get("beta_edge"))
+    k_embed = float_param(params, "k_embed", 200.0)
+    k_tan = float_param(params, "k_tan", 30.0)
+    beta_edge = float_param(params, "beta_edge", 6.0)
     tan_gate = params.get("tan_gate") or {}
-    gate_eta = float(2.0 if tan_gate.get("eta") is None else tan_gate.get("eta"))
-    gate_slack = float(1.0 if tan_gate.get("slack") is None else tan_gate.get("slack"))
-    eps_abs = float(params.get("eps_abs") or 1e-3)
+    gate_eta = float_param(tan_gate, "eta", 2.0)
+    gate_slack = float_param(tan_gate, "slack", 1.0)
+    eps_abs = float_param(params, "eps_abs", 1e-3)
 
     F = np.zeros_like(xy, float)
     M = xy.shape[0]
 
     for poly in areas:
-        if poly is None:
+        arr = poly_as_array(poly)
+        if arr is None:
             continue
-        arr = np.asarray(poly, float).reshape(-1, 2)
         nE = arr.shape[0]
-        if nE < 3:
-            continue
         ccw = (poly_signed_area(arr) > 0.0)
         for i in range(M):
             px, py = float(xy[i, 0]), float(xy[i, 1])
@@ -235,8 +233,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
             grad = (k_embed * ds)[:, None] * n_arr + (k_tan * g * u_arr)[:, None] * t_arr
             F[i] += -(wgt[:, None] * grad).sum(axis=0)
 
-    if not np.isfinite(F).all():
-        raise ValueError("area.embed probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

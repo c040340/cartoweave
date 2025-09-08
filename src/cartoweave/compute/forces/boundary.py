@@ -17,6 +17,7 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
 )
 
 
@@ -135,13 +136,13 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     W, H = scene.get("frame_size", (1000.0, 1000.0))
     W, H = float(W), float(H)
 
-    k_wall = float(params.get("k_wall", 240.0))
+    k_wall = float_param(params, "k_wall", 240.0)
     ker = kernel_params(params, defaults={"model": "inv_pow", "exponent": 3.0, "soft_eps": 0.3})
     power = ker["kernel_exponent"]
     eps_div = ker["kernel_soft_eps"]
-    beta_d = float((params.get("beta") or {}).get("dist", 3.0))
-    pad = float(params.get("pad", 0.0))
-    k_in = float(params.get("k_in", 0.0))
+    beta_d = float_param(params.get("beta") or {}, "dist", 3.0)
+    pad = float_param(params, "pad", 0.0)
+    k_in = float_param(params, "k_in", 0.0)
     y_down = bool(params.get("y_down", True))
 
     sL = xy[:, 0] - pad
@@ -163,8 +164,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     if not y_down:
         Fy = -Fy
     F = np.stack([Fx, Fy], axis=1)
-    if not np.isfinite(F).all():
-        raise ValueError("boundary.probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 

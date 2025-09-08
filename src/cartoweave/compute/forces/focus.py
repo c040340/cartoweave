@@ -9,6 +9,7 @@ from ._common import (
     get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    float_param,
 )
 
 
@@ -43,38 +44,62 @@ def _focus_force_at(xy: np.ndarray, center: np.ndarray, sigma_xy: np.ndarray, de
     return np.stack([Fx, Fy], axis=1)
 
 
+def _huges_force_at(
+    xy: np.ndarray,
+    center: np.ndarray,
+    sigma_xy: np.ndarray,
+    band: float,
+    k: float,
+    eps: float,
+) -> np.ndarray:
+    """
+    椭圆壳力 F：壳内推外，壳外拉内，壳上为 0；r=1 附近 Huber 平滑。
+    返回与 xy 同形状的 (M,2) 力向量。
+    """
+    sigx = max(float(sigma_xy[0]), eps)
+    sigy = max(float(sigma_xy[1]), eps)
+    bx = max(float(band), eps)
+
+    rx = (xy[:, 0] - center[0]) / sigx
+    ry = (xy[:, 1] - center[1]) / sigy
+    r = np.sqrt(rx * rx + ry * ry)
+    s = r - 1.0
+
+    root = np.sqrt(1.0 + (s / bx) * (s / bx))
+    dE_dr = k * s / np.maximum(root, eps)
+
+    denom = np.maximum(r, eps)
+    grad_r_x = rx / (sigx * denom)
+    grad_r_y = ry / (sigy * denom)
+
+    fx = -dE_dr * grad_r_x
+    fy = -dE_dr * grad_r_y
+    return np.stack([fx, fy], axis=1)
+
+
 @register("focus.attract")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
+
     N = int(P.shape[0])
     tc = term_cfg(cfg, "focus", "attract")
     epss = eps_params(cfg, tc, defaults={})
     eps = epss["eps_numeric"]
 
     k_attract = float(0.8 if tc.get("k_attract") is None else tc.get("k_attract"))
-    if k_attract <= 0.0:
+    intro_times = float(tc.get("intro_times", 4))
+    k_huges = k_attract * intro_times
+    if k_attract <= 0.0 and k_huges <= 0.0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
 
-    center = tc.get("center", None)
-    if center is None:
-        center = scene.get("focus_center", None)
-    if center is None:
-        fw, fh = scene.get("frame_size", (0.0, 0.0))
-        center = np.array([float(fw) * 0.5, float(fh) * 0.5], dtype=float)
+    center_rel = tc.get("center", None)
+    if center_rel is None:
+        center_rel = scene.get("focus_center", None)
+    if center_rel is None:
+        center_rel = (0.5, 0.5)
     W, H = scene.get("frame_size", (1920.0, 1080.0))
     W, H = float(W), float(H)
-    Cx, Cy = float(center[0]) * W, float(center[1]) * H
-    sigma = float(tc.get("sigma") or 1.0)
-    wh = tc.get("wh")
-    if wh is not None:
-        wx, hy = float(wh[0]), float(wh[1])
-        sigx = max(eps, sigma * wx * W)
-        sigy = max(eps, sigma * hy * H)
-    else:
-        sigx = sigy = max(sigma, eps)
-    delta = float(8.0 if tc.get("delta") is None else tc.get("delta"))
-    only_free = bool(tc.get("only_free") if tc.get("only_free") is not None else False)
 
     labels = read_labels_aligned(scene, P)
     WH = normalize_WH_from_labels(labels, N, "focus.attract")
@@ -84,33 +109,100 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = np.zeros_like(P, float)
     E = 0.0
-    info = []
+    info_focus = []
+    info_ring = []
 
-    center_xy = np.array([Cx, Cy], float)
-    sig_xy = np.array([sigx, sigy], float)
-    for i in idxs:
-        lab = labels[i]
-        w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
-        if only_free:
-            a = _anchor(lab)
-            kind = a["kind"] if a and a["kind"] is not None else "none"
-            if kind and kind != "none":
-                continue
-        x, y = float(P[i, 0]), float(P[i, 1])
-        Fi = _focus_force_at(np.array([[x, y]], float), center_xy, sig_xy, delta, k_attract)[0]
-        rx = (x - Cx) / sigx
-        ry = (y - Cy) / sigy
-        Q = rx * rx + ry * ry
-        root = (1.0 + Q / (delta * delta)) ** 0.5
-        E_i = k_attract * (delta * delta) * (root - 1.0)
-        fx, fy = float(Fi[0]), float(Fi[1])
-        F[i, 0] += fx
-        F[i, 1] += fy
-        E += E_i
-        info.append((int(i), float(E_i), float(fx), float(fy)))
+    if k_attract > 0.0:
+        Cx = float(center_rel[0]) * W
+        Cy = float(center_rel[1]) * H
+        sigma = float(tc.get("sigma") or 1.0)
+        wh = tc.get("wh")
+        if wh is not None:
+            wx, hy = float(wh[0]), float(wh[1])
+            sigx = max(eps, sigma * wx * W)
+            sigy = max(eps, sigma * hy * H)
+        else:
+            sigx = sigy = max(sigma, eps)
+        delta = float(8.0 if tc.get("delta") is None else tc.get("delta"))
+        only_free = bool(tc.get("only_free") if tc.get("only_free") is not None else False)
+
+        center_xy = np.array([Cx, Cy], float)
+        sig_xy = np.array([sigx, sigy], float)
+        for i in idxs:
+            lab = labels[i]
+            if only_free:
+                a = _anchor(lab)
+                kind = a["kind"] if a and a["kind"] is not None else "none"
+                if kind and kind != "none":
+                    continue
+            x, y = float(P[i, 0]), float(P[i, 1])
+            Fi = _focus_force_at(np.array([[x, y]], float), center_xy, sig_xy, delta, k_attract)[0]
+            rx = (x - Cx) / sigx
+            ry = (y - Cy) / sigy
+            Q = rx * rx + ry * ry
+            root = (1.0 + Q / (delta * delta)) ** 0.5
+            E_i = k_attract * (delta * delta) * (root - 1.0)
+            fx, fy = float(Fi[0]), float(Fi[1])
+            F[i, 0] += fx
+            F[i, 1] += fy
+            E += E_i
+            info_focus.append((int(i), float(E_i), float(fx), float(fy)))
+
+    if k_huges > 0.0:
+        center_h = tc.get("center", center_rel)
+        Cx_h = float(center_h[0]) * W
+        Cy_h = float(center_h[1]) * H
+        wh = tc.get("wh")
+        if wh is not None:
+            wx, hy = float(wh[0]), float(wh[1])
+            a = max(eps, sigma * wx * W * 2)
+            b = max(eps, sigma* hy * H * 2)
+        else:
+            a = b = max(sigma, eps)
+        # a = float(100.0 if wh_cfg.get("x") is None else wh_cfg.get("x"))
+        # b = float(100.0 if wh_cfg.get("y") is None else wh_cfg.get("y"))
+        a = max(a, eps)
+        b = max(b, eps)
+        band = float(tc.get("band", tc.get("sigma", 0.1)))
+        band = max(band, eps) * 4
+        only_free_h = True #= bool(tc.get("only_free") if tc.get("only_free") is not None else False)
+
+        for i in idxs:
+            if only_free_h:
+                ainfo = _anchor(labels[i])
+                kind = ainfo["kind"] if ainfo and ainfo["kind"] is not None else "none"
+                if kind and kind != "none":
+                    continue
+            xy = P[i:i + 1]
+            fxy = _huges_force_at(
+                xy=xy,
+                center=np.array([Cx_h, Cy_h], dtype=float),
+                sigma_xy=np.array([a, b], dtype=float),
+                band=band,
+                k=k_huges,
+                eps=eps,
+            )
+            F[i, 0] += float(fxy[0, 0])
+            F[i, 1] += float(fxy[0, 1])
+
+            rx = (xy[0, 0] - Cx_h) / a
+            ry = (xy[0, 1] - Cy_h) / b
+            r = float(np.hypot(rx, ry))
+            s = r - 1.0
+            root = float(np.sqrt(1.0 + (s / band) * (s / band)))
+            E_i = k_huges * (band * band) * (root - 1.0)
+            E += E_i
+            info_ring.append((int(i), float(E_i), float(fxy[0, 0]), float(fxy[0, 1]), r))
 
     F = ensure_vec2(F, N)
-    return float(E), F, {"term": "focus.attract", "focus_huber": info}
+    meta = {"term": "focus.attract"}
+    if info_focus:
+        meta["focus_huber"] = info_focus
+    if info_ring:
+        meta["ring_huber"] = info_ring
+    return float(E), F, meta
+
+
 
 
 def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
@@ -128,18 +220,60 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
         center = scene.get("focus_center")
     if center is None:
         center = (0.5, 0.5)
-    Cx, Cy = float(center[0]) * W, float(center[1]) * H
+    Cx = float_param({"c": center[0]}, "c", 0.5) * W
+    Cy = float_param({"c": center[1]}, "c", 0.5) * H
 
     wh = params.get("wh") or [0.20, 0.15]
-    sigx = wh[0] * W
-    sigy = wh[1] * H
-    sigma = float(8.0 if params.get("sigma") is None else params.get("sigma"))
-    k = float(0.8 if params.get("k_attract") is None else params.get("k_attract"))
+    sigx = float_param({"w": wh[0]}, "w", 0.20) * W
+    sigy = float_param({"h": wh[1]}, "h", 0.15) * H
+    sigma = float_param(params, "sigma", 8.0)
+    k = float_param(params, "k_attract", 0.8)
 
     F = _focus_force_at(xy, np.array([Cx, Cy], float), np.array([sigx, sigy], float), sigma, k)
-    if not np.isfinite(F).all():
-        raise ValueError("focus.probe produced non-finite values")
+    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 
 register_probe("focus.attract")(probe)
+def probe_huges(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """
+    探针：在任意点集 xy[(M,2)] 上评估 focus.huges 的力向量。
+    参数语义与 evaluate 完全一致。
+    """
+    xy = np.asarray(xy, float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise ValueError("xy must have shape (M,2)")
+
+    W, H = scene.get("frame_size", (1920.0, 1080.0))
+    W, H = float(W), float(H)
+
+    center = params.get("center", None) or scene.get("focus_center", None) or (0.5, 0.5)
+    Cx, Cy = float(center[0]) * W, float(center[1]) * H
+
+    wh = params.get("wh", {}) or {}
+    a = float(100.0 if wh.get("x") is None else wh.get("x"))
+    b = float(100.0 if wh.get("y") is None else wh.get("y"))
+    a = max(a, 1e-12)
+    b = max(b, 1e-12)
+
+    k = float(params.get("k", 0.8))
+    band = float(params.get("band", params.get("delta", 0.1)))
+    band = max(band, 1e-12)
+
+    F = _huges_force_at(
+        xy=xy,
+        center=np.array([Cx, Cy], dtype=float),
+        sigma_xy=np.array([a, b], dtype=float),
+        band=band,
+        k=k,
+        eps=1e-12,
+    )
+    if F.shape != xy.shape or not np.isfinite(F).all():
+        raise ValueError("probe_huges bad output")
+    return F
+
+
+try:
+    register_probe("focus.huges")(probe_huges)
+except Exception:
+    pass
