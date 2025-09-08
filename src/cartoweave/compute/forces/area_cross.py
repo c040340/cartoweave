@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import math
 import numpy as np
-from . import register, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import softplus, sigmoid, softabs
 from cartoweave.utils.geometry import poly_signed_area, segment_rect_gate
 from cartoweave.utils.shape import as_nx2
@@ -195,3 +195,107 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "area.cross", "area_cross": S}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample the ``area.cross`` field at world coordinates ``xy``."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    areas = scene.get("areas", []) or []
+    if not areas:
+        return np.zeros_like(xy, float)
+
+    k_cross = float(900.0 if params.get("k_cross") is None else params.get("k_cross"))
+    min_gap = float(1.5 if params.get("min_gap") is None else params.get("min_gap"))
+    eta_tan = float(2.0 if params.get("eta") is None else params.get("eta"))
+    alpha_sp = float(0.35 if params.get("alpha") is None else params.get("alpha"))
+    cap_scale = float(1.0 if params.get("tan_cap_scale") is None else params.get("tan_cap_scale"))
+    use_lc = bool(params.get("use_logcosh", True))
+    p0_lc = float(2.0 if params.get("sat_p0") is None else params.get("sat_p0"))
+    g_min_int = float(0.6 if params.get("gate_min_interior") is None else params.get("gate_min_interior"))
+    kappa = float(8.0 if params.get("kappa") is None else params.get("kappa"))
+    beta_smax = float(8.0 if params.get("beta_smax") is None else params.get("beta_smax"))
+    eps_abs = float(params.get("eps_abs") or 1e-3)
+    eps = float(params.get("eps_numeric") or 1e-12)
+
+    F = np.zeros_like(xy, float)
+
+    for poly in areas:
+        if poly is None:
+            continue
+        arr = np.asarray(poly, float).reshape(-1, 2)
+        n = arr.shape[0]
+        if n < 2:
+            continue
+        ccw = (poly_signed_area(arr) > 0.0)
+        for i in range(xy.shape[0]):
+            px, py = float(xy[i, 0]), float(xy[i, 1])
+            fx_sum = fy_sum = 0.0
+            for k in range(n):
+                ax, ay = float(arr[k, 0]), float(arr[k, 1])
+                bx, by = float(arr[(k + 1) % n, 0]), float(arr[(k + 1) % n, 1])
+                if ccw:
+                    A_seg, B_seg = (ax, ay), (bx, by)
+                else:
+                    A_seg, B_seg = (bx, by), (ax, ay)
+                p_n, g_soft, ex = segment_rect_gate(
+                    A=A_seg,
+                    B=B_seg,
+                    C=(px, py),
+                    wh=(0.0, 0.0),
+                    min_gap=min_gap,
+                    alpha=alpha_sp,
+                    eta=eta_tan,
+                    cap_scale=cap_scale,
+                    g_min_int=g_min_int,
+                    kappa=kappa,
+                    beta=beta_smax,
+                )
+                s = ex["s"]
+                u = ex["u"]
+                L = ex["L"]
+                nx_in, ny_in = ex["nx"], ex["ny"]
+                tx, ty = ex["ux"], ex["uy"]
+                g_tan = ex["g_tan"]
+                pi_in = ex["pi_in"]
+                t = ex["t"]
+                g = g_soft
+                abs_u = softabs(u, eps_abs)
+                abs_s = softabs(s, eps_abs)
+                x_gp = g * p_n
+                if use_lc:
+                    denom = max(p0_lc, eps)
+                    t0 = x_gp / denom
+                    dEdx = k_cross * math.tanh(t0)
+                else:
+                    dEdx = k_cross * x_gp
+                coeff_u = u / max(abs_u, eps)
+                g_tan_prime = g_tan * (1.0 - g_tan) * (-1.0 / max(eta_tan, eps)) * coeff_u
+                abs_2t1 = softabs(2.0 * t - 1.0, eps_abs)
+                coeff_2t1 = (2.0 * t - 1.0) / max(abs_2t1, eps)
+                dpi_dt = pi_in * (1.0 - pi_in) * kappa * (-2.0 * coeff_2t1)
+                dpi_du = dpi_dt * (1.0 / max(L, eps))
+                g_floor_prime = g_min_int * dpi_du
+                sigma = sigmoid(beta_smax * (g_tan - g_min_int * pi_in))
+                dg_du = sigma * g_tan_prime + (1.0 - sigma) * g_floor_prime
+                dgx, dgy = dg_du * tx, dg_du * ty
+                coeff_s = s / max(abs_s, eps)
+                sig_az = sigmoid(alpha_sp * ((ex["r_n"] + min_gap) - abs_s))
+                dpx = sig_az * (-coeff_s) * nx_in
+                dpy = sig_az * (-coeff_s) * ny_in
+                dx_dc_x = p_n * dgx + g * dpx
+                dx_dc_y = p_n * dgy + g * dpy
+                fx_sum += -(dEdx * dx_dc_x)
+                fy_sum += -(dEdx * dx_dc_y)
+            F[i, 0] += fx_sum
+            F[i, 1] += fy_sum
+
+    if not np.isfinite(F).all():
+        raise ValueError("area.cross probe produced non-finite values")
+    return F
+
+
+register_probe("area.cross")(probe)

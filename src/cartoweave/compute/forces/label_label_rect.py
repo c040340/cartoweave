@@ -129,7 +129,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     WH = np.asarray(scene.get("WH"), float) if scene.get("WH") is not None else np.zeros((labels_xy.shape[0], 2), float)
 
     F = np.zeros_like(xy, float)
-    for p, wh in zip(labels_xy, WH):
+    for p, wh in zip([a for a in labels_xy if labels_xy.any() != np.nan], WH):
         F += _pairwise_force_rect(np.asarray(p, float), np.asarray(wh, float), xy, params)
 
     if not np.isfinite(F).all():

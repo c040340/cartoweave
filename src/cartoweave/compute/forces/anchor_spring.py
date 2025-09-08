@@ -6,7 +6,7 @@ import numpy as np
 
 from cartoweave.compute.geom_anchor_resolver import anchor_position
 
-from . import register, term_cfg, kernel_params
+from . import register, register_probe, term_cfg, kernel_params
 from ._common import (
     read_labels_aligned,
     get_mode,
@@ -58,4 +58,40 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         F[i, 1] += scale * dy
 
     return float(E), ensure_vec2(F, N), {"term": "anchor.spring"}
+
+
+def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
+    """Sample ``anchor.spring`` field at world coordinates ``xy``."""
+
+    xy = np.asarray(xy, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2:
+        raise AssertionError("xy must be (M,2)")
+
+    anchors = np.asarray(scene.get("anchors", []), float)
+    if anchors.size == 0:
+        return np.zeros_like(xy, float)
+
+    k_local = float(1.0 if params.get("k_local") is None else params.get("k_local"))
+    if k_local <= 0.0:
+        return np.zeros_like(xy, float)
+
+    zero_dist = float(0.0 if params.get("zero_dist") is None else params.get("zero_dist"))
+    zero_dist = max(0.0, zero_dist)
+
+    F = np.zeros_like(xy, float)
+    for ax, ay in anchors:
+        dx = xy[:, 0] - float(ax)
+        dy = xy[:, 1] - float(ay)
+        dist = np.hypot(dx, dy)
+        d = np.maximum(dist - zero_dist, 0.0)
+        scale = -k_local * d / np.maximum(dist, 1e-12)
+        F[:, 0] += scale * dx
+        F[:, 1] += scale * dy
+
+    if not np.isfinite(F).all():
+        raise ValueError("anchor.spring probe produced non-finite values")
+    return F
+
+
+register_probe("anchor.spring")(probe)
 

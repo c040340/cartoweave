@@ -7,7 +7,7 @@ panels:
 field:
   mode: surface3d  # "heatmap" | "surface3d"
   resolution: 40  # grid size per axis; used for both heatmap and 3D
-  terms: ["focus.attract"]
+  terms: ["focus.attract", "ll.rect", ""]
   aggregate: norm  # or "div"
   log_scale: false
   fallback_splat: true
@@ -27,7 +27,7 @@ layout:
   area_edge_width: 1.0
   label_edge_width: 1.0
   label_fontsize: 10
-  anchor_marker_size: 5.0
+  anchor_marker_size: 4.0
 forces:
   colors:
     ll.rect: "#1f77b4"
