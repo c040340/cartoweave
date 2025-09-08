@@ -69,29 +69,29 @@ compute:
           tan_cap_scale: 1.0
           outside_weight: 1.0
         embed:
-          enable: false
+          enable: true
           k: 0.8
           ratio_in: 0.9
           in_decay: 0.2
           out_decay: 0.1
         softout:
-          enable: false
+          enable: true
           k: 0.8
           pad: 0.1
           y_down: 0.0
       boundary:
         wall:
-          enable: false
+          enable: true
           k: 0.5
           alpha: 1.0
       focus:
         attract:
-          enable: false
+          enable: true
           k: 1.0
           center: [0.0, 0.0]
           sigma: { x: 1.0, y: 1.0 }
       anchor:
         spring:
-          enable: false
+          enable: true
           k: 0.1
           only_free: true
