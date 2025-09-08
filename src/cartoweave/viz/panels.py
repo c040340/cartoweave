@@ -473,7 +473,7 @@ def _draw_layout_panel(
                 [anchor_xy[0], x],
                 [anchor_xy[1], y],
                 color=style.anchor_line_color,
-                lw=style.anchor_line_width,
+                lw=max(style.anchor_line_width, 1.0),
                 linestyle='--',
             )
             ax.scatter(

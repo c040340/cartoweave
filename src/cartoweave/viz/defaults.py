@@ -39,7 +39,7 @@ VIZ_DEFAULTS: Dict[str, Any] = {
             "anchor_marker_edge": "#000000",
         },
         "line_width": 1.0,
-        "anchor_line_width": 0.5,
+        "anchor_line_width": 1.0,
         "area_face_alpha": 0.3,
         "area_edge_width": 1.0,
         "label_edge_width": 1.0,
