@@ -20,6 +20,7 @@ class CapturePass(BaseModel):
     every: int = Field(ge=1)
     final_always: bool
     limit: int | None = Field(default=None, ge=1)
+    mode: Literal["none", "warmup", "main", "both"] = "both"
 
     model_config = ConfigDict(extra="forbid")
 

@@ -10,7 +10,14 @@ def _make_pack(iters: int, every: int = 1, limit: int | None = None, final: bool
                 "warmup": {"steps": iters},
             }
         },
-        "passes": {"capture": {"every": every, "limit": limit, "final_always": final}},
+        "passes": {
+            "capture": {
+                "every": every,
+                "limit": limit,
+                "final_always": final,
+                "mode": "warmup",
+            }
+        },
     }
     pack = make_solvepack_from_data_defaults(compute_cfg=compute_cfg)
     pack.actions = pack.actions[:1]

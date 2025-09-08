@@ -144,14 +144,20 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
     compute_cfg = (pack.cfg.get("compute", {}) if isinstance(pack.cfg, dict) else {}) or {}
     solver_pub = ((compute_cfg.get("solver", {}) or {}).get("public", {}) or {})
     use_warmup = bool(solver_pub.get("use_warmup", True))
-    per_action_iters = True
-    warmup_steps = 0
 
     capture_cfg = get_pass_cfg(
         (pm.cfg if isinstance(pm.cfg, dict) else {}),
         "capture",
-        {"every": 1, "limit": None, "final_always": True},
+        {"every": 1, "limit": None, "final_always": True, "mode": "both"},
     )
+    capture_mode = capture_cfg.get("mode", "both")
+    if capture_mode not in {"none", "warmup", "main", "both"}:
+        logger.warning("Unknown capture.mode %s; defaulting to 'both'", capture_mode)
+        capture_mode = "both"
+    record_warmup = capture_mode in ("warmup", "both")
+    record_main = capture_mode in ("main", "both")
+    if not record_warmup and not record_main:
+        logger.info("capture.mode=none: per-iteration frames will not be recorded.")
     cap_every = max(1, int(capture_cfg.get("every", 1)))
     cap_limit = capture_cfg.get("limit")
     cap_final = bool(capture_cfg.get("final_always", True))
@@ -235,17 +241,23 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         metrics: Dict[str, Any] = {}
         if use_warmup:
             warmup_steps = int(((tuning.get("warmup", {}) or {}).get("steps", 10)) or 10)
-            # 你可以选择 on_iter=None（不记录 warmup 帧），或用 _on_iter（记录 warmup 帧）
             P_warm, metrics = run_iters(
-                P_curr, ctx, energy_fn, iters_override=warmup_steps, on_iter=_on_iter
+                P_curr,
+                ctx,
+                energy_fn,
+                iters_override=warmup_steps,
+                on_iter=_on_iter if record_warmup else None,
             )
             P_curr = step_fn(P_curr, P_warm, metrics)
 
-        if per_action_iters is not None:
-            P_prop, metrics = run_iters(
-                P_curr, ctx, energy_fn, iters_override=per_action_iters, on_iter=None
-            )
-            P_curr = step_fn(P_curr, P_prop, metrics)
+        P_prop, metrics = run_iters(
+            P_curr,
+            ctx,
+            energy_fn,
+            iters_override=None,
+            on_iter=_on_iter if record_main else None,
+        )
+        P_curr = step_fn(P_curr, P_prop, metrics)
 
         reports = metrics.pop("reports", [])
         event = None
@@ -275,7 +287,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             comps_prev_full, active_idx, metrics.get("comps", {})
         )
 
-        iters = warmup_steps if use_warmup else int(metrics.get("iters", len(reports)))
+        iters = int(metrics.get("iters", len(reports)))
         need_final = cap_final and (_last_iter_recorded != (iters - 1))
         if cap_limit is not None and isinstance(cap_limit, int):
             if len(recorder.frames) >= cap_limit:

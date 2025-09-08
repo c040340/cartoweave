@@ -12,6 +12,8 @@ compute:
     capture:
       # 每隔多少个迭代记录一帧；1 表示每步记录
       every: 1
+      # 决定在哪些阶段记录迭代帧：none | warmup | main | both
+      mode: both
       # 是否无论如何都追加“最终帧”
       final_always: true
       # 最多记录多少帧；null 表示不限制
