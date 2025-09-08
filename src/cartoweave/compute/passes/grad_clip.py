@@ -4,7 +4,7 @@ from typing import Dict, Any
 import numpy as np
 from .base import ComputePass
 from . import get_pass_cfg
-from cartoweave.compute.forces._common import get_eps
+from cartoweave.utils.compute_common import get_eps
 
 
 class GradClipPass(ComputePass):

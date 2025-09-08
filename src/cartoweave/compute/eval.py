@@ -22,12 +22,6 @@ from .forces import enabled_terms as _cmp_enabled, term_params_map
 from .geom_anchor_resolver import anchor_position
 
 Array2 = np.ndarray
-
-
-def _as_active_ids(mask: np.ndarray) -> list[int]:
-    mask = np.asarray(mask, bool)
-    return np.where(mask)[0].tolist()
-
 def energy_and_grad_full(
     P: Array2,  # noqa: N803
     labels: Any,
@@ -44,12 +38,9 @@ def energy_and_grad_full(
         sc["labels"] = labels
     else:
         sc.setdefault("labels", [])
-    ids = _as_active_ids(active_mask)
-    sc["_active_ids"] = ids
-    sc["_active_ids_solver"] = ids
     labels_all = sc.get("labels", [])
     sc["anchors"] = np.asarray(
-        [anchor_position(labels_all[i], sc, P) for i in ids], dtype=float
+        [anchor_position(labels_all[i], sc, P) for i in range(len(labels_all))], dtype=float
     )
 
     energy_total = 0.0

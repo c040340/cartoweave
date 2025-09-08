@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, ensure_vec2
+from cartoweave.utils.compute_common import get_eps
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -17,27 +17,13 @@ from cartoweave.utils.kernels import (
 )
 from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
 from cartoweave.utils.shape import as_nx2
-from cartoweave.utils.logging import logger
-
-
-def _val(lab, key, default=None):
-    """通用字段读取：兼容 dict 和 LabelState。
-       - 支持 'kind' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
-    """
-    if isinstance(lab, dict):
-        if key == "mode":
-            return lab.get("mode") or (lab.get("meta") or {}).get("mode", default)
-        return lab.get(key, default)
-    if key == "mode":
-        m = getattr(lab, "meta", None)
-        return (m or {}).get("mode", default)
-    return getattr(lab, key, default)
-
-
-def _WH(lab):
-    """统一尺寸读取：返回 np.array([w, h])。"""
-    v = lab["WH"] if isinstance(lab, dict) else getattr(lab, "WH", None)
-    return np.asarray(v, dtype=float)
+from ._common import (
+    read_labels_aligned,
+    get_mode,
+    get_ll_kernel,
+    normalize_WH_from_labels,
+    ensure_vec2,
+)
 
 
 def _anchor(lab):
@@ -64,7 +50,6 @@ def _anchor(lab):
 @register("boundary.wall")
 @register("boundary.wall")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
-    L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "boundary.wall"}
@@ -72,51 +57,14 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     W, H = scene.get("frame_size", (1920.0, 1080.0))
     W, H = float(W), float(H)
 
-    import logging
-    log = logging.getLogger(__name__)
-
-    labels_all = scene.get("labels", []) or []
-    N = P.shape[0]
-
-    # 与 P 完全对齐：优先 _active_ids_solver，其次 _active_ids，不匹配则回退 0..N-1
-    all_active = scene.get("_active_ids_solver") or scene.get("_active_ids")
-    if not all_active or len(all_active) != N:
-        log.warning(
-            "boundary.wall: active ids len=%s != P rows=%d; fallback to identity [0..N-1]",
-            None if all_active is None else len(all_active), N
-        )
-        all_active = list(range(N))
-
-    # 与 P 同序取 labels（避免错位）；越界给空壳
-    def _get_label(i):
-        if 0 <= i < len(labels_all):
-            return labels_all[i]
-        class _Dummy:
-            kind = None
-            WH = (0.0, 0.0)
-            def __getattr__(self, _): return None
-        return _Dummy()
-
-    labels = [_get_label(i) for i in all_active]
-
-    # WH 按同序组装，并做稳健规范化到 (N,2)
-    WH = np.asarray([getattr(lab, "WH", (0.0, 0.0)) for lab in labels], dtype=float)
-    if WH.ndim != 2 or WH.shape != (N, 2):
-        if WH.ndim == 0:
-            WH = np.full((N, 2), float(WH))
-        elif WH.ndim == 1 and WH.shape[0] == 2:
-            WH = np.broadcast_to(WH.reshape(1, 2), (N, 2)).astype(float, copy=False)
-        elif WH.ndim == 1 and WH.shape[0] == N:
-            WH = np.stack([WH, WH], axis=1).astype(float, copy=False)
-        else:
-            log.warning("boundary.wall: cannot normalize WH shape %s, fallback zeros (N,2)", WH.shape)
-            WH = np.zeros((N, 2), dtype=float)
-
-    # 行内过滤：跳过 circle（可按需也排除非 point）
-    modes = [_val(lab, "mode") for lab in labels]
-    kinds = [getattr(lab, "kind", None) for lab in labels]
-    mask = np.array([(m != "circle") and (k != "area") for m, k in zip(modes, kinds)], dtype=bool)
+    labels = read_labels_aligned(scene, P)
+    N = int(P.shape[0])
+    modes = [get_mode(l) for l in labels]
+    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
+    mask = base_mask
     idxs = np.nonzero(mask)[0]
+
+    WH = normalize_WH_from_labels(labels, N, "boundary.wall")
 
     # ===== 你原来的参数读取与主循环从这里继续 =====
     k_wall = float(cfg.get("boundary.k.wall", 240.0))
@@ -177,6 +125,5 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     if topk and topk > 0:
         pass
-    logger.debug("term_boundary: skip_circle=%d", int(np.count_nonzero(~mask)))
-    F = ensure_vec2(F, L)
+    F = ensure_vec2(F, N)
     return float(E), F, {"term": "boundary.wall", "boundary": src}

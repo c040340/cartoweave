@@ -2,7 +2,7 @@
 from __future__ import annotations
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, ensure_vec2
+from cartoweave.utils.compute_common import get_eps
 from cartoweave.utils.geometry import (
     project_point_to_segment,
     rect_half_extent_along_dir,
@@ -19,27 +19,13 @@ from cartoweave.utils.kernels import (
     EPS_ABS,
 )
 from cartoweave.utils.shape import as_nx2
-from cartoweave.utils.logging import logger
-
-
-def _val(lab, key, default=None):
-    """通用字段读取：兼容 dict 和 LabelState。
-       - 支持 'kind' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
-    """
-    if isinstance(lab, dict):
-        if key == "mode":
-            return lab.get("mode") or (lab.get("meta") or {}).get("mode", default)
-        return lab.get(key, default)
-    if key == "mode":
-        m = getattr(lab, "meta", None)
-        return (m or {}).get("mode", default)
-    return getattr(lab, key, default)
-
-
-def _WH(lab):
-    """统一尺寸读取：返回 np.array([w, h])。"""
-    v = lab["WH"] if isinstance(lab, dict) else getattr(lab, "WH", None)
-    return np.asarray(v, dtype=float)
+from ._common import (
+    read_labels_aligned,
+    get_mode,
+    get_ll_kernel,
+    normalize_WH_from_labels,
+    ensure_vec2,
+)
 
 
 def _anchor(lab):
@@ -65,7 +51,6 @@ def _anchor(lab):
 
 @register("ln.rect")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
-    L = P.shape[0] if P is not None else 0
     eps = get_eps(cfg)
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
@@ -74,17 +59,13 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
     segs_arr = polylines_to_segments(segs_raw)
     segs = segs_arr.reshape((segs_arr.shape[0], 4))
-    N = P.shape[0]
-    WH = np.asarray(scene.get("WH"), float)
-    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
-    labels_all = scene.get("labels", [])
-    active_ids = scene.get("_active_ids", list(range(N)))
-    assert len(active_ids) == N, f"_active_ids misaligned: {len(active_ids)} vs P {P.shape}"
-    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
-    modes = [_val(lab, "mode") for lab in labels]
-    mask = np.array([m != "circle" for m in modes], dtype=bool)
+    N = int(P.shape[0])
+    labels = read_labels_aligned(scene, P)
+    modes = [get_mode(l) for l in labels]
+    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
+    mask = base_mask
     idxs = np.nonzero(mask)[0]
-    skip_circle = int(np.count_nonzero(~mask))
+    WH = normalize_WH_from_labels(labels, N, "ln.rect")
     F = np.zeros_like(P)
     E = 0.0
 
@@ -139,6 +120,5 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                 F[i, 0] += fx_in
                 F[i, 1] += fy_in
 
-    logger.debug("term_line_label: skip_circle=%d", skip_circle)
-    F = ensure_vec2(F, L)
+    F = ensure_vec2(F, N)
     return float(E), F, {"term": "ln.rect", "ln": int(segs.shape[0])}

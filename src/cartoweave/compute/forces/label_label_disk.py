@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, ensure_vec2
+from cartoweave.utils.compute_common import get_eps
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -17,86 +17,32 @@ from cartoweave.utils.kernels import (
 )
 from cartoweave.utils.shape import as_nx2
 from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
-from cartoweave.utils.logging import logger
-
-
-def _val(lab, key, default=None):
-    """通用字段读取：兼容 dict 和 LabelState。
-       - 支持 'll_kernel' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
-    """
-    if isinstance(lab, dict):
-        if key == "mode":
-            return lab.get("mode") or (lab.get("meta") or {}).get("mode", default)
-        return lab.get(key, default)
-    if key == "mode":
-        m = getattr(lab, "meta", None)
-        return (m or {}).get("mode", default)
-    return getattr(lab, key, default)
-
-
-def _WH(lab):
-    """统一尺寸读取：返回 np.array([w, h])。"""
-    v = lab["WH"] if isinstance(lab, dict) else getattr(lab, "WH", None)
-    return np.asarray(v, dtype=float)
-
-
-def _anchor(lab):
-    """统一锚读取：返回 dict {'kind': ..., 'index': ..., 't': ...} 或 None。"""
-    if isinstance(lab, dict):
-        a = lab.get("anchor")
-        if a is None:
-            return None
-        if isinstance(a, dict):
-            return {
-                "kind": a["kind"] if "kind" in a else None,
-                "index": a["index"] if "index" in a else None,
-                "t": a["t"] if "t" in a else None,
-            }
-        return {
-            "kind": getattr(a, "kind", None),
-            "index": getattr(a, "index", None),
-            "t": getattr(a, "t", None),
-        }
-    a = getattr(lab, "anchor", None)
-    if a is None:
-        return None
-    return {
-        "kind": getattr(a, "kind", None),
-        "index": getattr(a, "index", None),
-        "t": getattr(a, "t", None),
-    }
+from ._common import (
+    read_labels_aligned,
+    get_mode,
+    get_ll_kernel,
+    normalize_WH_from_labels,
+    ensure_vec2,
+)
 
 
 @register("ll.disk")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
-    L = P.shape[0] if P is not None else 0
+    N = int(P.shape[0])
     eps = get_eps(cfg)
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.disk"}
 
-    N = P.shape[0]
-    WH = np.asarray(scene.get("WH"), float)
-    assert WH.shape[0] == N, f"WH misaligned: {WH.shape} vs P {P.shape}"
+    labels = read_labels_aligned(scene, P)
+    modes = [get_mode(l) for l in labels]
+    llk = [get_ll_kernel(l) for l in labels]
 
-    labels_all = scene.get("labels", [])
-    active_ids = scene.get("_active_ids_solver", list(range(N)))
-    assert len(active_ids) == N, f"_active_ids_solver misaligned: {len(active_ids)} vs P {P.shape}"
-    labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
-    llk   = [getattr(lab, "ll_kernel", None) for lab in labels]
-    modes = [_val(lab, "mode") for lab in labels]
-
-    def _canon_llk(x):
-        x = (x or "").lower()
-        if x in ("ellipse", "elliptic"):  # normalize synonyms to "disk"
-            return "disk"
-        return x
-
-    llk = [_canon_llk(x) for x in llk]
-
-    # participate in ll.disk iff ll_kernel == "disk" AND real mode != "circle"
-    mask = np.array([(k == "disk") and ((m or "").lower() != "circle")
-                     for k, m in zip(llk, modes)], dtype=bool)
+    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
+    disk_mask = np.array([(k or "") == "disk" for k in llk], dtype=bool)
+    mask = base_mask & disk_mask
     idxs = np.nonzero(mask)[0]
+
+    WH = normalize_WH_from_labels(labels, N, "ll.disk")
 
     k_out = float(cfg.get("ll.k.repulse", 900.0))
     p = float(cfg.get("ll.edge_power", 2.0))
@@ -153,5 +99,5 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             src[i].append((int(j), float(fx), float(fy), float(abs(fmag))))
             src[j].append((int(i), float(-fx), float(-fy), float(abs(fmag))))
 
-    F = ensure_vec2(F, L)
+    F = ensure_vec2(F, N)
     return float(E), F, {"term": "ll.disk", "ll.disk": src}

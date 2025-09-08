@@ -2,7 +2,7 @@
 from __future__ import annotations
 import numpy as np
 from . import register
-from cartoweave.utils.compute_common import get_eps, ensure_vec2
+from cartoweave.utils.compute_common import get_eps
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -14,122 +14,32 @@ from cartoweave.utils.kernels import (
     EPS_ABS,
 )
 from cartoweave.utils.shape import as_nx2
-from cartoweave.utils.logging import logger
-
-
-def _val(lab, key, default=None):
-    """通用字段读取：兼容 dict 和 LabelState。
-       - 支持 'll_kernel' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
-    """
-    if isinstance(lab, dict):
-        if key == "mode":
-            return lab.get("mode") or (lab.get("meta") or {}).get("mode", default)
-        return lab.get(key, default)
-    if key == "mode":
-        m = getattr(lab, "meta", None)
-        return (m or {}).get("mode", default)
-    return getattr(lab, key, default)
-
-
-def _WH(lab):
-    """统一尺寸读取：返回 np.array([w, h])。"""
-    v = lab["WH"] if isinstance(lab, dict) else getattr(lab, "WH", None)
-    return np.asarray(v, dtype=float)
-
-
-def _anchor(lab):
-    """统一锚读取：返回 dict {'kind': ..., 'index': ..., 't': ...} 或 None。"""
-    if isinstance(lab, dict):
-        a = lab.get("anchor")
-        if a is None:
-            return None
-        if isinstance(a, dict):
-            return {
-                "kind": a["kind"] if "kind" in a else None,
-                "index": a["index"] if "index" in a else None,
-                "t": a["t"] if "t" in a else None,
-            }
-        return {
-            "kind": getattr(a, "kind", None),
-            "index": getattr(a, "index", None),
-            "t": getattr(a, "t", None),
-        }
-    a = getattr(lab, "anchor", None)
-    if a is None:
-        return None
-    return {
-        "kind": getattr(a, "kind", None),
-        "index": getattr(a, "index", None),
-        "t": getattr(a, "t", None),
-    }
+from ._common import (
+    read_labels_aligned,
+    get_mode,
+    get_ll_kernel,
+    normalize_WH_from_labels,
+    ensure_vec2,
+)
 
 
 @register("ll.rect")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
-    L = P.shape[0] if P is not None else 0
+    N = int(P.shape[0])
     eps = get_eps(cfg)
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.rect"}
 
-    import logging
-    log = logging.getLogger(__name__)
+    labels = read_labels_aligned(scene, P)
+    modes = [get_mode(l) for l in labels]
+    llk = [get_ll_kernel(l) for l in labels]
 
-    N = P.shape[0]
-    labels_all = scene.get("labels", []) or []
+    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
+    rect_mask = np.array([(k or "") == "rect" for k in llk], dtype=bool)
+    mask = base_mask & rect_mask
+    idxs = np.nonzero(mask)[0]
 
-    # 1) 与 P 完全对齐：优先 _active_ids_solver，其次 _active_ids；不匹配就回退为 0..N-1
-    all_active = scene.get("_active_ids_solver") or scene.get("_active_ids")
-    if not all_active or len(all_active) != N:
-        log.warning(
-            "ll.rect: active ids len=%s != P rows=%d; fallback to identity [0..N-1]",
-            None if all_active is None else len(all_active), N
-        )
-        all_active = list(range(N))
-
-    # 2) 与 P 同序取 labels（避免错位）；越界给空壳
-    def _get_label(i):
-        if 0 <= i < len(labels_all):
-            return labels_all[i]
-        class _Dummy:
-            kind = None
-            WH = (0.0, 0.0)
-            def __getattr__(self, _): return None
-        return _Dummy()
-
-    labels = [_get_label(i) for i in all_active]
-
-    # 3) WH 由 labels 同序组装，并稳健规范化到 (N,2)
-    WH = np.asarray([getattr(lab, "WH", (0.0, 0.0)) for lab in labels], dtype=float)
-    if WH.ndim != 2 or WH.shape != (N, 2):
-        if WH.ndim == 0:
-            WH = np.full((N, 2), float(WH))
-        elif WH.ndim == 1 and WH.shape[0] == 2:
-            WH = np.broadcast_to(WH.reshape(1, 2), (N, 2)).astype(float, copy=False)
-        elif WH.ndim == 1 and WH.shape[0] == N:
-            WH = np.stack([WH, WH], axis=1).astype(float, copy=False)
-        else:
-            log.warning("ll.rect: cannot normalize WH shape %s, fallback zeros (N,2)", WH.shape)
-            WH = np.zeros((N, 2), dtype=float)
-
-    # 4) 行内过滤：排除 circle，并根据 ll_kernel 选择参与者
-    llk   = [getattr(lab, "ll_kernel", None) for lab in labels]
-    modes = [_val(lab, "mode") for lab in labels]
-
-    def _canon_llk(x):
-        x = (x or "").lower()
-        if x in ("rectangle",):
-            return "rect"
-        if x in ("ellipse", "elliptic", "circle"):
-            return "disk"
-        return x
-
-    llk = [_canon_llk(x) for x in llk]
-
-    # participate in ll.rect iff ll_kernel == "rect" AND real mode != "circle"
-    # DO NOT exclude "area" here; area labels can still be rect-kernel participants if configured so.
-    mask = np.array([(k == "rect") and ((m or "").lower() != "circle")
-                     for k, m in zip(llk, modes)], dtype=bool)
-    idxs  = np.nonzero(mask)[0]
+    WH = normalize_WH_from_labels(labels, N, "ll.rect")
 
     # ===== 你的原始主循环逻辑从这里继续（不变） =====
     F = np.zeros_like(P)
@@ -190,6 +100,6 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                 F[b, 0] -= fx_in; F[b, 1] -= fy_in
 
     M = len(idxs)
-    F = ensure_vec2(F, L)
+    F = ensure_vec2(F, N)
     return float(E), F, {"term": "ll.rect", "pairs": int(M * (M - 1) // 2)}
 
