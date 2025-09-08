@@ -155,7 +155,8 @@ class TermParams(BaseModel):
     pad: float | None = None
     y_down: bool | None = None
     center: List[float] | None = None
-    sigma: Dict[str, float] | None = None
+    sigma: float | None = None
+    wh: List[float] | None = None
     delta: float | None = None
     only_free: bool | None = None
     use_legacy_gate: bool | None = None

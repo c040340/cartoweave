@@ -101,7 +101,8 @@ compute:
             enable: true
             k_attract: 1.0
             center: [0.44, 0.39]
-            sigma: { x: 1.0, y: 1.0 }
+            wh: [0.2, 0.1]
+            sigma: 1.0
         anchor:
           spring:
             enable: true

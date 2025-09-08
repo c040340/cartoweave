@@ -23,7 +23,7 @@ layout:
   area_edge_width: 1.0
   label_edge_width: 1.0
   label_fontsize: 10
-  anchor_marker_size: 4.0
+  anchor_marker_size: 5.0
 forces:
   colors:
     ll.rect: "#1f77b4"

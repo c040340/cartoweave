@@ -55,16 +55,16 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     W, H = scene.get("frame_size", (1920.0, 1080.0))
     W, H = float(W), float(H)
     Cx, Cy = float(center[0]) * W, float(center[1]) * H
-
-    sigma = tc.get("sigma") or {}
-    sigx = float(100.0 if sigma.get("x") is None else sigma.get("x"))
-    sigy = float(100.0 if sigma.get("y") is None else sigma.get("y"))
+    sigma = float(tc.get("sigma") or 1.0)
+    wh = tc.get("wh")
+    if wh is not None:
+        wx, hy = float(wh[0]), float(wh[1])
+        sigx = max(eps, sigma * wx * W)
+        sigy = max(eps, sigma * hy * H)
+    else:
+        sigx = sigy = max(sigma, eps)
     delta = float(8.0 if tc.get("delta") is None else tc.get("delta"))
     only_free = bool(tc.get("only_free") if tc.get("only_free") is not None else False)
-
-    if sigx <= eps or sigy <= eps:
-        sigx = max(sigx, eps)
-        sigy = max(sigy, eps)
 
     labels = read_labels_aligned(scene, P)
     WH = normalize_WH_from_labels(labels, N, "focus.attract")
