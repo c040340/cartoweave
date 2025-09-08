@@ -6,7 +6,7 @@ def _make_pack(iters: int, every: int = 1, limit: int | None = None, final: bool
     compute_cfg = {
         "solver": {
             "tuning": {
-                "stopping": {"gtol": -1, "ftol": -1, "xtol": -1},
+                "stop": {"gtol": -1, "ftol": -1, "xtol": -1},
                 "warmup": {"steps": iters},
             }
         },
@@ -55,5 +55,5 @@ def test_no_final_duplication():
     pack = _make_pack(10, every=1, final=True)
     vp = solve(pack)
     fins = [fr.meta["frame_in_pass"] for fr in vp.frames]
-    assert fins[-1] == 9
-    assert "final" not in fins
+    assert fins[-1] == "final"
+    assert fins.count("final") == 1

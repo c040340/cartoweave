@@ -19,14 +19,14 @@ compute:
       final_always: true      # 无论如何总是记录最终一帧
       limit: null             # 最多记录帧数；null 表示不限制
     calibration:
-      enable: false           # 你可按需改 true
+      enable: true           # 你可按需改 true
     action:
       enable: true            # 是否执行场景 action
     geom_preproc:
       enable: true
       tiny_eps: 1.0e-9
     grad_clip:
-      enable: false           # 是否启用梯度裁剪
+      enable: true           # 是否启用梯度裁剪
       max_norm: 1000.0        # L2 范数上限
       max_abs: null           # 每分量绝对值上限（可选）
     nan_guard:
@@ -61,7 +61,7 @@ compute:
           g_eps: 1.0e-6
           eps: { abs: 0.001 }
         disk:
-          enable: true
+          enable: false
           k: 0.4
           kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
           beta: { sep: 6.0, in: 6.0 }

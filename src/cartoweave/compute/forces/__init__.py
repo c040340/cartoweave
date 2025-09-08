@@ -49,7 +49,10 @@ def kernel_params(tc: dict, defaults: dict) -> dict:
 
 
 def eps_params(cfg: dict, tc: dict, defaults: dict) -> dict:
+    # accept both full root config and compute-only config
     comp_eps = _sub(cfg, "compute", "eps")
+    if not comp_eps:
+        comp_eps = _sub(cfg, "eps")
     tc_eps = (tc.get("eps") or {})
 
     def _g(key: str, fallback: float) -> float:

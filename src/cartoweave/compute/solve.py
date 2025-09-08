@@ -51,9 +51,18 @@ def _build_run_iters(pack: SolvePack):
     ):
         mode = (((comp.get("solver") or {}).get("public") or {}).get("mode", "lbfgsb"))
         tuning = ((comp.get("solver") or {}).get("tuning") or {})
-        iters = iters_override or ((tuning.get(mode) or {}).get("maxiter"))
-        if iters in (None, 0):
-            iters = int(((tuning.get("warmup") or {}).get("steps", 1)))
+        if iters_override is not None:
+            iters = iters_override
+        else:
+            mode_cfg = tuning.get(mode) or {}
+            if mode == "lbfgsb":
+                iters = mode_cfg.get("lbfgs_maxiter")
+            elif mode == "semi_newton":
+                iters = mode_cfg.get("sn_max_outer")
+            else:
+                iters = mode_cfg.get("maxiter")
+            if iters in (None, 0):
+                iters = 400
         eng_ctx = _EngineCtx(
             labels=ctx["labels"],
             scene=ctx["scene"],
