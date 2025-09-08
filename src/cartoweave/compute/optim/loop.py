@@ -58,7 +58,7 @@ def run_iters(
     step = float(ctx.params.get("step", 1e-2) if ctx.params else 1e-2)
     comp = (ctx.cfg or {}).get("compute", {}) if ctx.cfg else {}
     solver_cfg = comp.get("solver") or {}
-    stop_cfg = ((solver_cfg.get("tuning") or {}).get("stopping") or {})
+    stop_cfg = ((solver_cfg.get("tuning") or {}).get("stop") or {})
     gtol = float(stop_cfg.get("gtol", 1.0e-4))
     ftol = float(stop_cfg.get("ftol", 1.0e-9))
     xtol = float(stop_cfg.get("xtol", 1.0e-9))
