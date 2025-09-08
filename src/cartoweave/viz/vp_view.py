@@ -147,7 +147,13 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         events = meta.get("events") or []
         line2 = ""
         if isinstance(events, list) and events:
-            ev = events[-1]
+            # Prefer displaying the optimizer_step event if present; fall back to the last one.
+            ev_opt = None
+            for ev in reversed(events):
+                if isinstance(ev, dict) and ev.get("kind") == "optimizer_step":
+                    ev_opt = ev
+                    break
+            ev = ev_opt if ev_opt is not None else events[-1]
             if isinstance(ev, dict):
                 if ev.get("kind") == "optimizer_step":
                     algo = ev.get("algo", "")

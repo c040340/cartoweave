@@ -937,18 +937,20 @@ def draw_field(ax, view_pack, t: int, viz_cfg: dict) -> None:
         return
 
     # 1) 从 comps 聚合出总力（N,2）
+    P = np.asarray(fr.P, float)
     comps = getattr(fr, "comps", {}) or {}
     if not comps:
         empty = np.zeros((res_y, res_x), float)
         draw_field_panel(ax, empty, width, height, kind, cmap, vmax=vmax)
         ax.set_title("field (empty)")
         return
+    # ensure we account for every active force term (e.g. boundary, focus)
+    comps = normalize_comps_for_info(comps, P.shape[0])
 
     first = next(iter(comps.values()))
     totalF = np.zeros_like(np.asarray(first, float))
     for arr in comps.values():
         totalF += np.asarray(arr, float)
-    P = np.asarray(fr.P, float)
     assert P.shape[0] == totalF.shape[0] and totalF.shape[1] == 2, "P and force shape mismatch"
 
     # 2) 规则网格
