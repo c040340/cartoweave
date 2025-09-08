@@ -2,18 +2,12 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register
-from cartoweave.utils.compute_common import get_eps
+from . import register, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
-    softabs,
     invdist_energy,
     invdist_force_mag,
-    EPS_DIST,
-    EPS_NORM,
-    EPS_ABS,
-    softmin_weights,
 )
 from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
 from cartoweave.utils.shape import as_nx2
@@ -50,7 +44,8 @@ def _anchor(lab):
 @register("boundary.wall")
 @register("boundary.wall")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
-    eps = get_eps(cfg)
+    tc = term_cfg(cfg, "boundary", "wall")
+    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "boundary.wall"}
 
@@ -67,13 +62,15 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     WH = normalize_WH_from_labels(labels, N, "boundary.wall")
 
     # ===== 你原来的参数读取与主循环从这里继续 =====
-    k_wall = float(cfg.get("boundary.k.wall", 240.0))
-    power  = float(cfg.get("boundary.wall_power", 3.0))
-    pad    = float(cfg.get("boundary.pad", 0.0))
-    beta_d = float(cfg.get("beta.softplus.dist", 3.0))
-    eps_div= float(cfg.get("boundary.wall_eps", 0.3))
-    k_in   = float(cfg.get("boundary.k.in", 0.0))
-    y_down = bool(cfg.get("boundary.y_down", True))
+    k_wall = float(tc.get("k_wall", 240.0))
+    ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 3.0, "soft_eps": 0.3})
+    power = ker["kernel_exponent"]
+    eps_div = ker["kernel_soft_eps"]
+    beta_dict = tc.get("beta") or {}
+    beta_d = float(3.0 if beta_dict.get("dist") is None else beta_dict.get("dist"))
+    pad = float(0.0 if tc.get("pad") is None else tc.get("pad"))
+    k_in = float(0.0 if tc.get("k_in") is None else tc.get("k_in"))
+    y_down = bool(tc.get("y_down") if tc.get("y_down") is not None else True)
     topk   = int(cfg.get("source.topk", 0))
 
     v0 = math.log(2.0) / max(beta_d, 1e-8)

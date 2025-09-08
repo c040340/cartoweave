@@ -18,14 +18,66 @@ def register(name: str):
         return fn
     return deco
 
+
+def _sub(cfg: dict, *path, default=None):
+    """Shallow helper to traverse ``cfg`` with ``path``."""
+    d = cfg
+    for k in path:
+        d = (d or {}).get(k, {})
+    if d:
+        return d
+    return default if default is not None else {}
+
+
+def term_cfg(cfg: dict, *path) -> dict:
+    """Return term configuration under ``compute.public.forces``."""
+    comp = (cfg or {}).get("compute", cfg or {})
+    return _sub(comp, "public", "forces", *path)
+
+
+def kernel_params(tc: dict, defaults: dict) -> dict:
+    ker = (tc.get("kernel") or {})
+    def _g(key: str, default):
+        val = ker.get(key)
+        return default if val is None else val
+    return {
+        "kernel_model": _g("model", defaults.get("model", "inv_pow")),
+        "kernel_exponent": float(_g("exponent", defaults.get("exponent", 2.0))),
+        "kernel_soft_eps": float(_g("soft_eps", defaults.get("soft_eps", 1e-6))),
+        "kernel_gate_gamma": float(_g("gate_gamma", defaults.get("gate_gamma", 8.0))),
+    }
+
+
+def eps_params(cfg: dict, tc: dict, defaults: dict) -> dict:
+    comp_eps = _sub(cfg, "compute", "eps")
+    tc_eps = (tc.get("eps") or {})
+
+    def _g(key: str, fallback: float) -> float:
+        if key in tc_eps and tc_eps[key] is not None:
+            return float(tc_eps[key])
+        if key in comp_eps:
+            return float(comp_eps[key])
+        if defaults is not None and key in defaults:
+            return float(defaults[key])
+        return float(fallback)
+
+    return {
+        "eps_numeric": _g("numeric", 1e-12),
+        "eps_dist": _g("dist", 1e-6),
+        "eps_abs": _g("abs", 1e-3),
+        "eps_proj": _g("proj", 1e-9),
+    }
+
 def term_params_map(compute_cfg: dict) -> Dict[str, dict]:
     public = (compute_cfg.get("public") or {})
     forces = (public.get("forces") or {})
     out: Dict[str, dict] = {}
-    for name, params in forces.items():
-        if not isinstance(params, dict):
+    for grp, gparams in forces.items():
+        if not isinstance(gparams, dict):
             continue
-        out[str(name)] = params
+        for term, params in gparams.items():
+            if isinstance(params, dict):
+                out[f"{grp}.{term}"] = params
     return out
 
 

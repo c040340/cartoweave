@@ -1,13 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 import numpy as np
-from . import register
-from cartoweave.utils.compute_common import get_eps
-from cartoweave.utils.kernels import (
-    EPS_DIST,
-    EPS_NORM,
-    EPS_ABS,
-)
+from . import register, term_cfg, kernel_params, eps_params
 from cartoweave.utils.geometry import (
     project_point_to_segment,
     poly_signed_area,
@@ -54,7 +48,9 @@ def _anchor(lab):
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.embed"}
-    eps = get_eps(cfg)
+    tc = term_cfg(cfg, "area", "embed")
+    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
+    eps = epss["eps_numeric"]
 
     labels = read_labels_aligned(scene, P)
     areas = scene.get("areas", [])
@@ -65,13 +61,15 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     idxs = np.nonzero(mask)[0]
     WH = normalize_WH_from_labels(labels, N, "area.embed")
 
-    k_embed = float(cfg.get("area.k.embed", 200.0))
-    k_tan = float(cfg.get("area.k.tan", 30.0))
-    ratio_in = float(cfg.get("area.embed.ratio_in", 0.60))
-    gate_eta = float(cfg.get("area.tan.gate.eta", 2.0))
-    gate_slack = float(cfg.get("area.tan.gate.slack", 1.0))
-    beta_edge = float(cfg.get("area.embed.beta_edge", 6.0))
-    eps_abs = float(cfg.get("eps.abs", EPS_ABS))
+    k_embed = float(200.0 if tc.get("k_embed") is None else tc.get("k_embed"))
+    k_tan = float(30.0 if tc.get("k_tan") is None else tc.get("k_tan"))
+    ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 1e-6})
+    ratio_in = float(0.60 if tc.get("ratio_in") is None else tc.get("ratio_in"))
+    beta_edge = float(6.0 if tc.get("beta_edge") is None else tc.get("beta_edge"))
+    tan_gate = tc.get("tan_gate") or {}
+    gate_eta = float(2.0 if tan_gate.get("eta") is None else tan_gate.get("eta"))
+    gate_slack = float(1.0 if tan_gate.get("slack") is None else tan_gate.get("slack"))
+    eps_abs = epss["eps_abs"]
     eps_div = eps
 
     F = np.zeros_like(P, float)

@@ -1,17 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 import numpy as np
-from . import register
-from cartoweave.utils.compute_common import get_eps
+from . import register, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
     softabs,
     invdist_energy,
     invdist_force_mag,
-    EPS_DIST,
-    EPS_NORM,
-    EPS_ABS,
 )
 from cartoweave.utils.shape import as_nx2
 from ._common import (
@@ -26,7 +22,9 @@ from ._common import (
 @register("ll.rect")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     N = int(P.shape[0])
-    eps = get_eps(cfg)
+    tc = term_cfg(cfg, "ll", "rect")
+    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
+    eps = epss["eps_numeric"]
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.rect"}
 
@@ -45,16 +43,19 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     F = np.zeros_like(P)
     E = 0.0
 
-    k_out = float(cfg.get("ll.k.repulse", 0.0))
-    k_in  = float(cfg.get("ll.k.inside", 0.0))
-    pwr   = float(cfg.get("ll.edge_power", 2.0))
-    eps_d = float(cfg.get("eps.dist", EPS_DIST))
-    eps_n = float(cfg.get("eps.norm", EPS_NORM))
-    eps_a = float(cfg.get("eps.abs",  EPS_ABS))
+    k_default = float(tc.get("k", 0.3))
+    k_out = float(k_default if tc.get("k_out") is None else tc.get("k_out"))
+    k_in = float(k_default if tc.get("k_in") is None else tc.get("k_in"))
+    ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 1e-6})
+    pwr = ker["kernel_exponent"]
+    eps_d = ker["kernel_soft_eps"]
+    eps_n = float(1e-9 if (tc.get("eps", {}).get("norm") is None) else tc.get("eps", {}).get("norm"))
+    eps_a = epss["eps_abs"]
 
-    beta_sep = float(cfg.get("ll.beta.sep", 6.0))
-    beta_in  = float(cfg.get("ll.beta.in",  6.0))
-    g_eps    = float(cfg.get("ll.g_eps",    1e-6))
+    beta = tc.get("beta") or {}
+    beta_sep = float(6.0 if beta.get("sep") is None else beta.get("sep"))
+    beta_in = float(6.0 if beta.get("in") is None else beta.get("in"))
+    g_eps = float(1e-6 if tc.get("g_eps") is None else tc.get("g_eps"))
 
     for ai in range(len(idxs)):
         a = idxs[ai]

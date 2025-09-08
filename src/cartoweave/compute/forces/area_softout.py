@@ -2,16 +2,12 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register
-from cartoweave.utils.compute_common import get_eps
+from . import register, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
     softabs,
     softclip,
-    EPS_DIST,
-    EPS_NORM,
-    EPS_ABS,
 )
 from cartoweave.utils.geometry import (
     project_point_to_segment,
@@ -52,8 +48,10 @@ def _anchor(lab):
 
 @register("area.softout")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
+    tc = term_cfg(cfg, "area", "softout")
+    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
+    eps = epss["eps_numeric"]
     L = P.shape[0] if P is not None else 0
-    eps = get_eps(cfg)
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
 
@@ -67,14 +65,15 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     WH = normalize_WH_from_labels(labels, N, "area.softout")
 
-    k_push = float(cfg.get("area.k.softout", 250.0))
-    min_gap = float(params.get("min_gap", cfg.get("area.softout.min_gap", 0.0)))
-    beta = float(cfg.get("area.softout.beta", 0.7))
-    alpha_sp = float(cfg.get("area.softout.alpha", 0.35))
-    gamma_out = float(cfg.get("area.softout.outside_weight", 0.5))
-    lambda_out = float(cfg.get("area.softout.in_decay", 0.10))
-    lambda_in = float(cfg.get("area.softout.out_decay", 0.06))
-    eps_abs = float(cfg.get("eps.abs", EPS_ABS))
+    k_push = float(250.0 if tc.get("k_push") is None else tc.get("k_push"))
+    ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 1e-6})
+    min_gap = float(0.0 if tc.get("min_gap") is None else tc.get("min_gap"))
+    beta = float(0.7 if tc.get("beta") is None else tc.get("beta"))
+    alpha_sp = float(0.35 if tc.get("alpha") is None else tc.get("alpha"))
+    gamma_out = float(0.5 if tc.get("outside_weight") is None else tc.get("outside_weight"))
+    lambda_out = float(0.10 if tc.get("in_decay") is None else tc.get("in_decay"))
+    lambda_in = float(0.06 if tc.get("out_decay") is None else tc.get("out_decay"))
+    eps_abs = epss["eps_abs"]
 
     F = np.zeros_like(P, float)
     E = 0.0

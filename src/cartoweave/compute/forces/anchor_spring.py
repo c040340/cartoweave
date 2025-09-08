@@ -5,7 +5,7 @@ import numpy as np
 
 from cartoweave.compute.geom_anchor_resolver import anchor_position
 
-from . import register
+from . import register, term_cfg, kernel_params
 from ._common import (
     read_labels_aligned,
     get_mode,
@@ -20,14 +20,17 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "anchor.spring"}
 
+    tc = term_cfg(cfg, "anchor", "spring")
+    kernel_params(tc, defaults={"model": "poly", "exponent": 2.0, "soft_eps": 0.0})
+
     N = int(P.shape[0])
     labels = read_labels_aligned(scene, P)
     modes = [get_mode(l) for l in labels]
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
     mask = base_mask
 
-    k = float(cfg.get("anchor.k", 0.0))
-    if k <= 0.0:
+    k_local = float(1.0 if tc.get("k_local") is None else tc.get("k_local"))
+    if k_local <= 0.0:
         return 0.0, ensure_vec2(np.zeros_like(P), N), {"term": "anchor.spring", "disabled": True}
 
     anchors = np.asarray(scene.get("anchors"), float)
@@ -41,9 +44,9 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             continue
         dx = P[i, 0] - anchors[i, 0]
         dy = P[i, 1] - anchors[i, 1]
-        E += 0.5 * k * (dx * dx + dy * dy)
-        F[i, 0] -= k * dx
-        F[i, 1] -= k * dy
+        E += 0.5 * k_local * (dx * dx + dy * dy)
+        F[i, 0] -= k_local * dx
+        F[i, 1] -= k_local * dy
 
     return float(E), ensure_vec2(F, N), {"term": "anchor.spring"}
 

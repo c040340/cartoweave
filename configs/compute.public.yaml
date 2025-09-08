@@ -37,21 +37,92 @@ compute:
 
   public:
     forces:
-      anchor.spring:
-        enable: true
-        k: 1.0
-      boundary.wall:
-        enable: false
-        k: 0.3
-      pl.rect:
-        enable: true
-        k: 0.8
-      ll.rect:
-        enable: true
-        k: 0.3
-      area.cross:
-        enable: true
-        k: 0.8
-      area.softout:
-        enable: true
-        k: 0.5
+      pl:
+        rect:
+          enable: true
+          k: 0.8
+          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+          beta:   { sep: 6.0, in: 6.0 }
+          g_eps:  1.0e-6
+          eps:    { abs: 1.0e-3 }
+      ln:
+        rect:
+          enable: true
+          k: 0.8
+          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+          beta:   { sep: 6.0, in: 6.0 }
+          g_eps:  1.0e-6
+          eps:    { abs: 1.0e-3 }
+      ll:
+        rect:
+          enable: true
+          k: 0.3
+          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+          beta:   { sep: 6.0, in: 6.0 }
+          g_eps:  1.0e-6
+          eps:    { abs: 1.0e-3 }
+        disk:
+          enable: false
+          k: 0.3
+          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 5.0e-1 }
+          beta:   { sep: 6.0 }
+          mode: max
+      area:
+        cross:
+          enable: true
+          k: 0.8
+          kernel:
+            model: logcosh
+            gate_gamma: 8.0
+            exponent: 1.0
+            soft_eps: 1.0e-6
+          min_gap: 1.5
+          alpha: 0.35
+          eta: 2.0
+          tan_cap_scale: 1.0
+          gate_min_interior: 0.6
+          kappa: 8.0
+          beta_smax: 8.0
+          use_logcosh: true
+          sat_p0: 2.0
+          eps: { abs: 1.0e-3 }
+        softout:
+          enable: true
+          k: 0.5
+          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+          min_gap: 0.0
+          beta: 0.7
+          alpha: 0.35
+          outside_weight: 0.5
+          in_decay: 0.10
+          out_decay: 0.06
+          eps: { abs: 1.0e-3 }
+        embed:
+          enable: false
+          k: 0.4
+          kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
+          ratio_in: 0.60
+          beta_edge: 6.0
+          tan_gate: { eta: 2.0, slack: 1.0 }
+          eps: { abs: 1.0e-3 }
+      boundary:
+        wall:
+          enable: false
+          k: 0.3
+          kernel: { model: inv_pow, exponent: 3.0, soft_eps: 3.0e-1 }
+          beta: { dist: 3.0 }
+          pad: 0.0
+          y_down: true
+      focus:
+        attract:
+          enable: false
+          k: 0.8
+          center: [0.0, 0.0]
+          sigma: { x: 100.0, y: 100.0 }
+          delta: 8.0
+          only_free: false
+      anchor:
+        spring:
+          enable: true
+          k: 1.0
+          kernel: { model: poly, exponent: 2.0, soft_eps: 0.0 }

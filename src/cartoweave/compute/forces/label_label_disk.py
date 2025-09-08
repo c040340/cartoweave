@@ -2,18 +2,12 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register
-from cartoweave.utils.compute_common import get_eps
+from . import register, term_cfg, kernel_params, eps_params
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
-    softabs,
     invdist_energy,
     invdist_force_mag,
-    EPS_DIST,
-    EPS_NORM,
-    EPS_ABS,
-    softmin_weights,
 )
 from cartoweave.utils.shape import as_nx2
 from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
@@ -29,7 +23,9 @@ from ._common import (
 @register("ll.disk")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     N = int(P.shape[0])
-    eps = get_eps(cfg)
+    tc = term_cfg(cfg, "ll", "disk")
+    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
+    eps = epss["eps_numeric"]
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.disk"}
 
@@ -44,12 +40,15 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     WH = normalize_WH_from_labels(labels, N, "ll.disk")
 
-    k_out = float(cfg.get("ll.k.repulse", 900.0))
-    p = float(cfg.get("ll.edge_power", 2.0))
-    eps_sep = float(cfg.get("ll.edge_eps", 0.5))
-    beta = float(cfg.get("beta.softplus.sep", cfg.get("beta_softplus_sep", 6.0)))
-    k_in = float(cfg.get("ll.k.inside", 0.0))
-    radius_mode = str(cfg.get("ll.disk.mode", "max")).lower()
+    k_default = float(tc.get("k", 0.3))
+    k_out = float(k_default if tc.get("k_out") is None else tc.get("k_out"))
+    p = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 0.5})
+    pwr = p["kernel_exponent"]
+    eps_sep = p["kernel_soft_eps"]
+    beta_dict = tc.get("beta") or {}
+    beta = float(6.0 if beta_dict.get("sep") is None else beta_dict.get("sep"))
+    k_in = float(0.0 if tc.get("k_in") is None else tc.get("k_in"))
+    radius_mode = str((tc.get("mode") or "max")).lower()
 
     def radius_from_wh(w: float, h: float) -> float:
         if radius_mode == "min":
@@ -63,7 +62,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     v0 = math.log(2.0) / max(beta, 1e-8)
     e0 = v0 + eps_sep
     if k_in <= 0.0:
-        k_in = k_out / ((e0 ** p) * max(v0, 1e-8))
+        k_in = k_out / ((e0 ** pwr) * max(v0, 1e-8))
 
     F = np.zeros_like(P)
     E = 0.0
@@ -88,8 +87,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             v = softplus(-s, beta)
             sc = sigmoid(beta * s)
             sv = sigmoid(-beta * s)
-            E += invdist_energy(c, k_out, p) + 0.5 * k_in * (v * v)
-            fmag = invdist_force_mag(c, k_out, p) * sc + (k_in * v * sv)
+            E += invdist_energy(c, k_out, pwr) + 0.5 * k_in * (v * v)
+            fmag = invdist_force_mag(c, k_out, pwr) * sc + (k_in * v * sv)
             ux, uy = dx / rc, dy / rc
             fx, fy = fmag * ux, fmag * uy
             F[i, 0] += fx

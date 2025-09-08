@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, Literal
+from typing import Dict, Literal, List
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
@@ -53,15 +53,81 @@ class TuningPasses(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Kernel(BaseModel):
+    model: Literal["inv_pow", "poly", "exp", "logcosh"] = "inv_pow"
+    exponent: float = Field(default=2.0, gt=0)
+    soft_eps: float = Field(default=1e-6, ge=0)
+    gate_gamma: float | None = Field(default=None, gt=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class BetaParams(BaseModel):
+    sep: float | None = Field(default=None, gt=0)
+    in_: float | None = Field(default=None, alias="in", gt=0)
+    dist: float | None = Field(default=None, gt=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class EpsTerm(BaseModel):
+    numeric: float | None = Field(default=None, gt=0)
+    dist: float | None = Field(default=None, ge=0)
+    abs: float | None = Field(default=None, ge=0)
+    proj: float | None = Field(default=None, ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TanGate(BaseModel):
+    eta: float = Field(gt=0)
+    slack: float = Field(ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class TermParams(BaseModel):
     enable: bool = False
     k: float = 0.0
+    k_out: float | None = None
+    k_in: float | None = None
+    k_wall: float | None = None
+    k_push: float | None = None
+    k_embed: float | None = None
+    k_tan: float | None = None
+    k_cross: float | None = None
+    kernel: Kernel | None = None
+    beta: BetaParams | float | None = None
+    beta_edge: float | None = Field(default=None, gt=0)
+    g_eps: float | None = Field(default=None, ge=0)
+    eps: EpsTerm | None = None
+    min_gap: float | None = None
+    alpha: float | None = None
+    eta: float | None = None
+    tan_cap_scale: float | None = None
+    gate_min_interior: float | None = None
+    kappa: float | None = None
+    beta_smax: float | None = None
+    use_logcosh: bool | None = None
+    sat_p0: float | None = None
+    outside_weight: float | None = None
+    in_decay: float | None = None
+    out_decay: float | None = None
+    ratio_in: float | None = None
+    tan_gate: TanGate | None = None
+    pad: float | None = None
+    y_down: bool | None = None
+    center: List[float] | None = None
+    sigma: Dict[str, float] | None = None
+    delta: float | None = None
+    only_free: bool | None = None
+    mode: str | None = None
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
 
-class ForcesPublic(RootModel[Dict[str, TermParams]]):
-    root: Dict[str, TermParams] = Field(default_factory=dict)
+class ForcesPublic(RootModel[Dict[str, Dict[str, TermParams]]]):
+    root: Dict[str, Dict[str, TermParams]] = Field(default_factory=dict)
 
 
 class ComputePublic(BaseModel):

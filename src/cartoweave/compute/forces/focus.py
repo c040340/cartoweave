@@ -2,8 +2,7 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register
-from cartoweave.utils.compute_common import get_eps
+from . import register, term_cfg, eps_params
 from ._common import (
     read_labels_aligned,
     get_mode,
@@ -39,13 +38,15 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
     N = int(P.shape[0])
-    eps = get_eps(cfg)
+    tc = term_cfg(cfg, "focus", "attract")
+    epss = eps_params(cfg, tc, defaults={})
+    eps = epss["eps_numeric"]
 
-    k = float(cfg.get("focus.k.attract", 0.0))
+    k = float(0.8 if tc.get("k") is None else tc.get("k"))
     if k <= 0.0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "focus.attract"}
 
-    center = cfg.get("focus.center", None)
+    center = tc.get("center", None)
     if center is None:
         center = scene.get("focus_center", None)
     if center is None:
@@ -53,10 +54,11 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         center = np.array([float(fw) * 0.5, float(fh) * 0.5], dtype=float)
     Cx, Cy = float(center[0]), float(center[1])
 
-    sigx = float(cfg.get("focus.sigma.x", 100.0))
-    sigy = float(cfg.get("focus.sigma.y", 100.0))
-    delta = float(cfg.get("focus.delta", 8.0))
-    only_free = bool(cfg.get("focus.only_free", False))
+    sigma = tc.get("sigma") or {}
+    sigx = float(100.0 if sigma.get("x") is None else sigma.get("x"))
+    sigy = float(100.0 if sigma.get("y") is None else sigma.get("y"))
+    delta = float(8.0 if tc.get("delta") is None else tc.get("delta"))
+    only_free = bool(tc.get("only_free") if tc.get("only_free") is not None else False)
 
     if sigx <= eps or sigy <= eps:
         sigx = max(sigx, eps)

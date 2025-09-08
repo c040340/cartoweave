@@ -3,9 +3,8 @@ from __future__ import annotations
 import os
 import math
 import numpy as np
-from . import register
-from cartoweave.utils.compute_common import get_eps
-from cartoweave.utils.kernels import softplus, sigmoid, smoothmax, softabs, EPS_DIST, EPS_NORM, EPS_ABS
+from . import register, term_cfg, kernel_params, eps_params
+from cartoweave.utils.kernels import softplus, sigmoid, softabs
 from cartoweave.utils.geometry import poly_signed_area, segment_rect_gate
 from cartoweave.utils.shape import as_nx2
 from ._common import (
@@ -51,7 +50,9 @@ def _legacy_aabb_gate(ax, ay, bx, by, cx, cy, w, h, pad=0.0):
 
 @register("area.cross")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
-    eps = get_eps(cfg)
+    tc = term_cfg(cfg, "area", "cross")
+    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
+    eps = epss["eps_numeric"]
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.cross"}
 
@@ -66,17 +67,21 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     WH = normalize_WH_from_labels(labels, N, "area.cross")
 
-    k_cross = float(cfg.get("area.k.cross", 900.0))
-    min_gap = float(cfg.get("area.cross.min_gap", 1.5))
-    eta_tan = float(cfg.get("area.cross.eta", 2.0))
-    alpha_sp = float(cfg.get("area.cross.alpha", 0.35))
-    cap_scale = float(cfg.get("area.cross.tan_cap_scale", 1.0))
-    use_lc = bool(cfg.get("area.cross.use_logcosh", True))
-    p0_lc = float(cfg.get("area.cross.sat_p0", 2.0))
-    g_min_int = float(cfg.get("area.cross.gate_min_interior", 0.6))
-    eps_abs = float(cfg.get("eps.abs", EPS_ABS))
-    kappa = float(cfg.get("area.cross.kappa", 8.0))
-    beta_smax = float(cfg.get("area.cross.beta_smax", 8.0))
+    k_cross = float(900.0 if tc.get("k_cross") is None else tc.get("k_cross"))
+    ker = kernel_params(
+        tc,
+        defaults={"model": "logcosh", "gate_gamma": 8.0, "exponent": 1.0, "soft_eps": 1e-6},
+    )
+    min_gap = float(1.5 if tc.get("min_gap") is None else tc.get("min_gap"))
+    eta_tan = float(2.0 if tc.get("eta") is None else tc.get("eta"))
+    alpha_sp = float(0.35 if tc.get("alpha") is None else tc.get("alpha"))
+    cap_scale = float(1.0 if tc.get("tan_cap_scale") is None else tc.get("tan_cap_scale"))
+    use_lc = bool(tc.get("use_logcosh") if tc.get("use_logcosh") is not None else True)
+    p0_lc = float(2.0 if tc.get("sat_p0") is None else tc.get("sat_p0"))
+    g_min_int = float(0.6 if tc.get("gate_min_interior") is None else tc.get("gate_min_interior"))
+    eps_abs = epss["eps_abs"]
+    kappa = float(8.0 if tc.get("kappa") is None else tc.get("kappa"))
+    beta_smax = float(8.0 if tc.get("beta_smax") is None else tc.get("beta_smax"))
 
     F = np.zeros_like(P, float)
     E = 0.0
