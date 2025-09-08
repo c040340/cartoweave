@@ -241,7 +241,6 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
 
     p0 = np.zeros((label_count, 2), float)
     labels: list[Label] = []
-    active0 = np.ones(label_count, dtype=bool)
 
     txt_cfg = gen_cfg.text
     font = load_font(txt_cfg.font.path, int(txt_cfg.font.size))
@@ -321,4 +320,4 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
             )
         )
 
-    return p0, labels, active0, scene
+    return p0, labels, scene

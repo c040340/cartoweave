@@ -77,7 +77,7 @@ def make_solvepack_from_data_defaults(
     if gen is None:  # pragma: no cover - config validation ensures non-None
         raise ValueError("generate config required")
     rng = np.random.default_rng(gen.seed or 0)
-    p0, labels0, _active0, scene0 = generate_scene(gen, rng)
+    p0, labels0, scene0 = generate_scene(gen, rng)
 
     S = cfg.action_num
     txt_cfg = gen.text
