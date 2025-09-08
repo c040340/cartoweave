@@ -144,7 +144,7 @@ def _label_text(lab: Dict[str, Any], index: int) -> str:
         kind = "L"
     if lab_id is None:
         lab_id = index
-    return f"{kind}{lab_id}"
+    return f"{kind[:1]}{lab_id}"
 
 
 def _format_pct(pct: float) -> str:
