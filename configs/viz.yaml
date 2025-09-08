@@ -28,7 +28,11 @@ forces:
     ll.rect: "#1f77b4"
     boundary.wall: "#ff7f0e"
     anchor.spring: "#2ca02c"
-  component_arrow_lw: 1.0
+  component_arrow_lw: 2.2
+  component_arrow_scale: 16.0
+  component_fontsize: 11
+  total_arrow_scale: 20
+  total_arrow_lw: 2.5
 force_view:
   show_vectors: true
   clamp_force_max: 1000.0

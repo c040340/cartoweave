@@ -7,8 +7,9 @@ _backend = setup_matplotlib_backend()
 
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List, Tuple
 from matplotlib.widgets import Slider
+from matplotlib.artist import Artist
 
 from .defaults import VIZ_DEFAULTS
 from cartoweave.config.loader import load_viz_defaults
@@ -119,13 +120,21 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
     if not panels_cfg.get("info", True):
         ax_info.set_visible(False)
 
-    state = {"t": 0}
+    state = {"t": 0, "sel": None}
+    patches: List[Tuple[int, Artist]] = []
 
     def redraw_layout(t: int):
         ax = ax_layout
         ax.clear()
         if hasattr(panels, "draw_layout"):
-            panels.draw_layout(ax, view_pack, t, style=style)
+            patches[:] = panels.draw_layout(ax, view_pack, t, style=style) or []
+        sel = state.get("sel")
+        if sel is not None:
+            for i, art in patches:
+                if i == sel:
+                    art.set_edgecolor("#ff0000")
+                    art.set_linewidth(style.label_edge_width * 2)
+                    break
         ax.figure.canvas.draw_idle()
 
     def redraw_forces(t: int):
@@ -134,7 +143,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         ax = ax_force
         ax.clear()
         if hasattr(panels, "draw_forces"):
-            panels.draw_forces(ax, view_pack, t, cfg)
+            panels.draw_forces(ax, view_pack, t, cfg, state.get("sel"))
         else:
             ax.text(
                 0.5,
@@ -153,7 +162,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         ax = ax_info
         ax.clear()
         if hasattr(panels, "draw_info"):
-            panels.draw_info(ax, view_pack, t, cfg)
+            panels.draw_info(ax, view_pack, t, cfg, state.get("sel"))
         else:
             fr = frames[t]
             comps = getattr(fr, "comps", None)
@@ -238,7 +247,17 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         elif event.key == "end":
             set_t(T - 1)
 
+    def on_pick(event):
+        artist = event.artist
+        for i, art in patches:
+            if artist is art:
+                state["sel"] = i
+                redraw_layout(state["t"])
+                redraw_info(state["t"])
+                break
+
     fig.canvas.mpl_connect("key_press_event", on_key)
+    fig.canvas.mpl_connect("pick_event", on_pick)
 
     set_t(0, sync_slider=True)
     plt.show()

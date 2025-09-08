@@ -20,6 +20,7 @@ from matplotlib.patches import PathPatch
 
 from ..utils.layout_mode import is_circle_label
 from .layout_style import LayoutStyle
+from .metrics import collect_solver_metrics
 
 # Configuration is supplied externally.  Functions accept the relevant slices of
 # the viewer configuration so that callers can merge YAML defaults beforehand.
@@ -160,6 +161,150 @@ def _format_pct(pct: float) -> str:
     integer = s[1:5].lstrip("0") or "0"
     integer = integer.rjust(4, " ")
     return sign + integer + s[5:] + "%"
+
+
+def _fmt_sci3(x: float) -> str:
+    """Format ``x`` using scientific notation with three significant digits."""
+
+    return f"{float(x):.3e}"
+
+
+def _fmt_force(x: float) -> str:
+    """Format a force magnitude."""
+
+    return _fmt_sci3(x)
+
+
+def _fmt_deg_aligned(deg: float) -> str:
+    """Format an angle in degrees with alignment."""
+
+    return f"{float(deg):6.1f}°"
+
+
+def _fmt_pct_aligned(pct: float) -> str:
+    """Format a percentage with alignment."""
+
+    return f"{float(pct):6.1f}%"
+
+
+def _compose_info_rows(
+    step: int,
+    comp_dict: Dict[str, np.ndarray],
+    idx: int,
+    label_tot: tuple[float, float],
+    global_tot: tuple[float, float],
+    d_pair: Optional[tuple[float, float]],
+    label_name: str,
+    metrics: Dict[str, Any],
+    force_colors: Dict[str, str],
+    global_fs: int,
+    label_fs: int,
+    comp_fs: int,
+) -> List[tuple[str, str, int, bool]]:
+    """Compose text rows describing solver and force information."""
+
+    rows: List[tuple[str, str, int, bool]] = []
+
+    rows.append((f"frame={step}", "#000000", global_fs, False))
+
+    ui = metrics.get("ui", {}) if isinstance(metrics, dict) else {}
+    F_inf = float(metrics.get("F_inf", float("nan")))
+    F_tol = float(metrics.get("F_tol", float("nan")))
+    g_inf = float(metrics.get("g_inf", float("nan")))
+    g_tol = float(metrics.get("gtol", float("nan")))
+    F_style = ui.get("F_style", {"color": "#000000", "bold": False})
+    g_style = ui.get("g_style", {"color": "#000000", "bold": False})
+
+    r = float("inf")
+    if np.isfinite(g_inf) and abs(g_inf) > 0:
+        r = F_inf / g_inf
+    r_disp = "Inf" if not np.isfinite(r) or r >= 100 else f"{r:.0f}"
+
+    # Solver iteration info if available
+    iter_cur = metrics.get("iter")
+    iter_max = metrics.get("iter_max")
+    solver_name = metrics.get("solver")
+    if iter_cur is not None:
+        if iter_max is not None:
+            s = f"iter={int(iter_cur)}/{int(iter_max)}"
+        else:
+            s = f"iter={int(iter_cur)}"
+        if solver_name:
+            s = f"{solver_name} {s}"
+        rows.append((s, "#000000", global_fs, False))
+
+    rows.append(
+        (
+            f"F_inf={_fmt_sci3(F_inf)} tol={_fmt_sci3(F_tol)}",
+            F_style.get("color", "#000000"),
+            global_fs,
+            bool(F_style.get("bold", False)),
+        )
+    )
+    rows.append(
+        (
+            f"g_inf={_fmt_sci3(g_inf)} tol={_fmt_sci3(g_tol)} r={r_disp}",
+            g_style.get("color", "#000000"),
+            global_fs,
+            bool(g_style.get("bold", False)),
+        )
+    )
+
+    g_mag, g_ang = global_tot
+    rows.append(
+        (
+            f"{'ALL'.ljust(6)} |F|={_fmt_force(g_mag)} angle={_fmt_deg_aligned(g_ang)}",
+            "#000000",
+            global_fs,
+            False,
+        )
+    )
+    if d_pair is not None:
+        d_abs, d_rel = d_pair
+        rows.append(
+            (
+                f"\u0394F={_fmt_sci3(d_abs)} \u0394F/F={float(d_rel):.2e}",
+                "#000000",
+                global_fs,
+                False,
+            )
+        )
+
+    l_mag, l_ang = label_tot
+    name_fmt = label_name[:6].ljust(6)
+    rows.append(
+        (
+            f"{name_fmt} |F|={_fmt_force(l_mag)} angle={_fmt_deg_aligned(l_ang)}",
+            "#000000",
+            label_fs,
+            False,
+        )
+    )
+
+    tot_mag = l_mag if l_mag > 0 else 1.0
+    keys = [k for k in ALL_FORCE_KEYS if _as_vec2(comp_dict.get(k)) is not None]
+    extras = [k for k, v in comp_dict.items() if _as_vec2(v) is not None and k not in keys]
+    keys.extend(extras)
+    if keys:
+        rows.append(("components:", "#000000", label_fs, False))
+        for k in keys:
+            v = _as_vec2(comp_dict.get(k))
+            if v is None or idx >= len(v):
+                continue
+            vx, vy = float(v[idx, 0]), float(v[idx, 1])
+            mag = float(np.hypot(vx, vy))
+            ang = float(np.degrees(np.arctan2(vy, vx)))
+            pct = mag / tot_mag * 100.0
+            name_fmt = k[:12].ljust(12)
+            rows.append(
+                (
+                    f"  {name_fmt} |F|={_fmt_force(mag)} angle={_fmt_deg_aligned(ang)} {_fmt_pct_aligned(pct)}",
+                    _force_color(k, force_colors),
+                    comp_fs,
+                    False,
+                )
+            )
+    return rows
 
 
 def grid_extent(width: float, height: float) -> Tuple[float, float, float, float]:
@@ -408,6 +553,8 @@ def draw_force_panel(
     terms_to_plot: Optional[Sequence[str]] = None,
     viz_forces: Mapping[str, Any],
     viz_info: Mapping[str, Any],
+    scale: float = 1.0,
+    invert_y: bool = True,
 ) -> Tuple[float, float]:
     """Draw a simple force decomposition diagram.
 
@@ -440,7 +587,7 @@ def draw_force_panel(
     vecs: Dict[str, Tuple[float, float, float]] = {}
     for name, arr in forces.items():
         if name == "total":
-            # Some force providers may already include a pre‑summed total.
+            # Some force providers may already include a pre-summed total.
             continue
         a = _as_vec2(arr)
         if a is not None and idx < len(a):
@@ -453,7 +600,7 @@ def draw_force_panel(
 
     mags = [v[2] for v in vecs.values()]
     vmax = max(mags)
-    limit = vmax * 1.2 if vmax > 0 else 1.0
+    limit = vmax * scale * 1.2 if vmax > 0 else 1.0
     ax.set_xlim(-limit, limit)
     ax.set_ylim(-limit, limit)
     ax.set_aspect("equal")
@@ -466,10 +613,13 @@ def draw_force_panel(
     terms = list(vecs.keys()) if terms_to_plot is None else [t for t in terms_to_plot if t in vecs]
     for name in terms:
         vx, vy, mag = vecs[name]
+        vx *= scale
+        vy *= scale
+        plot_y = -vy if invert_y else vy
         color = _force_color(name, cfg["colors"])
         arr = FancyArrowPatch(
             (0, 0),
-            (vx, vy),
+            (vx, plot_y),
             arrowstyle="->",
             mutation_scale=cfg["component_arrow_scale"],
             facecolor=color,
@@ -477,15 +627,19 @@ def draw_force_panel(
             lw=cfg["component_arrow_lw"],
         )
         ax.add_patch(arr)
-        ax.text(vx, vy, name, color=color, fontsize=cfg["component_fontsize"])
+        ax.text(vx, plot_y, name, color=color, fontsize=cfg["component_fontsize"])
 
+    total_x_draw = total_x * scale
+    total_y_draw = total_y * scale
+    plot_total_y = -total_y_draw if invert_y else total_y_draw
+    total_color = cfg.get("total_arrow_color", _force_color("total", cfg["colors"]))
     total_arrow = FancyArrowPatch(
         (0, 0),
-        (total_x, total_y),
+        (total_x_draw, plot_total_y),
         arrowstyle="-|>",
         mutation_scale=cfg["total_arrow_scale"],
-        facecolor=_force_color("total", cfg["colors"]),
-        edgecolor=_force_color("total", cfg["colors"]),
+        facecolor=total_color,
+        edgecolor=total_color,
         lw=cfg["total_arrow_lw"],
     )
     ax.add_patch(total_arrow)
@@ -571,15 +725,153 @@ def draw_field_panel(
         ax.set_yticks([])
 
 
-def draw_forces(ax, view_pack, t: int, viz_cfg: dict) -> None:
-    """Placeholder forces panel drawing."""
+def draw_forces(
+    ax,
+    view_pack,
+    t: int,
+    viz_cfg: dict,
+    selected_idx: Optional[int] = None,
+) -> None:
+    """Render force vectors for the selected label."""
+
+    frames = getattr(view_pack, "frames", [])
+    labels = getattr(view_pack, "labels", [])
+    if not frames:
+        return
+    if t < 0 or t >= len(frames):
+        t = 0
+    fr = frames[t]
+
+    N = getattr(view_pack, "N", len(fr.P))
+    comps_full = normalize_comps_for_info(fr.comps, N)
+    forces_total = np.zeros((N, 2), dtype=float)
+    for arr in comps_full.values():
+        forces_total += np.asarray(arr, float)
+
+    metrics = collect_solver_metrics(
+        fr.P,
+        forces_total,
+        comps_full,
+        labels,
+        fr.metrics or {},
+        viz_cfg,
+    )
+
+    top = metrics.get("top_force_labels") or [(0, 0.0)]
+    if selected_idx is not None and 0 <= selected_idx < N:
+        idx = int(selected_idx)
+    else:
+        idx = int(top[0][0]) if top else 0
+    label_name = _label_text(labels[idx] if idx < len(labels) else {}, idx)
+
+    forces_cfg = viz_cfg.get("forces", {})
+    terms = select_terms_for_arrows(comps_full, forces_cfg)
+    draw_force_panel(
+        ax,
+        comps_full,
+        idx,
+        label_name,
+        terms_to_plot=terms,
+        viz_forces=forces_cfg,
+        viz_info=viz_cfg.get("info", {}),
+        scale=float(forces_cfg.get("vector_scale", 1.0)),
+        invert_y=True,
+    )
+
     ax.set_title("forces")
 
 
-def draw_info(ax, view_pack, t: int, viz_cfg: dict) -> None:
-    """Placeholder info panel drawing."""
+def draw_info(
+    ax,
+    view_pack,
+    t: int,
+    viz_cfg: dict,
+    selected_idx: Optional[int] = None,
+) -> None:
+    """Render the textual information panel."""
+
     ax.set_title("info", pad=8)
     ax.set_axis_off()
+
+    frames = getattr(view_pack, "frames", [])
+    labels = getattr(view_pack, "labels", [])
+    if not frames:
+        return
+    if t < 0 or t >= len(frames):
+        t = 0
+    fr = frames[t]
+
+    N = getattr(view_pack, "N", len(fr.P))
+    comps_full = normalize_comps_for_info(fr.comps, N)
+    forces_total = np.zeros((N, 2), dtype=float)
+    for arr in comps_full.values():
+        forces_total += np.asarray(arr, float)
+
+    metrics = collect_solver_metrics(
+        fr.P,
+        forces_total,
+        comps_full,
+        labels,
+        fr.metrics or {},
+        viz_cfg,
+    )
+
+    top = metrics.get("top_force_labels") or [(0, 0.0)]
+    if selected_idx is not None and 0 <= selected_idx < N:
+        idx = int(selected_idx)
+    else:
+        idx = int(top[0][0]) if top else 0
+    label_name = _label_text(labels[idx] if idx < len(labels) else {}, idx)
+
+    l_vec = forces_total[idx]
+    l_mag = float(np.hypot(l_vec[0], l_vec[1]))
+    l_ang = float(np.degrees(np.arctan2(l_vec[1], l_vec[0])))
+    g_vec = forces_total.sum(axis=0)
+    g_mag = float(np.hypot(g_vec[0], g_vec[1]))
+    g_ang = float(np.degrees(np.arctan2(g_vec[1], g_vec[0])))
+
+    d_pair = None
+    dF = metrics.get("deltaF")
+    dF_rel = metrics.get("deltaF_over_F")
+    if isinstance(dF, np.ndarray) and isinstance(dF_rel, np.ndarray):
+        if idx < len(dF):
+            d_pair = (float(dF[idx]), float(dF_rel[idx]))
+
+    info_cfg = viz_cfg.get("info", {})
+    forces_cfg = viz_cfg.get("forces", {})
+    main_fs = int(info_cfg.get("row_main_fontsize", 12))
+    comp_fs = int(info_cfg.get("row_component_fontsize", 10))
+    rows = _compose_info_rows(
+        t,
+        comps_full,
+        idx,
+        (l_mag, l_ang),
+        (g_mag, g_ang),
+        d_pair,
+        label_name,
+        metrics,
+        forces_cfg.get("colors", {}),
+        main_fs,
+        main_fs,
+        comp_fs,
+    )
+
+    y = 0.98
+    dy = 0.05
+    for text, color, fs, bold in rows:
+        ax.text(
+            0.02,
+            y,
+            text,
+            color=color,
+            fontsize=fs,
+            family="monospace",
+            fontweight="bold" if bold else None,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+        )
+        y -= dy
 
 
 def draw_field(ax, view_pack, t: int, viz_cfg: dict) -> None:
