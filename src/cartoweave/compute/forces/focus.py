@@ -206,7 +206,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
 
 def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
-    """Sample focus attraction field at world coordinates ``xy``."""
+    """Sample focus force field at world coordinates ``xy``."""
 
     xy = np.asarray(xy, dtype=float)
     if xy.ndim != 2 or xy.shape[1] != 2:
@@ -214,66 +214,56 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
 
     frame_size = scene.get("frame_size", (1000.0, 1000.0))
     W, H = float(frame_size[0]), float(frame_size[1])
+    eps = 1e-12
 
     center = params.get("center")
     if center is None:
         center = scene.get("focus_center")
     if center is None:
         center = (0.5, 0.5)
-    Cx = float_param({"c": center[0]}, "c", 0.5) * W
-    Cy = float_param({"c": center[1]}, "c", 0.5) * H
+    Cx = float(center[0]) * W
+    Cy = float(center[1]) * H
 
-    wh = params.get("wh") or [0.20, 0.15]
-    sigx = float_param({"w": wh[0]}, "w", 0.20) * W
-    sigy = float_param({"h": wh[1]}, "h", 0.15) * H
-    sigma = float_param(params, "sigma", 8.0)
-    k = float_param(params, "k_attract", 0.8)
+    k_attract = float_param(params, "k_attract", 0.8)
+    intro_times = float_param(params, "intro_times", 4.0)
+    k_huges = k_attract * intro_times
 
-    F = _focus_force_at(xy, np.array([Cx, Cy], float), np.array([sigx, sigy], float), sigma, k)
+    sigma = float_param(params, "sigma", 1.0)
+    wh = params.get("wh")
+    if wh is not None:
+        wx, hy = float(wh[0]), float(wh[1])
+        sigx = max(eps, sigma * wx * W)
+        sigy = max(eps, sigma * hy * H)
+        a = max(eps, sigma * wx * W * 2.0)
+        b = max(eps, sigma * hy * H * 2.0)
+    else:
+        sigx = sigy = max(sigma, eps)
+        a = b = max(sigma, eps)
+
+    delta = float_param(params, "delta", 8.0)
+
+    F = _focus_force_at(
+        xy,
+        np.array([Cx, Cy], float),
+        np.array([sigx, sigy], float),
+        delta,
+        k_attract,
+    )
+
+    if k_huges > 0.0:
+        band = float_param(params, "band", float_param(params, "sigma", 0.1))
+        band = max(band, eps) * 4.0
+        F += _huges_force_at(
+            xy=xy,
+            center=np.array([Cx, Cy], float),
+            sigma_xy=np.array([a, b], float),
+            band=band,
+            k=k_huges,
+            eps=eps,
+        )
+
     F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F
 
 
 register_probe("focus.attract")(probe)
-def probe_huges(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
-    """
-    探针：在任意点集 xy[(M,2)] 上评估 focus.huges 的力向量。
-    参数语义与 evaluate 完全一致。
-    """
-    xy = np.asarray(xy, float)
-    if xy.ndim != 2 or xy.shape[1] != 2:
-        raise ValueError("xy must have shape (M,2)")
-
-    W, H = scene.get("frame_size", (1920.0, 1080.0))
-    W, H = float(W), float(H)
-
-    center = params.get("center", None) or scene.get("focus_center", None) or (0.5, 0.5)
-    Cx, Cy = float(center[0]) * W, float(center[1]) * H
-
-    wh = params.get("wh", {}) or {}
-    a = float(100.0 if wh.get("x") is None else wh.get("x"))
-    b = float(100.0 if wh.get("y") is None else wh.get("y"))
-    a = max(a, 1e-12)
-    b = max(b, 1e-12)
-
-    k = float(params.get("k", 0.8))
-    band = float(params.get("band", params.get("delta", 0.1)))
-    band = max(band, 1e-12)
-
-    F = _huges_force_at(
-        xy=xy,
-        center=np.array([Cx, Cy], dtype=float),
-        sigma_xy=np.array([a, b], dtype=float),
-        band=band,
-        k=k,
-        eps=1e-12,
-    )
-    if F.shape != xy.shape or not np.isfinite(F).all():
-        raise ValueError("probe_huges bad output")
-    return F
-
-
-try:
-    register_probe("focus.huges")(probe_huges)
-except Exception:
-    pass

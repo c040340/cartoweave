@@ -100,7 +100,7 @@ compute:
           attract:
             enable: true
             k_attract: 1.0
-            intro_times: 0
+            intro_times: 3
             center: [0.44, 0.39]
             wh: [0.2, 0.1]
             sigma: 1.0
