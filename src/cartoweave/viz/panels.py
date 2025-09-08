@@ -18,7 +18,7 @@ from matplotlib.patches import Circle, Rectangle, FancyArrowPatch
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 
-from ..layout_utils import is_circle_label
+from ..utils.layout_mode import is_circle_label
 
 # Configuration is supplied externally.  Functions accept the relevant slices of
 # the viewer configuration so that callers can merge YAML defaults beforehand.

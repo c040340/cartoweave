@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Optional
 
 import numpy as np
 
-from ..layout_utils import is_circle_label
+from ..utils.layout_mode import is_circle_label
 
 # Colours used to style ratios in the info panel
 _RATIO_COLORS = {

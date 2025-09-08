@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = []  # internal utilities only; geometry moved to cartoweave.compute.geometry
-
 def is_circle_label(lab: dict) -> bool:
     """Return ``True`` if *lab* should be rendered as a circle.
 
@@ -21,3 +19,4 @@ def is_circle_label(lab: dict) -> bool:
     mode = meta.get("mode") if isinstance(meta, dict) else None
     return mode == "circle"
 
+__all__ = ["is_circle_label"]
