@@ -7,6 +7,22 @@ from ...utils.logging import logger
 Array = np.ndarray
 
 
+def get_sn_params(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    comp = (cfg or {}).get("compute", {})
+    sn = (((comp.get("solver") or {}).get("tuning") or {}).get("semi_newton") or {})
+    return {
+        "sn_max_outer": int(sn.get("sn_max_outer", 50)),
+        "sn_dt": float(sn.get("sn_dt", 1.0)),
+        "sn_hvp_eps": float(sn.get("sn_hvp_eps", 1.0e-4)),
+        "sn_cg_tol": float(sn.get("sn_cg_tol", 1.0e-6)),
+        "sn_cg_maxit": int(sn.get("sn_cg_maxit", 200)),
+        "sn_lm0": float(sn.get("sn_lm0", 1.0e-3)),
+        "sn_gtol": float(sn.get("sn_gtol", 1.0e-5)),
+        "sn_armijo_c1": float(sn.get("sn_armijo_c1", 1.0e-4)),
+        "sn_max_backtrack": int(sn.get("sn_max_backtrack", 10)),
+    }
+
+
 def _cfg(cfg: Dict[str, Any], key: str, default):
     return cfg[key] if key in cfg else default
 

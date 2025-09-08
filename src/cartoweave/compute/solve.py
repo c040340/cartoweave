@@ -40,7 +40,7 @@ def _init_state(pack: SolvePack) -> tuple[Array2, list[Any], np.ndarray]:
 def _build_run_iters(pack: SolvePack):
     """Create a closure invoking the minimal gradient loop."""
 
-    compute_cfg = pack.cfg.get("compute", {}) if isinstance(pack.cfg, dict) else {}
+    comp = (pack.cfg or {}).get("compute", {}) if isinstance(pack.cfg, dict) else {}
 
     def _run(
         p0: Array2,
@@ -49,18 +49,16 @@ def _build_run_iters(pack: SolvePack):
         iters_override: int | None = None,
         on_iter=None,
     ):
-        mode = compute_cfg.get("solver", {}).get("public", {}).get("mode", "lbfgsb")
-        tuning = compute_cfg.get("solver", {}).get("tuning", {})
-        iters = (
-            iters_override
-            or tuning.get(mode, {}).get("maxiter")
-            or tuning.get("warmup", {}).get("steps", 1)
-        )
+        mode = (((comp.get("solver") or {}).get("public") or {}).get("mode", "lbfgsb"))
+        tuning = ((comp.get("solver") or {}).get("tuning") or {})
+        iters = iters_override or ((tuning.get(mode) or {}).get("maxiter"))
+        if iters in (None, 0):
+            iters = int(((tuning.get("warmup") or {}).get("steps", 1)))
         eng_ctx = _EngineCtx(
             labels=ctx["labels"],
             scene=ctx["scene"],
             active=ctx["active_ids"],
-            cfg=compute_cfg,
+            cfg=pack.cfg,
             iters=int(iters),
             mode=mode,
             params={},
@@ -69,7 +67,7 @@ def _build_run_iters(pack: SolvePack):
         p_new, reports = _run_iters(p0, eng_ctx, energy_fn, report=True, on_iter=on_iter)
         logger.debug("end run_iters: reports=%s", len(reports))
         E, G, comps = energy_fn(
-            p_new, ctx["labels"], ctx["scene"], ctx["active_ids"], compute_cfg
+            p_new, ctx["labels"], ctx["scene"], ctx["active_ids"], comp
         )
         gnorm = float(np.linalg.norm(G)) if G is not None and G.size else 0.0
         return p_new, {

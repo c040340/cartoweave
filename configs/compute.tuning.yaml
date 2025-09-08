@@ -7,19 +7,19 @@ compute:
         maxiter: 300
 
       semi_newton:
-        sn_max_outer: 60
+        sn_max_outer: 50
         sn_dt: 1.0
         sn_hvp_eps: 1.0e-4
-        sn_cg_tol: 1.0e-4
-        sn_cg_maxit: 40
+        sn_cg_tol: 1.0e-6
+        sn_cg_maxit: 200
         sn_lm0: 1.0e-3
-        sn_gtol: 1.0e-3
+        sn_gtol: 1.0e-5
         sn_armijo_c1: 1.0e-4
-        sn_max_backtrack: 8
+        sn_max_backtrack: 10
 
       stopping:
         # ∥g∥∞ 阈值
-        gtol: 1.0e-6
+        gtol: 1.0e-4
         # 能量变化阈值
         ftol: 1.0e-9
         # 步长×梯度 阈值

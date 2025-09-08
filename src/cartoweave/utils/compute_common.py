@@ -10,7 +10,9 @@ def get_eps(cfg: Dict[str, Any]) -> float:
     Prefers compute.eps.numeric and
     finally falls back to machine epsilon.
     """
-    return cfg.get("eps", {}).get("numeric") or np.finfo(float).eps
+    comp = (cfg or {}).get("compute", {})
+    eps = (comp.get("eps") or {})
+    return float(eps.get("numeric", 1.0e-12))
 
 
 def ensure_vec2(F: np.ndarray, L: int) -> np.ndarray:

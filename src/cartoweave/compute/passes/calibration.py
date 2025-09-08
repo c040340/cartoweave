@@ -8,7 +8,11 @@ def _get_public(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return (cfg.get("compute") or {}).get("public") or {}
 
 def _get_calib_cfg(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    return (_get_public(cfg).get("passes") or {}).get("calibration") or {}
+    comp = (cfg.get("compute") or {})
+    return (
+        ((comp.get("public") or {}).get("passes") or {}).get("calibration")
+        or ((comp.get("passes") or {}).get("calibration") or {})
+    )
 
 # ========== 形状档：一次性写入若干“形状/软硬度/ε”等参数（不改 k） ==========
 _DEFAULT_PROFILES: Dict[str, Dict[str, float]] = {

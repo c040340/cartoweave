@@ -56,28 +56,23 @@ def run_iters(
     P = P0.astype(float, copy=True)
     reps: List[StepReport] = []
     step = float(ctx.params.get("step", 1e-2) if ctx.params else 1e-2)
-    stop_cfg = {}
-    solver_cfg = {}
-    if ctx.cfg:
-        solver_cfg = ctx.cfg.get("solver", {}) if isinstance(ctx.cfg, dict) else getattr(ctx.cfg, "solver", {})
-        tuning_cfg = solver_cfg.get("tuning", {}) if isinstance(solver_cfg, dict) else {}
-        stop_cfg = tuning_cfg.get("stopping") or {}
-        if not tuning_cfg.get("stopping"):
-            logging.getLogger(__name__).warning("stopping config missing; using defaults")
-    gtol = float(stop_cfg.get("gtol", 1.0e-6))
+    comp = (ctx.cfg or {}).get("compute", {}) if ctx.cfg else {}
+    solver_cfg = comp.get("solver") or {}
+    stop_cfg = ((solver_cfg.get("tuning") or {}).get("stopping") or {})
+    gtol = float(stop_cfg.get("gtol", 1.0e-4))
     ftol = float(stop_cfg.get("ftol", 1.0e-9))
     xtol = float(stop_cfg.get("xtol", 1.0e-9))
     max_stall = stop_cfg.get("max_stall_iters")
     if ctx.params and ctx.params.get("max_step_norm") is not None:
         max_step_norm = ctx.params.get("max_step_norm")
     else:
-        max_step_norm = solver_cfg.get("max_step_norm") if ctx.cfg else None
+        max_step_norm = solver_cfg.get("max_step_norm") if solver_cfg else None
 
     E_prev: float | None = None
     stall_iters = 0
     for it in range(ctx.iters):
         for _ in range(2):
-            E, g, comps = energy_fn(P, ctx.labels, ctx.scene, ctx.active, ctx.cfg)
+            E, g, comps = energy_fn(P, ctx.labels, ctx.scene, ctx.active, comp)
             if not (np.isnan(E) or np.isnan(g).any()):
                 break
             step *= 0.5

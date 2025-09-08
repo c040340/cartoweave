@@ -26,13 +26,23 @@ class GradClipPass(ComputePass):
         stats = self.stats
 
         def _wrapped(P, labels, scene, active_mask, cfg):
-            conf = get_pass_cfg(cfg, "grad_clip", {"max_norm": self.max_norm, "max_abs": self.max_abs})
+            conf = get_pass_cfg(
+                cfg,
+                "grad_clip",
+                {"enable": False, "max_norm": self.max_norm, "max_abs": self.max_abs},
+            )
+            enable = bool(conf.get("enable", False))
             mn = conf.get("max_norm")
+            if mn is None and "norm_max" in conf:
+                mn = conf.get("norm_max")
             ma = conf.get("max_abs")
             eps = get_eps(cfg)
 
             E, G, comps = energy_fn(P, labels, scene, active_mask, cfg)
             comps = dict(comps or {})
+
+            if not enable:
+                return E, G if G is not None else np.zeros_like(P), comps
 
             if G is None:
                 G = np.zeros_like(P)
