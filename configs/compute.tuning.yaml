@@ -2,12 +2,33 @@
 # 细调参数：数值调优、终止条件等。已移除未实现的键：
 # - compute.solver.tuning.lbfgsb.m
 # - compute.solver.tuning.anti_jump.step_cap_px
-# - compute.passes.calibration.*（未启用的校准 pass）
 # 已添加（代码中有读取）：
 # - compute.solver.tuning.lbfgsb.lbfgs_pgtol
 # - compute.solver.tuning.lbfgsb.lbfgs_maxiter
 
 compute:
+  passes:
+    calibration:
+      enable: false              # 是否启用自动力平衡
+      clip_q: 0.995              # 剪裁分位数
+      p_q: 0.95                  # 目标分位数
+      clamp_min: 0.33            # 缩放下限
+      clamp_max: 3.0             # 缩放上限
+      min_act: 0.05              # 激活比例阈值
+      hysteresis: 0.25           # 迟滞带
+      ema_alpha: 1.0             # EMA 系数（1.0 表示立即应用）
+      base_term: focus.attract   # 基准力项
+      target_rel:                # 各力项相对于基准力的目标比例
+        ll.rect: 1.0             # label-label rectangle repulsion
+        ll.disk: 1.0             # label-label disk repulsion
+        boundary.wall: 1.0       # canvas boundary wall
+        anchor.spring: 1.0       # anchor spring
+        pl.rect: 1.0             # point-label rectangle repulsion
+        ln.rect: 1.0             # line-label rectangle repulsion
+        area.embed: 1.0          # area embedding term
+        area.cross: 1.0          # area cross term
+        area.softout: 1.0        # area outside soft penalty
+        focus.attract: 1.0       # focus attraction (基准力)
   solver:
     tuning:
       lbfgsb:

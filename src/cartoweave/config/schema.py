@@ -45,11 +45,27 @@ class NanGuardPass(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CalibrationPass(BaseModel):
+    enable: bool = False
+    clip_q: float = Field(default=0.995, gt=0, lt=1)
+    p_q: float = Field(default=0.95, gt=0, lt=1)
+    clamp_min: float = Field(default=0.33, gt=0)
+    clamp_max: float = Field(default=3.0, gt=0)
+    min_act: float = Field(default=0.05, ge=0, le=1)
+    hysteresis: float = Field(default=0.25, ge=0)
+    ema_alpha: float = Field(default=1.0, ge=0, le=1)
+    base_term: str = "focus.attract"
+    target_rel: Dict[str, float] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class Passes(BaseModel):
     capture: CapturePass
     grad_clip: GradClipPass
     step_limit: StepLimitPass
     nan_guard: NanGuardPass
+    calibration: CalibrationPass
 
     model_config = ConfigDict(extra="forbid")
 

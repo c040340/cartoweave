@@ -75,7 +75,7 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
     return passes
 
 
-DEFAULT_PIPELINE = ["action", "forces", "solver", "capture"]
+DEFAULT_PIPELINE = ["calibration", "action", "forces", "solver", "capture"]
 
 
 class PassManager:
@@ -253,6 +253,8 @@ class PassManager:
 
 # ensure action pass registers itself
 from .action_pass import ActionPass as _  # noqa: F401
+# ensure calibration pass registers itself
+from .calibration import CalibrationPass as _  # noqa: F401
 
 
 __all__ = [
