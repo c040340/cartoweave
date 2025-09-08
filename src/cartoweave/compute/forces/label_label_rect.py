@@ -19,7 +19,7 @@ from cartoweave.utils.logging import logger
 
 def _val(lab, key, default=None):
     """通用字段读取：兼容 dict 和 LabelState。
-       - 支持 'kind' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
+       - 支持 'll_kernel' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
     """
     if isinstance(lab, dict):
         if key == "mode":
@@ -43,10 +43,16 @@ def _anchor(lab):
         a = lab.get("anchor")
         if a is None:
             return None
+        if isinstance(a, dict):
+            return {
+                "kind": a["kind"] if "kind" in a else None,
+                "index": a["index"] if "index" in a else None,
+                "t": a["t"] if "t" in a else None,
+            }
         return {
-            "kind": a.get("kind") if isinstance(a, dict) else None,
-            "index": a.get("index") if isinstance(a, dict) else None,
-            "t": a.get("t") if isinstance(a, dict) else None,
+            "kind": getattr(a, "kind", None),
+            "index": getattr(a, "index", None),
+            "t": getattr(a, "t", None),
         }
     a = getattr(lab, "anchor", None)
     if a is None:
@@ -105,10 +111,24 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             log.warning("ll.rect: cannot normalize WH shape %s, fallback zeros (N,2)", WH.shape)
             WH = np.zeros((N, 2), dtype=float)
 
-    # 4) 行内过滤：排除 circle，通常也排除 area（只做“矩形标签之间”的相互作用）
+    # 4) 行内过滤：排除 circle，并根据 ll_kernel 选择参与者
+    llk   = [getattr(lab, "ll_kernel", None) for lab in labels]
     modes = [_val(lab, "mode") for lab in labels]
-    kinds = [getattr(lab, "kind", None) for lab in labels]
-    mask  = np.array([(m != "circle") and (k != "area") for m, k in zip(modes, kinds)], dtype=bool)
+
+    def _canon_llk(x):
+        x = (x or "").lower()
+        if x in ("rectangle",):
+            return "rect"
+        if x in ("ellipse", "elliptic", "circle"):
+            return "disk"
+        return x
+
+    llk = [_canon_llk(x) for x in llk]
+
+    # participate in ll.rect iff ll_kernel == "rect" AND real mode != "circle"
+    # DO NOT exclude "area" here; area labels can still be rect-kernel participants if configured so.
+    mask = np.array([(k == "rect") and ((m or "").lower() != "circle")
+                     for k, m in zip(llk, modes)], dtype=bool)
     idxs  = np.nonzero(mask)[0]
 
     # ===== 你的原始主循环逻辑从这里继续（不变） =====

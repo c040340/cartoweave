@@ -1,9 +1,9 @@
 {
   "labels_init": [[0.0, 0.0], [1.0, 0.0], [0.5, 0.5]],
   "labels": [
-    {"anchor_kind": "none", "anchor_index": -1},
-    {"anchor_kind": "none", "anchor_index": -1},
-    {"anchor_kind": "none", "anchor_index": -1}
+    {"anchor_kind": "none", "anchor_index": -1, "ll_kernel": "rect", "mode": "rectangular"},
+    {"anchor_kind": "none", "anchor_index": -1, "ll_kernel": "rect", "mode": "rectangular"},
+    {"anchor_kind": "none", "anchor_index": -1, "ll_kernel": "disk", "mode": "rectangular"}
   ],
   "frame_size": [800, 600],
   "WH": [[24.0, 24.0], [24.0, 24.0], [24.0, 24.0]],

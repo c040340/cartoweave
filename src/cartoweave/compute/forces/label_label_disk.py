@@ -22,7 +22,7 @@ from cartoweave.utils.logging import logger
 
 def _val(lab, key, default=None):
     """通用字段读取：兼容 dict 和 LabelState。
-       - 支持 'kind' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
+       - 支持 'll_kernel' / 'mode' / 其它 meta 字段（mode 会从 meta 提升）
     """
     if isinstance(lab, dict):
         if key == "mode":
@@ -46,10 +46,16 @@ def _anchor(lab):
         a = lab.get("anchor")
         if a is None:
             return None
+        if isinstance(a, dict):
+            return {
+                "kind": a["kind"] if "kind" in a else None,
+                "index": a["index"] if "index" in a else None,
+                "t": a["t"] if "t" in a else None,
+            }
         return {
-            "kind": a.get("kind") if isinstance(a, dict) else None,
-            "index": a.get("index") if isinstance(a, dict) else None,
-            "t": a.get("t") if isinstance(a, dict) else None,
+            "kind": getattr(a, "kind", None),
+            "index": getattr(a, "index", None),
+            "t": getattr(a, "t", None),
         }
     a = getattr(lab, "anchor", None)
     if a is None:
@@ -76,8 +82,20 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     active_ids = scene.get("_active_ids_solver", list(range(N)))
     assert len(active_ids) == N, f"_active_ids_solver misaligned: {len(active_ids)} vs P {P.shape}"
     labels = [labels_all[i] if i < len(labels_all) else {} for i in active_ids]
+    llk   = [getattr(lab, "ll_kernel", None) for lab in labels]
     modes = [_val(lab, "mode") for lab in labels]
-    mask = np.array([m != "circle" for m in modes], dtype=bool)
+
+    def _canon_llk(x):
+        x = (x or "").lower()
+        if x in ("ellipse", "elliptic"):  # normalize synonyms to "disk"
+            return "disk"
+        return x
+
+    llk = [_canon_llk(x) for x in llk]
+
+    # participate in ll.disk iff ll_kernel == "disk" AND real mode != "circle"
+    mask = np.array([(k == "disk") and ((m or "").lower() != "circle")
+                     for k, m in zip(llk, modes)], dtype=bool)
     idxs = np.nonzero(mask)[0]
 
     k_out = float(cfg.get("ll.k.repulse", 900.0))
@@ -85,14 +103,14 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     eps_sep = float(cfg.get("ll.edge_eps", 0.5))
     beta = float(cfg.get("beta.softplus.sep", cfg.get("beta_softplus_sep", 6.0)))
     k_in = float(cfg.get("ll.k.inside", 0.0))
-    mode = str(cfg.get("ll.disk.mode", "max"))
+    radius_mode = str(cfg.get("ll.disk.mode", "max")).lower()
 
     def radius_from_wh(w: float, h: float) -> float:
-        if mode == "min":
+        if radius_mode == "min":
             return 0.5 * min(w, h)
-        if mode == "avg":
+        if radius_mode == "avg":
             return 0.25 * (w + h)
-        if mode == "diag":
+        if radius_mode == "diag":
             return 0.5 * math.hypot(w, h)
         return 0.5 * max(w, h)
 

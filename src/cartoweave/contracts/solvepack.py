@@ -169,6 +169,8 @@ class Label(BaseModel):
     thickness: float | None = None
     radius: float | None = None
     anchor: Anchor
+    ll_kernel: Literal["rect", "disk"] | None = None
+    mode: str | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="allow")
