@@ -69,10 +69,17 @@ def run_lbfgs(
     P_opt = res.x.reshape(L, 2)
     g_inf = float(np.linalg.norm(last_G, np.inf))
     logger.info("L-BFGS done nit=%s nfev=%s", res.nit, res.nfev)
+    converged = bool(g_inf <= pgtol and res.success)
+    msg = str(res.message)
+    stop_reason = msg
+    if not converged:
+        msg_up = msg.upper()
+        if "ABNORMAL_TERMINATION_IN_LNSRCH" in msg_up or g_inf <= pgtol:
+            stop_reason = "zero_descent_rate"
     return {
         "P": P_opt,
         "E": float(last_E),
         "iters": int(res.nit),
-        "converged": bool(g_inf <= pgtol and res.success),
-        "stop_reason": str(res.message),
+        "converged": converged,
+        "stop_reason": stop_reason,
     }

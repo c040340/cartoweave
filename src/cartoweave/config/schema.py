@@ -218,11 +218,20 @@ class SolverTuningWarmup(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SolverTuningHybrid(BaseModel):
+    sn_max_outer: int = Field(ge=0)
+    lbfgs_maxiter: int = Field(ge=1)
+    sn_post_max_outer: int = Field(ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class SolverTuning(BaseModel):
     lbfgsb: SolverTuningLBFGSB
     semi_newton: SolverTuningSemiNewton
     stop: SolverTuningStop
     warmup: SolverTuningWarmup
+    hybrid: SolverTuningHybrid | None = None
 
     model_config = ConfigDict(extra="forbid")
 

@@ -65,6 +65,14 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
         cls, defaults = REGISTRY["geom_preproc"]
         passes.insert(0, cls(**defaults))
         names.add("geom_preproc")
+    if "nan_guard" not in names:
+        cls, defaults = REGISTRY["nan_guard"]
+        passes.append(cls(**defaults))
+        names.add("nan_guard")
+    if "grad_clip" not in names:
+        cls, defaults = REGISTRY["grad_clip"]
+        passes.append(cls(**defaults))
+        names.add("grad_clip")
     if "step_limit" not in names:
         cls, defaults = REGISTRY["step_limit"]
         passes.append(cls(**defaults))

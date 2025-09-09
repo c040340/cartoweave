@@ -57,6 +57,83 @@ def run_iters(
 
     comp = (ctx.cfg or {}).get("compute", {}) if ctx.cfg else {}
 
+    if ctx.mode == "hybrid":
+        # ------------------------------------------------------------------
+        # Semi-Newton warmup -> L-BFGS -> optional Semi-Newton fallback
+        # ------------------------------------------------------------------
+        last: Dict[str, Any] = {}
+
+        def _eval(P: np.ndarray) -> Tuple[float, np.ndarray, Dict[str, Any]]:
+            E, G, comps = energy_fn(P, ctx.labels, ctx.scene, ctx.active, comp)
+            last.update({"E": E, "G": G, "P": P, "comps": comps})
+            return E, G, comps
+
+        def _energy(P: np.ndarray) -> float:
+            E, _, _ = _eval(P)
+            return float(E)
+
+        def _grad(P: np.ndarray) -> np.ndarray:
+            _, G, _ = _eval(P)
+            return np.asarray(G, float)
+
+        reps: List[StepReport] = []
+        k = 0
+
+        def _cb(info: Dict[str, Any]):
+            nonlocal k
+            g = np.asarray(info.get("G"), float)
+            P_iter = np.asarray(info.get("P"), float)
+            E_iter = float(info.get("E", 0.0))
+            g_inf = float(np.max(np.abs(g))) if g.size else 0.0
+            x_inf = float(np.max(np.abs(P_iter))) if P_iter.size else 0.0
+            if report:
+                reps.append(StepReport(k=-1, it=k, E=E_iter, g_inf=g_inf, x_inf=x_inf))
+            if on_iter is not None:
+                comps_iter = last.get("comps", {})
+                try:
+                    on_iter(k, P_iter, {"E": E_iter, "G": g, "comps": comps_iter})
+                except Exception:
+                    pass
+            k += 1
+
+        sn_outer = int(ctx.params.get("sn_max_outer", 0))
+        lbfgs_outer = int(ctx.params.get("lbfgs_maxiter", 0))
+        sn_post = int(ctx.params.get("sn_post_max_outer", sn_outer))
+
+        P_curr = np.asarray(P0, float)
+        if sn_outer > 0:
+            params_sn = dict(ctx.params)
+            params_sn["sn_max_outer"] = sn_outer
+            res_sn = run_solver("semi_newton", P_curr, _energy, _grad, params_sn, callback=_cb)
+            P_curr = np.asarray(res_sn.get("P", P_curr), float)
+
+        params_lb = dict(ctx.params)
+        params_lb["lbfgs_maxiter"] = lbfgs_outer
+        res_lb = run_solver("lbfgs", P_curr, _energy, _grad, params_lb, callback=_cb)
+        P_curr = np.asarray(res_lb.get("P", P_curr), float)
+
+        if res_lb.get("stop_reason") == "zero_descent_rate" and sn_post > 0:
+            params_sn2 = dict(ctx.params)
+            params_sn2["sn_max_outer"] = sn_post
+            res_sn2 = run_solver("semi_newton", P_curr, _energy, _grad, params_sn2, callback=_cb)
+            P_curr = np.asarray(res_sn2.get("P", P_curr), float)
+
+        P_final = P_curr
+        if report and not reps:
+            E_fin, G_fin, _ = _eval(P_final)
+            g_inf_fin = float(np.max(np.abs(G_fin))) if G_fin.size else 0.0
+            x_inf_fin = float(np.max(np.abs(P_final))) if P_final.size else 0.0
+            reps.append(
+                StepReport(
+                    k=-1,
+                    it=0,
+                    E=float(E_fin),
+                    g_inf=g_inf_fin,
+                    x_inf=x_inf_fin,
+                )
+            )
+        return P_final, reps
+
     if ctx.mode in {"lbfgs", "lbfgsb", "semi_newton"}:
         # ------------------------------------------------------------------
         # Delegation to specialised solvers

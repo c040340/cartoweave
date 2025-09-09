@@ -61,6 +61,11 @@ def _build_run_iters(pack: SolvePack):
                 iters = mode_cfg.get("lbfgs_maxiter")
             elif mode == "semi_newton":
                 iters = mode_cfg.get("sn_max_outer")
+            elif mode == "hybrid":
+                sn1 = mode_cfg.get("sn_max_outer", 5)
+                lb = mode_cfg.get("lbfgs_maxiter", 400)
+                sn2 = mode_cfg.get("sn_post_max_outer", sn1)
+                iters = sn1 + lb + sn2
             else:
                 iters = mode_cfg.get("maxiter")
             if iters in (None, 0):
@@ -70,6 +75,13 @@ def _build_run_iters(pack: SolvePack):
             mode_cfg.setdefault("lbfgs_maxiter", int(iters))
         elif mode == "semi_newton":
             mode_cfg.setdefault("sn_max_outer", int(iters))
+        elif mode == "hybrid":
+            sn1 = int(mode_cfg.get("sn_max_outer", 5))
+            lb = int(mode_cfg.get("lbfgs_maxiter", 400))
+            sn2 = int(mode_cfg.get("sn_post_max_outer", sn1))
+            mode_cfg.setdefault("sn_max_outer", sn1)
+            mode_cfg.setdefault("lbfgs_maxiter", lb)
+            mode_cfg.setdefault("sn_post_max_outer", sn2)
         eng_ctx = _EngineCtx(
             labels=ctx["labels"],
             scene=ctx["scene"],

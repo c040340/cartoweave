@@ -28,7 +28,7 @@ def test_nan_injection_emits_event():
         e
         for fr in vp.frames
         for e in fr.meta["events"]
-        if e.get("pass") == "wrap_energy" and e.get("info") == "nonfinite"
+        if e.get("pass") == "nan_guard" and e.get("info") == "sanitized"
     ]
-    assert events and events[0]["metrics"].get("nonfinite_G", 0) > 0
+    assert events and events[0].get("nan")
     del REGISTRY["inject_nan"]
