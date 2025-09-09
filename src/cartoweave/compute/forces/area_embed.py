@@ -22,28 +22,8 @@ from ._common import (
     ensure_vec2,
     float_param,
     poly_as_array,
+    anchor_info,
 )
-
-
-def _anchor(lab):
-    """统一锚读取：返回 dict {'kind': ..., 'index': ..., 't': ...} 或 None。"""
-    if isinstance(lab, dict):
-        a = lab.get("anchor")
-        if a is None:
-            return None
-        return {
-            "kind": a.get("kind") if isinstance(a, dict) else None,
-            "index": a.get("index") if isinstance(a, dict) else None,
-            "t": a.get("t") if isinstance(a, dict) else None,
-        }
-    a = getattr(lab, "anchor", None)
-    if a is None:
-        return None
-    return {
-        "kind": getattr(a, "kind", None),
-        "index": getattr(a, "index", None),
-        "t": getattr(a, "t", None),
-    }
 
 
 @register("area.embed")
@@ -81,7 +61,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     for i in idxs:
         lab = labels[i]
         w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
-        a = _anchor(lab)
+        a = anchor_info(lab)
         if not a or a["kind"] != "area":
             continue
         ai = int(a["index"]) if a["index"] is not None else -1

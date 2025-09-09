@@ -70,6 +70,34 @@ def ensure_vec2(F: np.ndarray, N: int) -> np.ndarray:
     return F
 
 
+def anchor_info(lab):
+    """Return ``{'kind': k, 'index': ..., 't': ...}`` from ``lab.anchor`` if any.
+
+    ``anchor`` objects historically used the field name ``kind`` to specify the
+    target type (e.g. ``"area"``).  Some newer sources emit ``target`` instead.
+    This helper accepts both names and always returns the resolved value under
+    the ``kind`` key so callers can rely on a uniform schema.
+    """
+
+    if isinstance(lab, dict):
+        a = lab.get("anchor")
+    else:
+        a = getattr(lab, "anchor", None)
+    if a is None:
+        return None
+
+    if isinstance(a, dict):
+        k = a.get("target")
+        if k is None:
+            k = a.get("kind")
+        return {"kind": k, "index": a.get("index"), "t": a.get("t")}
+
+    k = getattr(a, "target", None)
+    if k is None:
+        k = getattr(a, "kind", None)
+    return {"kind": k, "index": getattr(a, "index", None), "t": getattr(a, "t", None)}
+
+
 def float_param(d: dict | None, key: str, default: float) -> float:
     """Safely extract a finite float from ``d``.
 
