@@ -371,6 +371,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
                 state["sel"] = i
                 redraw_layout(state["t"])
                 redraw_info(state["t"])
+                redraw_forces(state["t"])
                 break
 
     fig.canvas.mpl_connect("key_press_event", on_key)
