@@ -12,8 +12,8 @@ data:
   generate:
     # ---- 基础场景元素数量 ----
     counts:
-      points: 3   # 生成多少个点元素放入 scene.points 池
-      lines: 0    # 生成多少条折线放入 scene.lines 池（每条≥2顶点）
+      points: 7   # 生成多少个点元素放入 scene.points 池
+      lines: 1    # 生成多少条折线放入 scene.lines 池（每条≥2顶点）
       areas: 1    # 生成多少个多边形放入 scene.areas 池（每个≥3顶点）
     labels: null   # 生成的 Label 总数 L
                    # null -> 默认等于 points+lines+areas

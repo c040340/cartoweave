@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+# ruff: noqa: E402
+from dataclasses import dataclass
+from types import SimpleNamespace
+from typing import Any
+
+from matplotlib.artist import Artist
+from matplotlib.widgets import RadioButtons, Slider
+
 # 1) Choose backend BEFORE importing pyplot
 from .backend import setup_matplotlib_backend
 
 _backend = setup_matplotlib_backend()
 
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
-from typing import Optional, List, Tuple, Dict, Any
-from matplotlib.widgets import Slider
-from matplotlib.artist import Artist
-from types import SimpleNamespace
 
-from .defaults import VIZ_DEFAULTS
 from cartoweave.config.loader import load_viz_defaults
+
 from . import panels
+from .defaults import VIZ_DEFAULTS
 from .layout_style import get_layout_style_from_cfg
 
 
@@ -39,7 +43,7 @@ class ViewAxes:
     ax_layout: plt.Axes
     ax_force: plt.Axes
     ax_info: plt.Axes
-    ax_field: Optional[plt.Axes]
+    ax_field: plt.Axes | None
     ax_bar_action: plt.Axes
     ax_bar_iter: plt.Axes
 
@@ -107,18 +111,18 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
     cfg = _merge_viz_cfg(viz_cfg or {})
     style = get_layout_style_from_cfg(cfg)
     frames = getattr(view_pack, "frames", []) or []
-    T = len(frames)
-    if T == 0:
+    n_frames = len(frames)
+    if n_frames == 0:
         raise ValueError("ViewPack.frames is empty")
 
     passes = getattr(view_pack, "passes", []) or []
     if not passes:
-        passes = [SimpleNamespace(pass_id=0, pass_name="", t_start=0, t_end=T)]
+        passes = [SimpleNamespace(pass_id=0, pass_name="", t_start=0, t_end=n_frames)]
 
-    pass_of_t: List[int] = [0] * T
+    pass_of_t: list[int] = [0] * n_frames
     for idx, p in enumerate(passes):
         for tt in range(p.t_start, p.t_end):
-            if 0 <= tt < T:
+            if 0 <= tt < n_frames:
                 pass_of_t[tt] = idx
 
     panels_cfg = cfg.get("panels", {})
@@ -137,11 +141,21 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
     if not panels_cfg.get("info", True):
         ax_info.set_visible(False)
 
-    state: Dict[str, int | None] = {"t": 0, "sel": None, "pass": 0}
-    patches: List[Tuple[int, Artist]] = []
+    state: dict[str, Any] = {"t": 0, "sel": None, "pass": 0}
+    patches: list[tuple[int, Artist]] = []
 
-    def _format_meta(meta: Dict[str, Any] | None) -> str:
-        if not isinstance(meta, dict):
+    # collect available force terms for field selector
+    if ax_field is not None:
+        terms_set: set[str] = set()
+        for fr in frames:
+            comps = getattr(fr, "comps", {}) or {}
+            terms_set.update(comps.keys())
+        terms_list = ["all"] + sorted(terms_set)
+        state["field_terms"] = terms_list
+        state["field_idx"] = 0
+
+    def _format_meta(meta: dict[str, Any] | None) -> str:
+        if meta is None:
             return ""
         line1 = f"{meta.get('pass_name', '')}:{meta.get('frame_in_pass', '')}"
         events = meta.get("events") or []
@@ -229,8 +243,22 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
             return
         ax = ax_field
         ax.clear()
+
+        cfg_local = dict(cfg)
+        selected = None
+        terms = state.get("field_terms")
+        if terms:
+            field_cfg = dict(cfg_local.get("field", {}) or {})
+            idx = state.get("field_idx", 0)
+            selected = terms[idx]
+            if selected == "all":
+                field_cfg.pop("terms", None)
+            else:
+                field_cfg["terms"] = [selected]
+            cfg_local["field"] = field_cfg
+
         if hasattr(panels, "draw_field"):
-            panels.draw_field(ax, view_pack, t, cfg)
+            panels.draw_field(ax, view_pack, t, cfg_local)
         else:
             ax.text(
                 0.5,
@@ -240,11 +268,38 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
                 va="center",
                 transform=ax.transAxes,
             )
-            ax.set_title("field")
+            title = "field" if not selected else f"field: {selected}"
+            ax.set_title(title)
         ax.figure.canvas.draw_idle()
 
+    # field selector as a small radio list
+    if ax_field is not None:
+        pos = ax_field.get_position()
+        rw = pos.width * 0.15
+        rh = pos.height * 0.25
+        ax_field_sel = fig.add_axes([
+            pos.x0 + pos.width - rw,
+            pos.y0 + pos.height - rh,
+            rw,
+            rh,
+        ])
+        terms = state.get("field_terms", ["all"])
+        radio_field = RadioButtons(ax_field_sel, terms)
+        for lbl in radio_field.labels:
+            lbl.set_fontsize(8)
+        # for circ in radio_field.:
+            # circ.set_radius(0.05)
+
+        def _on_field_select(label: str):
+            terms_local = state.get("field_terms", [])
+            if label in terms_local:
+                state["field_idx"] = terms_local.index(label)
+                redraw_field(state["t"])
+
+        radio_field.on_clicked(_on_field_select)
+
     def set_t(t_new: int, sync_slider: bool = True):
-        t_new = max(0, min(T - 1, int(round(t_new))))
+        t_new = max(0, min(n_frames - 1, int(round(t_new))))
         if t_new == state["t"]:
             return
         state["t"] = t_new
@@ -264,7 +319,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
                 slider_iter.valmax = max(p.t_end - p.t_start - 1, 0)
                 slider_iter.ax.set_xlim(0, slider_iter.valmax)
                 slider_iter.set_val(local_idx)
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
 
     ax_bar_action.clear()
@@ -306,7 +361,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         elif event.key == "home":
             set_t(0)
         elif event.key == "end":
-            set_t(T - 1)
+            set_t(n_frames - 1)
 
     def on_pick(event):
         artist = event.artist
