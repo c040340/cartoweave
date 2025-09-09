@@ -23,6 +23,7 @@ from ._common import (
     normalize_WH_from_labels,
     ensure_vec2,
     float_param,
+    active_element_indices,
 )
 
 
@@ -54,13 +55,17 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     eps = epss["eps_numeric"]
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
-    segs_raw = scene.get("lines")
-    if segs_raw is None or len(segs_raw) == 0:
+    labels = read_labels_aligned(scene, P)
+    segs_raw = scene.get("lines") or []
+    active_lines = active_element_indices(labels, "line")
+    segs_list = [segs_raw[i] for i in sorted(active_lines) if 0 <= i < len(segs_raw)]
+    if not segs_list:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
-    segs_arr = polylines_to_segments(segs_raw)
+    segs_arr = polylines_to_segments(segs_list)
+    if segs_arr.size == 0:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
     segs = segs_arr.reshape((segs_arr.shape[0], 4))
     N = int(P.shape[0])
-    labels = read_labels_aligned(scene, P)
     modes = [get_mode(l) for l in labels]
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
     mask = base_mask

@@ -25,6 +25,7 @@ from ._common import (
     float_param,
     poly_as_array,
     anchor_info,
+    active_element_indices,
 )
 
 
@@ -38,7 +39,11 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
 
     labels = read_labels_aligned(scene, P)
-    areas = scene.get("areas", []) or []
+    areas_all = scene.get("areas", []) or []
+    active_areas = active_element_indices(labels, "area")
+    areas = [areas_all[i] for i in sorted(active_areas) if 0 <= i < len(areas_all)]
+    if not areas:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
     N = int(P.shape[0])
     modes = [get_mode(l) for l in labels]
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)

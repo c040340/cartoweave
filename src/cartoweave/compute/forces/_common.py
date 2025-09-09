@@ -98,6 +98,24 @@ def anchor_info(lab):
     return {"kind": k, "index": getattr(a, "index", None), "t": getattr(a, "t", None)}
 
 
+def active_element_indices(labels, kind: str) -> set[int]:
+    """Return indices of scene elements of type ``kind`` referenced by labels."""
+
+    active: set[int] = set()
+    for lab in labels:
+        a = anchor_info(lab)
+        if not a:
+            continue
+        if a.get("kind") != kind:
+            continue
+        try:
+            idx = int(a.get("index"))
+        except (TypeError, ValueError):
+            continue
+        active.add(idx)
+    return active
+
+
 def float_param(d: dict | None, key: str, default: float) -> float:
     """Safely extract a finite float from ``d``.
 

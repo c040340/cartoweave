@@ -17,6 +17,7 @@ from ._common import (
     normalize_WH_from_labels,
     ensure_vec2,
     float_param,
+    active_element_indices,
 )
 
 
@@ -48,11 +49,15 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     eps = epss["eps_numeric"]
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
-    pts = scene.get("points")
-    if pts is None or len(pts) == 0:
+    pts_all = scene.get("points") or []
+    if len(pts_all) == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
 
     labels = read_labels_aligned(scene, P)
+    active_pts = active_element_indices(labels, "point")
+    pts = [pts_all[i] for i in sorted(active_pts) if 0 <= i < len(pts_all)]
+    if not pts:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
     pts = np.asarray(pts, float).reshape(-1, 2)
     N = int(P.shape[0])
     M = pts.shape[0]

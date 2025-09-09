@@ -16,6 +16,7 @@ from ._common import (
     float_param,
     poly_as_array,
     anchor_info,
+    active_element_indices,
 )
 
 """Boolean AABB pre-gate replaced by continuous gate built from normal soft
@@ -39,10 +40,14 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.cross"}
 
-    areas      = scene.get("areas", []) or []
+    labels = read_labels_aligned(scene, P)
+    areas_all = scene.get("areas", []) or []
+    active_areas = active_element_indices(labels, "area")
+    areas = [areas_all[i] for i in sorted(active_areas) if 0 <= i < len(areas_all)]
+    if not areas:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.cross"}
 
     N = int(P.shape[0])
-    labels = read_labels_aligned(scene, P)
     modes = [get_mode(l) for l in labels]
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
     mask = base_mask

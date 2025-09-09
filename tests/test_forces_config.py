@@ -55,9 +55,12 @@ def test_term_params_passthrough():
         "areas": [[(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]],
         "frame_size": (5.0, 5.0),
     }
-    labels = [{"WH": (0.5, 0.5)}]
-    P = np.array([[1.9, 1.0]], dtype=float)
-    mask = np.array([True])
+    labels = [
+        {"WH": (0.5, 0.5)},
+        {"WH": (0.5, 0.5), "anchor": {"kind": "area", "index": 0}},
+    ]
+    P = np.array([[1.9, 1.0], [0.0, 0.0]], dtype=float)
+    mask = np.array([True, True])
     cfg0 = {"public": {"forces": {"area": {"softout": {"enable": True, "k_push": 1.0, "min_gap": 0.0}}}}}
     cfg1 = {"public": {"forces": {"area": {"softout": {"enable": True, "k_push": 1.0, "min_gap": 1.0}}}}}
     E0, _, _ = energy_and_grad_full(P, labels, scene, mask, cfg0)
