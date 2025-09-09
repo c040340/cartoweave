@@ -216,6 +216,22 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             P_prev_full[~active] = np.nan
         active_idx = np.flatnonzero(active)
 
+        # sync recorder with possibly mutated labels
+        labels_meta = [
+            lbl.model_dump() if hasattr(lbl, "model_dump") else dict(lbl)
+            for lbl in labels
+        ]
+        recorder.labels = labels_meta
+        wh_rows = [getattr(lbl, "WH", None) for lbl in labels]
+        if any(w is not None for w in wh_rows):
+            if recorder.WH is None:
+                recorder.WH = np.zeros((N, 2), float)
+            for i, w in enumerate(wh_rows):
+                if w is not None:
+                    recorder.WH[i] = w
+        else:
+            recorder.WH = None
+
         _last_iter_recorded = -1
 
         def _on_iter(it: int, P_iter: np.ndarray, meta: Dict[str, Any]) -> None:

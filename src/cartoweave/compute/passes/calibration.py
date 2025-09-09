@@ -150,7 +150,9 @@ def auto_calibrate_k(
     target_rel = calib.get("target_rel", {}) or {}
 
     def p_quant(term: str) -> float:
-        return _p_quantile(mags.get(term, np.zeros(0)), clip_q, p_q)
+        vec = mags.get(term, np.zeros(0))
+        vec = vec[vec > 0]
+        return _p_quantile(vec, clip_q, p_q)
 
     base_obs = p_quant(base_term)
     if base_obs <= 1e-12 and mags:
@@ -169,7 +171,10 @@ def auto_calibrate_k(
         if act_ratio < min_act:
             continue
 
-        obs = _p_quantile(vec, clip_q, p_q)
+        active = vec[vec > act_thresh]
+        if active.size == 0:
+            continue
+        obs = _p_quantile(active, clip_q, p_q)
         if obs <= 1e-12:
             continue
 

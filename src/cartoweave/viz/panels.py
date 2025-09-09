@@ -529,7 +529,8 @@ def draw_layout(ax: plt.Axes, *args, style: LayoutStyle, **kwargs):
         for a in areas_dict
         if isinstance(a, dict) and 'xy' in a and a['xy'] is not None
     ]
-    rect_wh = getattr(view_pack, "WH", None)
+    rect_wh_global = getattr(view_pack, "WH", None)
+    rect_wh = fr.meta.get("WH", rect_wh_global)
     anchors = getattr(fr, "anchors", None)
 
     return _draw_layout_panel(

@@ -260,6 +260,8 @@ class ViewRecorder:
         meta["active_count"] = len(active_ids)
         if G_snapshot is not None:
             meta["G_snapshot"] = np.asarray(G_snapshot, float)
+        if self.WH is not None:
+            meta["WH"] = np.asarray(self.WH, float).copy()
 
         anchors_arr = None
         if anchors is not None:
