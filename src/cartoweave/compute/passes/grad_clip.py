@@ -5,6 +5,7 @@ import numpy as np
 from .base import ComputePass
 from . import get_pass_cfg
 from cartoweave.utils.compute_common import get_eps
+from cartoweave.utils.logging import logger
 
 
 class GradClipPass(ComputePass):
@@ -75,6 +76,12 @@ class GradClipPass(ComputePass):
                                 "global_iter": getattr(pm, "eval_index", 0),
                             }
                         )
+                    logger.debug(
+                        "[grad_clip] gnorm=%g max_norm=%g scale=%g",
+                        gnorm,
+                        mn,
+                        scale,
+                    )
 
             return E, G, comps
 

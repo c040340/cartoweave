@@ -110,8 +110,18 @@ def _eval_force(name: str, scene: Dict[str, Any], P0: np.ndarray, cfg: Dict[str,
 # core calibration
 # -----------------------------
 
-def auto_calibrate_k(scene: Dict[str, Any] | None, P0: np.ndarray, cfg: Dict[str, Any], calib: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, float]:
-    """Return scaling factors for term k-values based on observed force magnitudes."""
+def auto_calibrate_k(
+    scene: Dict[str, Any] | None,
+    P0: np.ndarray,
+    cfg: Dict[str, Any],
+    calib: Dict[str, Any],
+    ctx: Dict[str, Any],
+) -> tuple[Dict[str, float], Dict[str, str]]:
+    """Return scaling factors for term k-values and clamping info.
+
+    The second return value maps term names to ``"min"`` or ``"max"`` if the
+    computed scale was clamped by ``clamp_min``/``clamp_max``.
+    """
     if not calib.get("enable", False):
         return {}
 
@@ -150,6 +160,7 @@ def auto_calibrate_k(scene: Dict[str, Any] | None, P0: np.ndarray, cfg: Dict[str
 
     act_thresh = 0.05 * base_obs
     scales: Dict[str, float] = {}
+    clamped: Dict[str, str] = {}
 
     for term, vec in mags.items():
         if vec.size == 0:
@@ -172,10 +183,17 @@ def auto_calibrate_k(scene: Dict[str, Any] | None, P0: np.ndarray, cfg: Dict[str
         if (1.0 - hyster) <= ratio <= (1.0 + hyster):
             continue
 
-        s = max(clamp_min, min(clamp_max, ratio))
+        s = ratio
+        if s < clamp_min:
+            s = clamp_min
+            clamped[term] = "min"
+        elif s > clamp_max:
+            s = clamp_max
+            clamped[term] = "max"
+
         scales[term] = s
 
-    return scales
+    return scales, clamped
 
 
 # -----------------------------
@@ -214,8 +232,9 @@ class CalibrationPass(ComputePass):
 
         scene = ctx.get("scene") or {}
         P = np.asarray(ctx.get("P"), float)
-        scales = auto_calibrate_k(scene, P, cfg, conf, ctx)
+        scales, clamped = auto_calibrate_k(scene, P, cfg, conf, ctx)
         if not scales:
+            logger.info("[calibration] no terms updated")
             return
 
         alpha = float(conf.get("ema_alpha", self.ema_alpha))
@@ -223,6 +242,7 @@ class CalibrationPass(ComputePass):
         # We update k_* values in cfg.public.forces.<group>.<name> to match the rest of the project.
         forces_cfg = cfg.setdefault("public", {}).setdefault("forces", {})
 
+        updated = 0
         for term, scale in scales.items():
             try:
                 grp, tname = term.split(".", 1)
@@ -264,7 +284,23 @@ class CalibrationPass(ComputePass):
                     })
 
                 self.prev_k[f"{term}:{kk}"] = float(k_new)
-            logger.info(f"[calibration] term={term} k={k_new:.3g}")
+                logger.debug(
+                    "[calibration] term=%s param=%s k_old=%g k_new=%g scale=%g",
+                    term,
+                    kk,
+                    float(k_old),
+                    float(k_new),
+                    float(scale),
+                )
+            updated += 1
+
+            if term in clamped:
+                limit = clamped[term]
+                logger.warning(
+                    "[calibration] term=%s hit %s limit", term, limit
+                )
+
+        logger.info("[calibration] updated %d terms", updated)
 
 
 # Register into the PASSES registry (not forces)

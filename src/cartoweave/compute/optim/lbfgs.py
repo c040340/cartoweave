@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Dict, Any, Callable, Optional
-import numpy as np
+import numpy as np, logging
 from scipy.optimize import minimize
 
 from ...utils.logging import logger
@@ -43,10 +43,14 @@ def run_lbfgs(
     pgtol = float(params.get("lbfgs_pgtol", 1e-9))
     maxiter = int(params.get("lbfgs_maxiter", 400))
 
+    logger.info("L-BFGS start maxiter=%d gtol=%.3g", maxiter, pgtol)
+
     last_E = float(energy_fn(P0))
     last_G = np.asarray(grad_fn(P0), float)
     if callback is not None:
         callback({"P": P0, "G": last_G, "E": last_E})
+
+    k = 0
 
     def fun(x: np.ndarray):
         nonlocal last_E, last_G
@@ -59,16 +63,25 @@ def run_lbfgs(
             callback({"P": P, "G": G, "E": E})
         return E, G.reshape(-1)
 
+    def _cb(xk: np.ndarray):
+        nonlocal k
+        if logger.isEnabledFor(logging.DEBUG):
+            g_inf_k = float(np.linalg.norm(last_G, np.inf))
+            logger.debug(
+                "L-BFGS iter %d E=%.6g g_inf=%.6g", k, float(last_E), g_inf_k
+            )
+        k += 1
+
     res = minimize(
         fun,
         x0,
         jac=True,
         method="L-BFGS-B",
+        callback=_cb,
         options={"maxiter": maxiter, "gtol": pgtol},
     )
     P_opt = res.x.reshape(L, 2)
     g_inf = float(np.linalg.norm(last_G, np.inf))
-    logger.info("L-BFGS done nit=%s nfev=%s", res.nit, res.nfev)
     converged = bool(g_inf <= pgtol and res.success)
     msg = str(res.message)
     stop_reason = msg
@@ -76,6 +89,13 @@ def run_lbfgs(
         msg_up = msg.upper()
         if "ABNORMAL_TERMINATION_IN_LNSRCH" in msg_up or g_inf <= pgtol:
             stop_reason = "zero_descent_rate"
+    logger.info(
+        "L-BFGS finished nit=%s nfev=%s g_inf=%.6g reason=%s",
+        res.nit,
+        res.nfev,
+        g_inf,
+        stop_reason,
+    )
     return {
         "P": P_opt,
         "E": float(last_E),

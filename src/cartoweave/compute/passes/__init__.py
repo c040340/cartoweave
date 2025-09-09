@@ -4,6 +4,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Union
 from .base import Context, ComputePass
+from cartoweave.utils.logging import logger
 
 
 def get_pass_cfg(cfg: dict, name: str, defaults: dict | None = None) -> dict:
@@ -109,6 +110,11 @@ class PassManager:
                 "info": "init",
                 "metrics": {},
             })
+        logger.info(
+            "PassManager init passes=%s pipeline=%s",
+            [getattr(p, "name", "") or p.__class__.__name__ for p in self.passes],
+            self.pipeline,
+        )
 
     # ----- pipeline helpers -------------------------------------------------
     def ensure_pass(self, name: str, position: int | None = None):
@@ -252,6 +258,7 @@ class PassManager:
     def emit_event(self, event: dict[str, Any]) -> None:
         event.setdefault("global_iter", self.eval_index)
         self.events.append(event)
+        logger.debug("pass_event %s", event)
 
     def pop_events(self) -> list[dict[str, Any]]:
         evs = list(self.events)

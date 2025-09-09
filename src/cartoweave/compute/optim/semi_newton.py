@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Dict, Any, Callable, Optional
-import numpy as np
+import numpy as np, logging
 
 from ...utils.logging import logger
 
@@ -87,6 +87,13 @@ def run_semi_newton(
 
     x = P.reshape(-1)
 
+    logger.info(
+        "Semi-Newton start max_outer=%d dt=%.3g gtol=%.3g",
+        max_outer,
+        dt,
+        gtol,
+    )
+
     def _rec(P_full: Array, E: float, G_full: Array):
         if callback is not None:
             callback({"P": P_full, "G": G_full, "E": float(E)})
@@ -105,9 +112,14 @@ def run_semi_newton(
     for it in range(max_outer):
         E, g = fun_vars(x)
         g_inf = float(np.linalg.norm(g, np.inf))
-        logger.debug("Semi-Newton iter %d E=%.6g g_inf=%.6g", it, float(E), g_inf)
+        if logger.isEnabledFor(logging.DEBUG) and (it % 5 == 0 or it == max_outer - 1):
+            logger.debug(
+                "Semi-Newton iter %d E=%.6g g_inf=%.6g", it, float(E), g_inf
+            )
         if g_inf <= gtol:
-            logger.info("Semi-Newton converged nit=%d g_inf=%.6g", it, g_inf)
+            logger.info(
+                "Semi-Newton converged nit=%d g_inf=%.6g", it, g_inf
+            )
             return {
                 "P": x.reshape(L, 2),
                 "E": float(E),
@@ -138,16 +150,26 @@ def run_semi_newton(
             alpha *= 0.5
         if not accepted:
             dt *= 0.5
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Semi-Newton backtrack dt=%.3g", dt)
             if dt < 1e-3:
                 break
 
+    iters = it + 1
     E_final, g_final = fun_vars(x)
     g_inf_final = float(np.linalg.norm(g_final, np.inf))
-    logger.info("Semi-Newton done nit=%d g_inf=%.6g", max_outer, g_inf_final)
+    converged = bool(g_inf_final <= gtol)
+    stop_reason = "gtol" if converged else ("dt_min" if dt < 1e-3 else "max_iter")
+    logger.info(
+        "Semi-Newton finished nit=%d g_inf=%.6g reason=%s",
+        iters,
+        g_inf_final,
+        stop_reason,
+    )
     return {
         "P": x.reshape(L, 2),
         "E": float(E_final),
-        "iters": max_outer,
-        "converged": bool(g_inf_final <= gtol),
-        "stop_reason": "max_iter",
+        "iters": iters,
+        "converged": converged,
+        "stop_reason": stop_reason,
     }

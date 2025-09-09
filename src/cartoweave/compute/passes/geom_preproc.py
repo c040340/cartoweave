@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 import numpy as np
 from copy import deepcopy
 
+from cartoweave.utils.logging import logger
 from .base import ComputePass
 
 
@@ -100,6 +101,13 @@ class GeomPreprocPass(ComputePass):
                                 "affected_labels": affected,
                             },
                         }
+                    )
+                    logger.debug(
+                        "[geom_preproc] tiny_eps=%g collapsed=%d dropped=%d affected=%d",
+                        float(tiny),
+                        collapsed,
+                        dropped,
+                        affected,
                     )
             labels_use = self.stage_cache.get(key, labels)
             return energy_fn(P, labels_use, scene, mask, cfg)

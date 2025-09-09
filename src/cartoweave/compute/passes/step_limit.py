@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-import logging
 import numpy as np
 
+from cartoweave.utils.logging import logger
 from . import get_pass_cfg
 from .base import ComputePass
-
-
-logger = logging.getLogger(__name__)
 
 
 class StepLimitPass(ComputePass):
@@ -27,7 +24,7 @@ class StepLimitPass(ComputePass):
             return step_fn
 
         maxn = float(maxn)
-        logger.info("StepLimit.max_step_norm = %s", maxn)
+        logger.info("[step_limit] max_step_norm=%s", maxn)
         stats = self.stats
 
         def wrapped(P_old, P_prop, metrics):
@@ -52,7 +49,10 @@ class StepLimitPass(ComputePass):
                             "scale": float(scale),
                             "global_iter": getattr(pm, "eval_index", 0),
                         }
-                    )
+                        )
+                logger.debug(
+                    "[step_limit] norm=%g max=%g scale=%g", n, maxn, scale
+                )
                 return P_new
             return P_prop
 

@@ -7,7 +7,7 @@
 compute:
   solver:
     public:
-      mode: hybrid            # 求解器选择：lbfgsb | semi_newton | hybrid
+      mode: lbfgsb            # 求解器选择：lbfgsb | semi_newton | hybrid
       use_warmup: true        # 是否在正式求解前做预热（warm-up）
       # 全局日志等级：none | info | debug
       log_level: debug
@@ -56,15 +56,15 @@ compute:
             eps: { abs: 0.001 }
         ll:
           rect:
-            enable: true
+            enable: false
             k_out: 0.4
-            k_in: 0.4
+            k_in: 1.4
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
             eps: { abs: 0.001 }
           disk:
-            enable: false
+            enable: true
             k_out: 0.4
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
@@ -108,5 +108,5 @@ compute:
           spring:
             enable: true
             k_local: 1.0
-            zero_dist: 65.0
+            zero_dist: 45.0
             only_free: true

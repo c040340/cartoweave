@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cartoweave.utils.logging import logger
 from .base import ComputePass
 from . import REGISTRY, get_pass_cfg
 
@@ -60,6 +61,7 @@ class ActionPass(ComputePass):
                     "global_iter": getattr(pm, "eval_index", 0),
                 }
             )
+        logger.debug("[action] %s label_id=%d", act.type, int(getattr(act, "id", -1)))
 
 
 REGISTRY["action"] = (ActionPass, {})

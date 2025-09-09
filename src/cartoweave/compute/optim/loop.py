@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 
 from . import run_solver
+from ...utils.logging import logger
 
 EPS = 10.0 ** -12
 
@@ -100,23 +101,52 @@ def run_iters(
         lbfgs_outer = int(ctx.params.get("lbfgs_maxiter", 0))
         sn_post = int(ctx.params.get("sn_post_max_outer", sn_outer))
 
+        logger.info(
+            "Hybrid solver start sn_outer=%d lbfgs_outer=%d sn_post=%d",
+            sn_outer,
+            lbfgs_outer,
+            sn_post,
+        )
+
         P_curr = np.asarray(P0, float)
         if sn_outer > 0:
             params_sn = dict(ctx.params)
             params_sn["sn_max_outer"] = sn_outer
+            logger.info("Hybrid warmup Semi-Newton iters=%d", sn_outer)
             res_sn = run_solver("semi_newton", P_curr, _energy, _grad, params_sn, callback=_cb)
+            logger.info(
+                "Hybrid warmup result nit=%s reason=%s",
+                res_sn.get("iters"),
+                res_sn.get("stop_reason"),
+            )
             P_curr = np.asarray(res_sn.get("P", P_curr), float)
 
         params_lb = dict(ctx.params)
         params_lb["lbfgs_maxiter"] = lbfgs_outer
+        logger.info("Hybrid L-BFGS iters=%d", lbfgs_outer)
         res_lb = run_solver("lbfgs", P_curr, _energy, _grad, params_lb, callback=_cb)
+        logger.info(
+            "Hybrid L-BFGS result nit=%s reason=%s",
+            res_lb.get("iters"),
+            res_lb.get("stop_reason"),
+        )
         P_curr = np.asarray(res_lb.get("P", P_curr), float)
 
         if res_lb.get("stop_reason") == "zero_descent_rate" and sn_post > 0:
             params_sn2 = dict(ctx.params)
             params_sn2["sn_max_outer"] = sn_post
+            logger.info(
+                "Hybrid fallback Semi-Newton iters=%d", sn_post
+            )
             res_sn2 = run_solver("semi_newton", P_curr, _energy, _grad, params_sn2, callback=_cb)
+            logger.info(
+                "Hybrid fallback result nit=%s reason=%s",
+                res_sn2.get("iters"),
+                res_sn2.get("stop_reason"),
+            )
             P_curr = np.asarray(res_sn2.get("P", P_curr), float)
+
+        logger.info("Hybrid solver finished")
 
         P_final = P_curr
         if report and not reps:

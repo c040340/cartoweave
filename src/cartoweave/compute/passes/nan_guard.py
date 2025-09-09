@@ -5,6 +5,7 @@ import numpy as np
 from .base import ComputePass
 from . import get_pass_cfg
 from cartoweave.utils.config import get as cfg_get
+from cartoweave.utils.logging import logger
 
 
 class NaNGuardPass(ComputePass):
@@ -83,6 +84,9 @@ class NaNGuardPass(ComputePass):
                             "global_iter": getattr(pm, "eval_index", 0),
                         }
                     )
+                logger.debug(
+                    "[nan_guard] nan=%s inf=%s", bool(hit_nan), bool(hit_inf)
+                )
 
             return E, G, comps2
 

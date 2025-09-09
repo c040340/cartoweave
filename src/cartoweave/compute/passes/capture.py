@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+
+from cartoweave.utils.logging import logger
 from .base import Context, ComputePass
 from . import get_pass_cfg
 
@@ -44,5 +46,19 @@ class CapturePass(ComputePass):
         if limit is not None and isinstance(limit, int) and frames_len >= limit:
             return False
         if every <= 1:
-            return True
-        return (eval_index % every) == 0
+            should = True
+        else:
+            should = (eval_index % every) == 0
+        if should:
+            self.stats["frames_captured"] += 1
+            pm = getattr(self, "pm", None)
+            if pm is not None:
+                pm.emit_event(
+                    {
+                        "pass": "capture",
+                        "info": "capture",
+                        "eval_index": int(eval_index),
+                    }
+                )
+            logger.debug("[capture] capture eval=%d", int(eval_index))
+        return should
