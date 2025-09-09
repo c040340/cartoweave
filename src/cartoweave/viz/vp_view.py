@@ -54,7 +54,9 @@ def build_view_axes(field_kind: str = "3d") -> ViewAxes:
     Parameters
     ----------
     field_kind: str
-        Kind of field panel. Use "none" to disable the field panel.
+        Kind of field panel. ``"3d"`` creates a 3D axis, any other value yields
+        a 2D axis. The axis is always created to preserve layout; callers may
+        hide it if the field panel is disabled.
     """
 
     fig = plt.figure(figsize=(22, 10))
@@ -73,23 +75,14 @@ def build_view_axes(field_kind: str = "3d") -> ViewAxes:
     bar_action = bar[0]
     bar_iter = bar[1]
 
-    if field_kind == "none":
-        gs_main = main.subgridspec(1, 2, width_ratios=[5.5, 5])
-        ax_layout = fig.add_subplot(gs_main[0, 0])
+    gs_main = main.subgridspec(1, 3, width_ratios=[5.5, 5, 7.5])
+    ax_layout = fig.add_subplot(gs_main[0, 0])
 
-        centre = gs_main[0, 1].subgridspec(2, 1, height_ratios=[2.5, 2])
-        ax_force = fig.add_subplot(centre[0, 0])
-        ax_info = fig.add_subplot(centre[1, 0])
-        ax_field = None
-    else:
-        gs_main = main.subgridspec(1, 3, width_ratios=[5.5, 5, 7.5])
-        ax_layout = fig.add_subplot(gs_main[0, 0])
-
-        centre = gs_main[0, 1].subgridspec(2, 1, height_ratios=[2.5, 2])
-        ax_force = fig.add_subplot(centre[0, 0])
-        ax_info = fig.add_subplot(centre[1, 0])
-        projection = "3d" if field_kind == "3d" else None
-        ax_field = fig.add_subplot(gs_main[0, 2], projection=projection)
+    centre = gs_main[0, 1].subgridspec(2, 1, height_ratios=[2.5, 2])
+    ax_force = fig.add_subplot(centre[0, 0])
+    ax_info = fig.add_subplot(centre[1, 0])
+    projection = "3d" if field_kind == "3d" else None
+    ax_field = fig.add_subplot(gs_main[0, 2], projection=projection)
 
     ax_bar_action = fig.add_subplot(bar_action)
     ax_bar_iter = fig.add_subplot(bar_iter)
@@ -126,7 +119,9 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
                 pass_of_t[tt] = idx
 
     panels_cfg = cfg.get("panels", {})
-    field_kind = "3d" if panels_cfg.get("field", False) else "none"
+    field_cfg = cfg.get("field", {}) or {}
+    kind_cfg = str(field_cfg.get("mode", "heatmap")).lower()
+    field_kind = "3d" if "3d" in kind_cfg else "2d"
     axes = build_view_axes(field_kind=field_kind)
     fig = axes.fig
     ax_layout = axes.ax_layout
@@ -136,16 +131,20 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
     ax_bar_action = axes.ax_bar_action
     ax_bar_iter = axes.ax_bar_iter
 
+    if not panels_cfg.get("layout", True):
+        ax_layout.set_visible(False)
     if not panels_cfg.get("forces", True):
         ax_force.set_visible(False)
     if not panels_cfg.get("info", True):
         ax_info.set_visible(False)
+    if not panels_cfg.get("field", False) and ax_field is not None:
+        ax_field.set_visible(False)
 
     state: dict[str, Any] = {"t": 0, "sel": None, "pass": 0}
     patches: list[tuple[int, Artist]] = []
 
     # collect available force terms for field selector
-    if ax_field is not None:
+    if ax_field is not None and ax_field.get_visible():
         terms_set: set[str] = set()
         for fr in frames:
             comps = getattr(fr, "comps", {}) or {}
@@ -180,6 +179,8 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         return f"{line1}\n{line2}".rstrip()
 
     def redraw_layout(t: int):
+        if not ax_layout.get_visible():
+            return
         ax = ax_layout
         ax.clear()
         if hasattr(panels, "draw_layout"):
@@ -273,7 +274,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         ax.figure.canvas.draw_idle()
 
     # field selector as a small radio list
-    if ax_field is not None:
+    if ax_field is not None and ax_field.get_visible():
         pos = ax_field.get_position()
         rw = pos.width * 0.15
         rh = pos.height * 0.25
