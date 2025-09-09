@@ -12,17 +12,17 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
 from matplotlib.patches import Circle, FancyArrowPatch, PathPatch, Rectangle
 from matplotlib.path import Path
 
+from ..compute.forces import term_params_map
 from ..utils.layout_mode import is_circle_label
 from .layout_style import LayoutStyle
 from .metrics import collect_solver_metrics
-from ..compute.forces import get_probe, term_params_map
 
 # Configuration is supplied externally.  Functions accept the relevant slices of
 # the viewer configuration so that callers can merge YAML defaults beforehand.
@@ -133,6 +133,37 @@ def _as_vec2(a: Any) -> Optional[np.ndarray]:
     if arr.ndim == 2 and arr.shape[1] == 2:
         return arr
     return None
+
+
+def _active_anchor_indices(
+    labels: Sequence[Any], active_mask: Optional[Sequence[bool]]
+) -> dict[str, set[int]]:
+    """Return geometry indices referenced by active labels.
+
+    The returned mapping contains index sets for ``"point"``, ``"line"`` and
+    ``"area"`` targets.  Only labels whose ``anchor`` targets one of these
+    geometry types and are marked active in ``active_mask`` contribute to the
+    result.  ``active_mask`` may be ``None`` meaning all labels are considered
+    active.
+    """
+
+    mask = None if active_mask is None else np.asarray(active_mask, dtype=bool)
+    out: dict[str, set[int]] = {"point": set(), "line": set(), "area": set()}
+    for i, lab in enumerate(labels):
+        anchor = getattr(lab, "anchor", None)
+        if anchor is None and isinstance(lab, dict):
+            anchor = lab.get("anchor")
+        if anchor is None:
+            continue
+        target = getattr(anchor, "target", None)
+        index = getattr(anchor, "index", None)
+        if isinstance(anchor, dict):
+            target = anchor.get("target", target)
+            index = anchor.get("index", index)
+        if target in out and isinstance(index, (int, np.integer)):
+            if mask is None or (i < len(mask) and mask[i]):
+                out[target].add(int(index))
+    return out
 
 
 def _label_text(lab: Dict[str, Any], index: int) -> str:
@@ -337,6 +368,7 @@ def _draw_layout_panel(
     lines: Any = None,
     areas: Any = None,
     anchors: Optional[np.ndarray] = None,
+    active_mask: Optional[Sequence[bool]] = None,
     style: LayoutStyle,
 ) -> List[Tuple[int, plt.Artist]]:
     """Render the main layout panel.
@@ -361,22 +393,31 @@ def _draw_layout_panel(
     ax.set_yticks(np.linspace(0, frame_h, 5))
     ax.grid(style.show_grid, color=style.grid_color, lw=style.grid_lw)
 
+    mask = None if active_mask is None else np.asarray(active_mask, dtype=bool)
+    geom_refs = _active_anchor_indices(labels, mask)
+
     # --- background geometry -------------------------------------------------
 
     pts = _as_vec2(points)
-    if pts is not None:
-        ax.scatter(
-            pts[:, 0],
-            pts[:, 1],
-            marker="x",
-            c=style.points_color,
-            s=style.point_size,
-            zorder=1,
-            linewidths=style.line_width,
-        )
+    if pts is not None and geom_refs["point"]:
+        idx = [i for i in sorted(geom_refs["point"]) if 0 <= i < len(pts)]
+        if idx:
+            arr = pts[idx]
+            ax.scatter(
+                arr[:, 0],
+                arr[:, 1],
+                marker="x",
+                c=style.points_color,
+                s=style.point_size,
+                zorder=1,
+                linewidths=style.line_width,
+            )
 
-    if isinstance(lines, (list, tuple)):
-        for pl in lines:
+    if isinstance(lines, (list, tuple)) and geom_refs["line"]:
+        keep = geom_refs["line"]
+        for i, pl in enumerate(lines):
+            if i not in keep:
+                continue
             arr = _as_vec2(pl)
             if arr is not None:
                 ax.plot(
@@ -387,8 +428,11 @@ def _draw_layout_panel(
                     zorder=0,
                 )
 
-    if isinstance(areas, (list, tuple)):
-        for poly in areas:
+    if isinstance(areas, (list, tuple)) and geom_refs["area"]:
+        keep_a = geom_refs["area"]
+        for i, poly in enumerate(areas):
+            if i not in keep_a:
+                continue
             arr = _as_vec2(poly)
             if arr is not None and len(arr) >= 3:
                 path = Path(arr, closed=True)
@@ -412,6 +456,8 @@ def _draw_layout_panel(
         wh_arr = np.zeros_like(pos_arr)
 
     for i in range(min(len(labels), len(pos_arr), len(wh_arr))):
+        if mask is not None and (i >= len(mask) or not mask[i]):
+            continue
         x, y = pos_arr[i]
         w, h = wh_arr[i]
         anchor_xy = None
@@ -544,6 +590,7 @@ def draw_layout(ax: plt.Axes, *args, style: LayoutStyle, **kwargs):
         lines=lines,
         areas=areas,
         anchors=anchors,
+        active_mask=fr.active_mask,
         style=style,
     )
 
@@ -903,12 +950,12 @@ def draw_info(
 
 def draw_field(ax, view_pack, t: int, viz_cfg: dict, _draw_field_splat=None) -> None:
     """Render a force field for frame ``t`` using term probes (robust)."""
-    import numpy as np
-    from typing import List, Dict
     import logging
 
+    import numpy as np
+
     # 延迟导入：与你工程的模块路径保持一致
-    from cartoweave.compute.forces import get_probe, REGISTRY
+    from cartoweave.compute.forces import REGISTRY, get_probe
 
     log = logging.getLogger(__name__)
 

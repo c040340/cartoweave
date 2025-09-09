@@ -40,7 +40,7 @@ compute:
           rect:
             enable: true
             k_out: 0.8
-            k_in: 0.8
+            k_in: 5.8
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
@@ -48,8 +48,8 @@ compute:
         ln:
           rect:
             enable: true
-            k_out: 0.6
-            k_in: 0.6
+            k_out: 1.6
+            k_in: 5.6
             kernel: { model: inv_pow, exponent: 1.5, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
@@ -57,8 +57,8 @@ compute:
         ll:
           rect:
             enable: false
-            k_out: 0.4
-            k_in: 1.4
+            k_out: 3.4
+            k_in: 8.4
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
@@ -82,7 +82,7 @@ compute:
             outside_weight: 1.0
           embed:
             enable: true
-            k_embed: 0.8
+            k_embed: 12.0
             ratio_in: 0.9
             in_decay: 0.2
             out_decay: 0.1
@@ -94,7 +94,7 @@ compute:
         boundary:
           wall:
             enable: true
-            k_wall: 0.5
+            k_wall: 5.5
             alpha: 1.0
         focus:
           attract:
@@ -107,6 +107,6 @@ compute:
         anchor:
           spring:
             enable: true
-            k_local: 1.0
+            k_local: 12.0
             zero_dist: 45.0
             only_free: true
