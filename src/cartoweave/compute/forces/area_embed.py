@@ -39,7 +39,13 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     N = int(P.shape[0])
     modes = [get_mode(l) for l in labels]
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
-    mask = base_mask
+    active_ids = scene.get("_active_ids_solver")
+    if active_ids is None:
+        mask = base_mask
+    else:
+        active_mask = np.zeros(N, dtype=bool)
+        active_mask[np.asarray(active_ids, int)] = True
+        mask = base_mask & active_mask
     idxs = np.nonzero(mask)[0]
     WH = normalize_WH_from_labels(labels, N, "area.embed")
 

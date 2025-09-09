@@ -50,6 +50,7 @@ def energy_and_grad_full(
     sc["anchors"] = np.asarray(
         [anchor_position(labels_all[i], scene_obj, P) for i in range(len(labels_all))], dtype=float
     )
+    sc["_active_ids_solver"] = np.flatnonzero(active_mask).tolist()
 
     energy_total = 0.0
     g = np.zeros_like(P)

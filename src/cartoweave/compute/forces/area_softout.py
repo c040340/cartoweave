@@ -40,14 +40,23 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     labels = read_labels_aligned(scene, P)
     areas_all = scene.get("areas", []) or []
-    active_areas = active_element_indices(labels, "area")
-    areas = [areas_all[i] for i in sorted(active_areas) if 0 <= i < len(areas_all)]
+    N = int(P.shape[0])
+
+    active_ids = scene.get("_active_ids_solver")
+    if active_ids is None:
+        active_ids_arr = np.arange(len(labels))
+    else:
+        active_ids_arr = np.asarray(active_ids, int)
+    labels_active = [labels[i] for i in active_ids_arr if 0 <= i < len(labels)]
+    active_area_indices = sorted(active_element_indices(labels_active, "area"))
+    areas = [(idx, areas_all[idx]) for idx in active_area_indices if 0 <= idx < len(areas_all)]
     if not areas:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "area.softout"}
-    N = int(P.shape[0])
     modes = [get_mode(l) for l in labels]
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
-    mask = base_mask
+    active_mask = np.zeros(N, dtype=bool)
+    active_mask[active_ids_arr] = True
+    mask = base_mask & active_mask
     idxs = np.nonzero(mask)[0]
 
     WH = normalize_WH_from_labels(labels, N, "area.softout")
@@ -75,10 +84,9 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             continue
         hx, hy = 0.5 * w_i, 0.5 * h_i
         cx, cy = float(P[i, 0]), float(P[i, 1])
-        for ai, poly in enumerate(areas):
-            if ai == own_idx:
+        for orig_ai, poly in areas:
+            if orig_ai == own_idx:
                 continue
-            # poly = A.get("polygon", None)
             arr = poly_as_array(poly)
             if arr is None:
                 continue
@@ -128,7 +136,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             fy = fmag * (-ny_eff)
             F[i, 0] += fx
             F[i, 1] += fy
-            S[i].append((int(ai), float(fx), float(fy), float(mag)))
+            S[i].append((int(orig_ai), float(fx), float(fy), float(mag)))
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "area.softout", "area_softout": S}

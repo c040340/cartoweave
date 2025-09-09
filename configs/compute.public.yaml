@@ -39,8 +39,8 @@ compute:
         pl:
           rect:
             enable: true
-            k_out: 0.8
-            k_in: 5.8
+            k_out: 50.0
+            k_in: 300.0
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
@@ -48,8 +48,8 @@ compute:
         ln:
           rect:
             enable: true
-            k_out: 1.6
-            k_in: 5.6
+            k_out: 80.0
+            k_in: 300.0
             kernel: { model: inv_pow, exponent: 1.5, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
@@ -57,7 +57,7 @@ compute:
         ll:
           rect:
             enable: false
-            k_out: 3.4
+            k_out: 300.0
             k_in: 8.4
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
@@ -65,7 +65,7 @@ compute:
             eps: { abs: 0.001 }
           disk:
             enable: true
-            k_out: 0.4
+            k_out: 300.0
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
@@ -73,7 +73,7 @@ compute:
         area:
           cross:
             enable: true
-            k_cross: 1.0
+            k_cross: 400.0
             use_legacy_gate: false     # 旧 gate 兼容开关（默认关闭）
             min_gap: 0.5
             tan_gate: { eta: 2.0, slack: 0.0 }
@@ -82,19 +82,19 @@ compute:
             outside_weight: 1.0
           embed:
             enable: true
-            k_embed: 12.0
+            k_embed: 120.0
             ratio_in: 0.9
             in_decay: 0.2
             out_decay: 0.1
           softout:
             enable: true
-            k_push: 0.8
+            k_push: 20.0
             pad: 0.1
             y_down: 0.0
         boundary:
           wall:
             enable: true
-            k_wall: 15.0
+            k_wall: 300.0
             alpha: 1.0
         focus:
           attract:
@@ -107,6 +107,6 @@ compute:
         anchor:
           spring:
             enable: true
-            k_local: 12.0
+            k_local: 120.0
             zero_dist: 45.0
             only_free: true

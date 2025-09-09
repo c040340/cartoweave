@@ -56,8 +56,23 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
     labels = read_labels_aligned(scene, P)
+    N = int(P.shape[0])
     segs_raw = scene.get("lines") or []
-    active_lines = active_element_indices(labels, "line")
+    modes = [get_mode(l) for l in labels]
+    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
+    mask = base_mask
+
+    active_ids = scene.get("_active_ids_solver")
+    if active_ids is not None:
+        active_mask = np.zeros(N, dtype=bool)
+        active_mask[np.asarray(active_ids, dtype=int)] = True
+        mask &= active_mask
+
+    idxs = np.nonzero(mask)[0]
+    if idxs.size == 0:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
+
+    active_lines = active_element_indices([labels[i] for i in idxs], "line")
     segs_list = [segs_raw[i] for i in sorted(active_lines) if 0 <= i < len(segs_raw)]
     if not segs_list:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
@@ -65,11 +80,6 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     if segs_arr.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ln.rect"}
     segs = segs_arr.reshape((segs_arr.shape[0], 4))
-    N = int(P.shape[0])
-    modes = [get_mode(l) for l in labels]
-    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
-    mask = base_mask
-    idxs = np.nonzero(mask)[0]
     WH = normalize_WH_from_labels(labels, N, "ln.rect")
     F = np.zeros_like(P)
     E = 0.0

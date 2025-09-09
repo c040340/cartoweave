@@ -58,6 +58,13 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
     mask = base_mask & disk_mask
+
+    active_ids = scene.get("_active_ids_solver")
+    if active_ids is not None:
+        active_mask = np.zeros(N, dtype=bool)
+        active_mask[np.asarray(active_ids, dtype=int)] = True
+        mask &= active_mask
+
     idxs = np.nonzero(mask)[0]
 
     WH = normalize_WH_from_labels(labels, N, "ll.disk")

@@ -54,17 +54,27 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
 
     labels = read_labels_aligned(scene, P)
-    active_pts = active_element_indices(labels, "point")
+    N = int(P.shape[0])
+    modes = [get_mode(l) for l in labels]
+    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
+    mask = base_mask
+
+    active_ids = scene.get("_active_ids_solver")
+    if active_ids is not None:
+        active_mask = np.zeros(N, dtype=bool)
+        active_mask[np.asarray(active_ids, dtype=int)] = True
+        mask &= active_mask
+
+    idxs = np.nonzero(mask)[0]
+    if idxs.size == 0:
+        return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
+
+    active_pts = active_element_indices([labels[i] for i in idxs], "point")
     pts = [pts_all[i] for i in sorted(active_pts) if 0 <= i < len(pts_all)]
     if not pts:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
     pts = np.asarray(pts, float).reshape(-1, 2)
-    N = int(P.shape[0])
     M = pts.shape[0]
-    modes = [get_mode(l) for l in labels]
-    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
-    mask = base_mask
-    idxs = np.nonzero(mask)[0]
     WH = normalize_WH_from_labels(labels, N, "pl.rect")
 
     F = np.zeros_like(P)
