@@ -94,7 +94,7 @@ compute:
         boundary:
           wall:
             enable: true
-            k_wall: 5.5
+            k_wall: 15.0
             alpha: 1.0
         focus:
           attract:
