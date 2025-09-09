@@ -26,7 +26,10 @@ def test_pipeline_smoke():
             "compute": {
                 "public": {
                     "forces": {
-                        "anchor.spring": {"enable": True, "mode": "center", "k": 1.0}
+                        "anchor.spring": {
+                            "enable": True,
+                            "k_anchor_spring": 1.0,
+                        }
                     }
                 }
             }

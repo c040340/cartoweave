@@ -167,6 +167,13 @@ class TermParams(BaseModel):
     rect_alpha: float | None = None
     smooth_abs_eps: float | None = None
     mode_spring: str | None = None
+    k_anchor_spring: float | None = None
+    k_anchor_occlusion: float | None = None
+    anchor_spring_kind: str | None = None
+    anchor_spring_alpha: float | None = None
+    anchor_r0_points: float | None = None
+    anchor_r0_lines: float | None = None
+    eps_norm: float | None = None
 
     model_config = ConfigDict(extra="forbid")
 

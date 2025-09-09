@@ -107,9 +107,9 @@ compute:
         anchor:
           spring:
             enable: true
-            mode_spring: "sdf_smooth"
-            k_spring: 120.0
-            r0: 12.0
-            smooth_abs_eps: 1.0e-6
-            huber_delta: 0.25
-            rect_alpha: 24.0
+            k_anchor_spring: 200.0
+            k_anchor_occlusion: 300.0
+            anchor_spring_kind: "linear"
+            anchor_spring_alpha: 3.0
+            anchor_r0_points: 60.0
+            anchor_r0_lines: 60.0

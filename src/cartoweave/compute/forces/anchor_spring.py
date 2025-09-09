@@ -1,148 +1,196 @@
-"""Spring force pulling labels toward resolved anchors."""
+"""Anchor spring force for point/line labels.
+
+This implementation follows the mechanics described in the user provided
+reference: the spring acts along the direction from the anchor to the label
+centre and uses the incident distance ``s_hit`` against a target gap ``r0``.
+An additional quadratic penalty pushes labels out when the anchor has already
+penetrated the label rectangle (``s_hit < 0``).
+"""
+
 from __future__ import annotations
 
 import math
+from typing import Tuple
+
 import numpy as np
 
-from cartoweave.compute.geom_anchor_resolver import anchor_position
-from cartoweave.compute.geometry_sdf_smooth import (
-    huber_prime,
-    rect_implicit_smooth_world,
-    sdf_from_implicit,
-    smooth_abs,
-)
+from cartoweave.utils.kernels import softabs
 
-from . import register, register_probe, term_cfg
+from . import register, register_probe, term_cfg, eps_params
 from ._common import (
     read_labels_aligned,
-    get_mode,
-    get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
+    anchor_info,
     float_param,
 )
 
 
+def _anchor_xy(lab, points, lines, areas) -> Tuple[str, int, float | None, float | None]:
+    """Resolve anchor kind/index and coordinates for ``lab``."""
+
+    info = anchor_info(lab)
+    if not info:
+        return "none", -1, None, None
+
+    kind = info.get("kind")
+    try:
+        idx = int(info.get("index"))
+    except (TypeError, ValueError):
+        idx = -1
+
+    if kind == "point":
+        pts = np.asarray(points, float)
+        if 0 <= idx < len(pts):
+            ax, ay = float(pts[idx, 0]), float(pts[idx, 1])
+            return kind, idx, ax, ay
+        return kind, idx, None, None
+
+    if kind == "line":
+        if 0 <= idx < len(lines):
+            coords = np.asarray(lines[idx], float)
+            if coords.size >= 2:
+                ax = float(0.5 * (coords[0, 0] + coords[-1, 0]))
+                ay = float(0.5 * (coords[0, 1] + coords[-1, 1]))
+                return kind, idx, ax, ay
+        return kind, idx, None, None
+
+    if kind == "area":
+        if 0 <= idx < len(areas):
+            poly = np.asarray(areas[idx], float)
+            mins = poly.min(axis=0)
+            maxs = poly.max(axis=0)
+            ax = float(0.5 * (mins[0] + maxs[0]))
+            ay = float(0.5 * (mins[1] + maxs[1]))
+            return kind, idx, ax, ay
+        return kind, idx, None, None
+
+    return "none", -1, None, None
+
+
+def anchor_spring_eval(sd, r0, k, *, kind="linear", alpha=3.0):
+    """Evaluate spring energy and derivative w.r.t ``sd``.
+
+    Parameters
+    ----------
+    sd: float
+        Signed incident distance.
+    r0: float
+        Preferred clearance distance.
+    k: float
+        Spring stiffness.
+    kind: str
+        ``"linear"`` or ``"logcosh"``.
+    alpha: float
+        Parameter for ``logcosh`` model (acts as ``p0``).
+    """
+
+    x = float(sd - r0)
+    if kind == "logcosh":
+        p0 = max(1e-9, float(alpha))
+        z = x / p0
+        if abs(z) < 20.0:
+            E = k * p0 * math.log(math.cosh(z))
+        else:
+            E = k * p0 * (abs(z) - math.log(2.0))
+        dE_dsd = k * math.tanh(z)
+        return E, dE_dsd
+
+    E = 0.5 * k * x * x
+    dE_dsd = k * x
+    return E, dE_dsd
+
+
 @register("anchor.spring")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
-    """Evaluate anchor spring forces with optional ``sdf_smooth`` mode."""
+    """Evaluate anchor spring forces."""
 
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "anchor.spring"}
 
     tc = term_cfg(cfg, "anchor", "spring")
+    epss = eps_params(cfg, tc, defaults={"abs": 1e-6})
+    eps_abs = float(epss["eps_abs"])
 
-    mode_default = str(tc.get("mode_spring", "center")).lower()
-    k_default = float(tc.get("k_spring", 1.0))
-    r0_default = float(tc.get("r0", 0.0))
-    smooth_abs_eps_default = float(tc.get("smooth_abs_eps", 1e-6))
-    huber_delta_default = float(tc.get("huber_delta", 0.25))
-    rect_alpha_default = float(tc.get("rect_alpha", 24.0))
+    def _g(key: str, default):
+        val = tc.get(key, default)
+        return default if val is None else val
 
-    N = int(P.shape[0])
+    k_spr = float(_g("k_anchor_spring", 1.0))
+    k_occl = float(_g("k_anchor_occlusion", 0.0))
+    kind = str(_g("anchor_spring_kind", "linear"))
+    alpha = float(_g("anchor_spring_alpha", 3.0))
+    r0_point = float(_g("anchor_r0_points", 0.0))
+    r0_line = float(_g("anchor_r0_lines", 0.0))
+    eps_nrm = float(_g("eps_norm", 1e-9))
+
     labels = read_labels_aligned(scene, P)
-    modes = [get_mode(l) for l in labels]
-    base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
-    mask = base_mask
+    N = int(P.shape[0])
+    WH = normalize_WH_from_labels(labels, N, "anchor.spring")
 
-    anchors = np.asarray(scene.get("anchors"), float)
-    if anchors.shape != (N, 2):
-        anchors = np.asarray([anchor_position(l, scene, P) for l in labels], float)
-
-    WH = None
+    points = scene.get("points", []) or []
+    lines = scene.get("lines", []) or []
+    areas = scene.get("areas", []) or []
 
     F = np.zeros_like(P, float)
     E = 0.0
-    for i in range(N):
-        if not mask[i]:
+
+    for i, lab in enumerate(labels):
+        ak, aidx, ax, ay = _anchor_xy(lab, points, lines, areas)
+
+        if ak == "area" or ax is None:
             continue
 
-        lab = labels[i]
-        a = lab.get("anchor") if isinstance(lab, dict) else getattr(lab, "anchor", None)
+        r0 = r0_line if ak == "line" else r0_point
 
-        mode_i = mode_default
-        k_i = k_default
-        r0_i = r0_default
-        smooth_abs_eps_i = smooth_abs_eps_default
-        huber_delta_i = huber_delta_default
-        rect_alpha_i = rect_alpha_default
+        w, h = float(WH[i, 0]), float(WH[i, 1])
+        if w <= 0.0 and h <= 0.0:
+            continue
 
-        if a is not None:
-            if hasattr(a, "get"):
-                mode_i = str(a.get("mode_spring", mode_i)).lower()
-                k_i = float(a.get("k_spring", k_i))
-                r0_i = float(a.get("r0", r0_i))
-                smooth_abs_eps_i = float(a.get("smooth_abs_eps", smooth_abs_eps_i))
-                huber_delta_i = float(a.get("huber_delta", huber_delta_i))
-                rect_alpha_i = float(a.get("rect_alpha", rect_alpha_i))
+        cx, cy = float(P[i, 0]), float(P[i, 1])
+        ux = cx - ax
+        uy = cy - ay
+        r = math.hypot(ux, uy)
+        if r <= eps_nrm:
+            ext = scene.get("_ext_dir", None)
+            if ext is not None:
+                ex, ey = float(ext[i, 0]), float(ext[i, 1])
+                en = math.hypot(ex, ey)
+                if en > 1e-12:
+                    uxh, uyh = ex / en, ey / en
+                else:
+                    uxh = uyh = 0.70710678
             else:
-                mode_i = str(getattr(a, "mode_spring", mode_i)).lower()
-                k_i = float(getattr(a, "k_spring", k_i))
-                r0_i = float(getattr(a, "r0", r0_i))
-                smooth_abs_eps_i = float(getattr(a, "smooth_abs_eps", smooth_abs_eps_i))
-                huber_delta_i = float(getattr(a, "huber_delta", huber_delta_i))
-                rect_alpha_i = float(getattr(a, "rect_alpha", rect_alpha_i))
+                uxh = uyh = 0.70710678
+        else:
+            uxh, uyh = ux / r, uy / r
 
-        if k_i <= 0.0:
-            continue
+        hx, hy = 0.5 * w, 0.5 * h
+        rho = hx * softabs(uxh, eps_abs) + hy * softabs(uyh, eps_abs)
+        s_hit = r - rho
 
-        if mode_i == "center":
-            dx = float(P[i, 0] - anchors[i, 0])
-            dy = float(P[i, 1] - anchors[i, 1])
-            dist = math.hypot(dx, dy)
-            if dist <= r0_i:
-                continue
-            d = dist - r0_i
-            E += 0.5 * k_i * (d * d)
-            scale = -k_i * d / max(dist, 1e-12)
-            F[i, 0] += scale * dx
-            F[i, 1] += scale * dy
-            continue
+        E_spr, dE_dsd = anchor_spring_eval(s_hit, r0, k_spr, kind=kind, alpha=alpha)
+        fx = -(dE_dsd) * uxh
+        fy = -(dE_dsd) * uyh
+        F[i, 0] += fx
+        F[i, 1] += fy
+        E += E_spr
 
-        if mode_i == "sdf_smooth":
-            if WH is None:
-                WH = normalize_WH_from_labels(labels, N, "anchor.spring")
-            llk = get_ll_kernel(lab)
-            if llk not in ("rect", "ll.rect"):
-                raise ValueError(
-                    f"anchor.sdf_smooth: unsupported ll_kernel={llk}; only rect implemented"
-                )
-
-            C = P[i]
-            e = 0.5 * WH[i]
-            R = None
-            R_attr = lab.get("R") if isinstance(lab, dict) else getattr(lab, "R", None)
-            if R_attr is not None:
-                R = np.asarray(R_attr, float).reshape(2, 2)
-
-            A = anchors[i]
-            F_imp, gradF = rect_implicit_smooth_world(
-                A[None, :], C, e, R=R, alpha=rect_alpha_i
-            )
-            F_imp = F_imp[0]
-            gradF = gradF[0]
-            s, n = sdf_from_implicit(F_imp, gradF)
-            L = smooth_abs(s, smooth_abs_eps_i)
-            sgn = s / (L + 1e-12)
-            d = L - r0_i
-            if huber_delta_i > 0.0:
-                d_eff = huber_prime(d, huber_delta_i)
-                phi = np.sqrt(d * d + huber_delta_i * huber_delta_i)
-                E += k_i * (phi - huber_delta_i)
-            else:
-                d_eff = d
-                E += 0.5 * k_i * (d * d)
-            F_i = -k_i * d_eff * sgn * n
-            F[i] += F_i
-            continue
-
-        raise ValueError(f"anchor.spring: unknown mode={mode_i}")
+        if s_hit < 0.0 and k_occl > 0.0:
+            E += 0.5 * k_occl * (s_hit * s_hit)
+            f_occ = k_occl * (-s_hit)
+            F[i, 0] += f_occ * uxh
+            F[i, 1] += f_occ * uyh
 
     return float(E), ensure_vec2(F, N), {"term": "anchor.spring"}
 
 
 def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
-    """Sample ``anchor.spring`` field at world coordinates ``xy``."""
+    """Sample ``anchor.spring`` field at world coordinates ``xy``.
+
+    This probe uses a simplified radial spring model ignoring occlusion and
+    rectangle geometry.  It is primarily intended for visualization.
+    """
 
     xy = np.asarray(xy, dtype=float)
     if xy.ndim != 2 or xy.shape[1] != 2:
@@ -152,18 +200,18 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
     if anchors.size == 0:
         return np.zeros_like(xy, float)
 
-    k_local = float_param(params, "k_spring", 1.0)
+    k_local = float_param(params, "k_anchor_spring", 1.0)
     if k_local <= 0.0:
         return np.zeros_like(xy, float)
 
-    zero_dist = max(0.0, float_param(params, "r0", 0.0))
+    r0 = float_param(params, "anchor_r0_points", 0.0)
 
     F = np.zeros_like(xy, float)
     for ax, ay in anchors:
         dx = xy[:, 0] - float(ax)
         dy = xy[:, 1] - float(ay)
         dist = np.hypot(dx, dy)
-        d = np.maximum(dist - zero_dist, 0.0)
+        d = np.maximum(dist - r0, 0.0)
         scale = -k_local * d / np.maximum(dist, 1e-12)
         F[:, 0] += scale * dx
         F[:, 1] += scale * dy
@@ -173,4 +221,7 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
 
 
 register_probe("anchor.spring")(probe)
+
+
+__all__ = ["evaluate", "probe"]
 

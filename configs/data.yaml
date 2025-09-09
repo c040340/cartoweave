@@ -57,7 +57,7 @@ data:
                                       # random      : 随机分配到可用几何
                                       # fixed       : 标签数>几何数时重复分配第一个几何
       modes:
-        line: projected               # 线标签的锚点模式：
+        line: midpoint                # 线标签的锚点模式：
                                       # midpoint    : 取折线整体中点
                                       # centroid    : 取折线所有顶点平均
                                       # projected   : 将 P0 投影到折线上
