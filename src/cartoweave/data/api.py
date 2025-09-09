@@ -76,6 +76,10 @@ def make_solvepack_from_data_defaults(
     gen = cfg.generate
     if gen is None:  # pragma: no cover - config validation ensures non-None
         raise ValueError("generate config required")
+    if compute_cfg:
+        forces_cfg = (compute_cfg or {}).get("public", {}).get("forces", {})
+        if forces_cfg.get("area") and getattr(gen.counts, "areas", 0) == 0:
+            gen.counts.areas = 1
     rng = np.random.default_rng(gen.seed or 0)
     p0, labels0, scene0 = generate_scene(gen, rng)
 

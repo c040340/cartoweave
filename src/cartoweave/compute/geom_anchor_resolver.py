@@ -65,6 +65,11 @@ def anchor_position(
         if mode == "projected":
             if P is not None and getattr(label, "id", None) is not None:
                 ref = np.asarray(P[int(label.id)], float)
+                if not np.isfinite(ref).all():
+                    if a.xy is not None:
+                        ref = np.asarray(a.xy, float)
+                    else:
+                        ref = poly.mean(axis=0)
             elif a.xy is not None:
                 ref = np.asarray(a.xy, float)
             else:
@@ -83,6 +88,12 @@ def anchor_position(
         if mode == "nearest_edge":
             if P is not None and getattr(label, "id", None) is not None:
                 ref = np.asarray(P[int(label.id)], float)
+                if not np.isfinite(ref).all():
+                    if a.xy is not None:
+                        ref = np.asarray(a.xy, float)
+                    else:
+                        cx, cy = poly_centroid(poly)
+                        ref = np.array([cx, cy], float)
             elif a.xy is not None:
                 ref = np.asarray(a.xy, float)
             else:

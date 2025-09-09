@@ -267,10 +267,21 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
         probs /= probs.sum()
         return str(rng.choice(available, p=probs))
 
+    # ensure at least one label for each available geometry kind
+    available_kinds = [k for k in ("point", "line", "area") if pool_sizes[k] > 0]
+    label_kinds: list[str | None] = []
+    if label_count >= len(available_kinds):
+        label_kinds.extend(available_kinds)
+        for _ in range(label_count - len(label_kinds)):
+            label_kinds.append(_sample_kind())
+        rng.shuffle(label_kinds)
+    else:
+        for _ in range(label_count):
+            label_kinds.append(_sample_kind())
+
     rr_next = {"point": 0, "line": 0, "area": 0}
 
-    for i in range(label_count):
-        kind = _sample_kind()
+    for i, kind in enumerate(label_kinds):
         if kind is None:
             xy = rng.uniform([0.0, 0.0], [w, h])
             anchor = Anchor(target="free", mode="xy", xy=(float(xy[0]), float(xy[1])))
