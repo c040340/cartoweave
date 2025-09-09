@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 
 from cartoweave.contracts.solvepack import SolvePack
 
-from .events import report_to_event
+from .array_utils import expand_comps_subset, expand_subset
 from .eval import energy_and_grad_full
-from .optim.loop import LoopContext as _EngineCtx, run_iters as _run_iters
+from .events import report_to_event
+from .geom_anchor_resolver import anchor_position
+from .optim.loop import LoopContext as _EngineCtx
+from .optim.loop import run_iters as _run_iters
 from .passes import PassManager, get_pass_cfg
 from .recorder import ViewRecorder
-from .array_utils import expand_subset, expand_comps_subset
 from .sources import make_sources_from_scene
 
 logger = logging.getLogger("cartoweave.compute.solve")
@@ -216,6 +218,10 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             if not comps_prev_full and sub_comps:
                 comps_prev_full = {k: np.zeros((N, 2), float) for k in sub_comps.keys()}
             comps_full_i = expand_comps_subset(comps_prev_full, active_idx, sub_comps)
+            anchors_full_i = np.asarray(
+                [anchor_position(labels[j], scene, P_full_i) for j in range(N)],
+                float,
+            )
             g_vec = meta.get("G")
             gnorm_val = float(np.linalg.norm(g_vec)) if g_vec is not None and g_vec.size else 0.0
             ginf_val = float(np.max(np.abs(g_vec))) if g_vec is not None and g_vec.size else 0.0
@@ -245,6 +251,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
                 comps_full=comps_full_i,
                 E=meta.get("E", 0.0),
                 active_mask=active.copy(),
+                anchors=anchors_full_i,
                 meta_base=meta_i,
                 metrics=metrics_i,
                 field=None,
@@ -311,6 +318,10 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         if not comps_prev_full and sub_comps_final:
             comps_prev_full = {k: np.zeros((N, 2), float) for k in sub_comps_final.keys()}
         comps_full = expand_comps_subset(comps_prev_full, active_idx, sub_comps_final)
+        anchors_full = np.asarray(
+            [anchor_position(labels[j], scene, P_full) for j in range(N)],
+            float,
+        )
 
         iters = int(metrics.get("iters", len(reports)))
         need_final = cap_final and (_last_iter_recorded != (iters - 1))
@@ -326,6 +337,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
                 comps_full=comps_full,
                 E=metrics.get("E", 0.0),
                 active_mask=active.copy(),
+                 anchors=anchors_full,
                 meta_base=meta_final,
                 metrics=metrics_all_final,
                 field=None,

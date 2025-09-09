@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
-from typing import TypedDict, NotRequired
+from typing import Any, Dict, List, NotRequired, Optional, Tuple, TypedDict
 
 import numpy as np
 
@@ -27,6 +26,7 @@ class VPFrame:
     meta: Dict[str, Any]
     metrics: Dict[str, float] = field(default_factory=dict)
     field: Optional[np.ndarray] = None
+    anchors: Optional[np.ndarray] = None
 
     def validate(self, N: int) -> None:
         if self.P.shape != (N, 2):
@@ -95,6 +95,17 @@ class VPFrame:
 
         if not np.isfinite(self.E):
             raise ValueError(f"frame t={self.t}: E must be finite")
+
+        if self.anchors is not None:
+            anc = np.asarray(self.anchors, dtype=float)
+            if anc.shape != (N, 2):
+                raise ValueError(
+                    f"frame t={self.t}: anchors shape {anc.shape} != ({N},2)"
+                )
+            if not np.isfinite(anc).all():
+                raise ValueError(
+                    f"frame t={self.t}: anchors contain non-finite values"
+                )
 
         if "G_snapshot" in meta:
             G_snap = np.asarray(meta["G_snapshot"], dtype=float)

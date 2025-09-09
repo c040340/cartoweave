@@ -1,12 +1,13 @@
 import os
+
 os.environ["MPLBACKEND"] = "Agg"  # pragma: no cover
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
-from cartoweave.viz.panels import draw_field
-from cartoweave.contracts.viewpack_v1 import ViewPack, VPFrame, VPPass, VPSources
 from cartoweave.compute.forces import get_probe
+from cartoweave.contracts.viewpack_v1 import ViewPack, VPFrame, VPPass, VPSources
+from cartoweave.viz.panels import draw_field
 
 
 def _make_viewpack(P, comps, compute_cfg):
@@ -20,6 +21,7 @@ def _make_viewpack(P, comps, compute_cfg):
         meta={"global_iter": 0, "active_ids": list(range(N)), "active_count": N, "events": [{}]},
         metrics={},
         field=None,
+        anchors=np.zeros((N, 2)),
     )
     vp = ViewPack(
         schema_version="viewpack-v1",

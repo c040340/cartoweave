@@ -113,7 +113,7 @@ class Recorder:
                 )
             )
         last = self.frames[-1]
-        from .forces import term_params_map, enabled_terms
+        from .forces import enabled_terms, term_params_map
 
         compute_cfg = self.pm.cfg if isinstance(self.pm.cfg, dict) else {}
         pmap = term_params_map(compute_cfg)
@@ -201,6 +201,7 @@ class ViewRecorder:
         comps_full: Dict[str, np.ndarray],
         E: float,
         active_mask: np.ndarray,
+        anchors: Optional[np.ndarray],
         meta_base: Dict[str, Any],
         metrics: Dict[str, float],
         field: Optional[np.ndarray],
@@ -260,6 +261,15 @@ class ViewRecorder:
         if G_snapshot is not None:
             meta["G_snapshot"] = np.asarray(G_snapshot, float)
 
+        anchors_arr = None
+        if anchors is not None:
+            anc = np.asarray(anchors, float)
+            if anc.shape != (self.N, 2):
+                raise ValueError(
+                    f"anchors shape {anc.shape} != ({self.N},2)"
+                )
+            anchors_arr = anc
+
         frame = VPFrame(
             t=t,
             P=P,
@@ -269,6 +279,7 @@ class ViewRecorder:
             meta=meta,
             metrics=metrics,
             field=None if field is None else np.asarray(field, float),
+            anchors=anchors_arr,
         )
         frame.validate(self.N)
         self.frames.append(frame)

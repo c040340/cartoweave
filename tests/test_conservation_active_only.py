@@ -20,5 +20,6 @@ def test_conservation_active_only():
         },
         metrics={},
         field=None,
+        anchors=np.zeros((N, 2)),
     )
     frame.validate(N)

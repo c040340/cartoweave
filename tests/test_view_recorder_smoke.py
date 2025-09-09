@@ -17,6 +17,7 @@ def test_view_recorder_builds_valid_viewpack():
         comps_full={},
         E=0.0,
         active_mask=np.array([True]),
+        anchors=np.zeros((N, 2)),
         meta_base={},
         metrics={},
         field=None,
