@@ -9,7 +9,7 @@
 compute:
   passes:
     calibration:
-      enable: true               # 是否启用自动力平衡
+      enable: false               # 是否启用自动力平衡
       clip_q: 0.995              # 剪裁分位数
       p_q: 0.95                  # 目标分位数
       clamp_min: 0.00000000001             # 缩放下限

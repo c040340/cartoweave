@@ -10,7 +10,7 @@ compute:
       mode: hybrid            # 求解器选择：lbfgsb | semi_newton | hybrid
       use_warmup: true        # 是否在正式求解前做预热（warm-up）
       # 全局日志等级：none | info | debug
-      log_level: debug
+      log_level: info
 
   passes:
     capture:
@@ -58,7 +58,7 @@ compute:
           rect:
             enable: false
             k_out: 300.0
-            k_in: 8.4
+            k_in: 800.4
             kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
@@ -99,7 +99,7 @@ compute:
         focus:
           attract:
             enable: true
-            k_attract: 1.0
+            k_attract: 20.0
             intro_times: 3
             center: [0.44, 0.39]
             wh: [0.2, 0.1]
@@ -108,5 +108,5 @@ compute:
           spring:
             enable: true
             k_local: 120.0
-            zero_dist: 45.0
+            zero_dist: 105.0
             only_free: true
