@@ -130,7 +130,7 @@ class TermParams(BaseModel):
     k_embed: float | None = None
     k_tan: float | None = None
     k_cross: float | None = None
-    k_local: float | None = None
+    k_spring: float | None = None
     k_attract: float | None = None
     intro_times: float | None = None
     kernel: Kernel | None = None
@@ -162,6 +162,11 @@ class TermParams(BaseModel):
     only_free: bool | None = None
     use_legacy_gate: bool | None = None
     mode: str | None = None
+    r0: float | None = None
+    huber_delta: float | None = None
+    rect_alpha: float | None = None
+    smooth_abs_eps: float | None = None
+    mode_spring: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 

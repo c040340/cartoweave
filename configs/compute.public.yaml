@@ -107,6 +107,9 @@ compute:
         anchor:
           spring:
             enable: true
-            k_local: 120.0
-            zero_dist: 105.0
-            only_free: true
+            mode_spring: "sdf_smooth"
+            k_spring: 120.0
+            r0: 12.0
+            smooth_abs_eps: 1.0e-6
+            huber_delta: 0.25
+            rect_alpha: 24.0

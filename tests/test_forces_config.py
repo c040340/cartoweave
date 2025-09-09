@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-import numpy as np
 
 from cartoweave.compute.eval import energy_and_grad_full
 from cartoweave.config.loader import load_compute_config
@@ -8,11 +7,11 @@ from cartoweave.compute.forces import term_params_map, enabled_terms
 
 
 def test_force_enable_toggle():
-    compute_cfg = {"public": {"forces": {"anchor": {"spring": {"enable": True, "k_local": 1.0}}}}}
+    compute_cfg = {"public": {"forces": {"anchor": {"spring": {"enable": True, "mode": "center", "k": 1.0}}}}}
     names = enabled_terms(compute_cfg, phase="pre_anchor") + enabled_terms(compute_cfg, phase="anchor")
     pmap = term_params_map(compute_cfg)
-    terms = [{"name": n, "k_local": float(pmap[n]["k_local"])} for n in names]
-    assert terms == [{"name": "anchor.spring", "k_local": 1.0}]
+    terms = [{"name": n, "k": float(pmap[n]["k"])} for n in names]
+    assert terms == [{"name": "anchor.spring", "k": 1.0}]
 
 
 def test_scaling_by_k():
@@ -20,8 +19,8 @@ def test_scaling_by_k():
     labels = ["pt"]
     P = np.array([[1.0, 1.0]], dtype=float)
     mask = np.array([True])
-    cfg1 = {"public": {"forces": {"anchor": {"spring": {"enable": True, "k_local": 1.0}}}}}
-    cfg2 = {"public": {"forces": {"anchor": {"spring": {"enable": True, "k_local": 2.0}}}}}
+    cfg1 = {"public": {"forces": {"anchor": {"spring": {"enable": True, "mode": "center", "k": 1.0}}}}}
+    cfg2 = {"public": {"forces": {"anchor": {"spring": {"enable": True, "mode": "center", "k": 2.0}}}}}
     E1, G1, _ = energy_and_grad_full(P, labels, scene, mask, cfg1)
     E2, G2, _ = energy_and_grad_full(P, labels, scene, mask, cfg2)
     assert pytest.approx(E2, rel=1e-6) == 2.0 * E1
@@ -34,10 +33,10 @@ def test_zero_force_distance():
     P = np.array([[1.0, 0.0]], dtype=float)
     mask = np.array([True])
     cfg0 = {
-        "public": {"forces": {"anchor": {"spring": {"enable": True, "k_local": 1.0, "zero_dist": 0.0}}}}
+        "public": {"forces": {"anchor": {"spring": {"enable": True, "mode": "center", "k": 1.0, "r0": 0.0}}}}
     }
     cfg1 = {
-        "public": {"forces": {"anchor": {"spring": {"enable": True, "k_local": 1.0, "zero_dist": 2.0}}}}
+        "public": {"forces": {"anchor": {"spring": {"enable": True, "mode": "center", "k": 1.0, "r0": 2.0}}}}
     }
     E0, G0, _ = energy_and_grad_full(P, labels, scene, mask, cfg0)
     E1, G1, _ = energy_and_grad_full(P, labels, scene, mask, cfg1)
