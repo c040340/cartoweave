@@ -102,9 +102,11 @@ class VPFrame:
                 raise ValueError(
                     f"frame t={self.t}: anchors shape {anc.shape} != ({N},2)"
                 )
-            if not np.isfinite(anc).all():
+            # Only enforce finiteness on active labels; inactive ones may hold NaNs
+            if not np.isfinite(anc[am]).all():
+                bad = np.where(~np.isfinite(anc[am]))[0].tolist()
                 raise ValueError(
-                    f"frame t={self.t}: anchors contain non-finite values"
+                    f"frame t={self.t}: anchors contain non-finite values at active indices {bad}"
                 )
 
         if "G_snapshot" in meta:

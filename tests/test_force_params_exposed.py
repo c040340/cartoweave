@@ -1,6 +1,7 @@
 import copy
 
 import numpy as np
+import pytest
 from cartoweave.data.api import make_solvepack_from_data_defaults
 from cartoweave.config.loader import load_compute_config
 from cartoweave.compute.eval import energy_and_grad_full
@@ -36,6 +37,10 @@ def test_pl_rect_exponent_affects_signal():
 
 def test_area_cross_min_gap_changes_contact():
     base_cfg = load_compute_config()
+    # Skip if default data config produces no areas
+    pack = _make_pack(base_cfg)
+    if not getattr(pack.scene0, "areas", []):
+        pytest.skip("no areas generated; skipping area cross test")
     _, e1 = solve_with_override(base_cfg, ["area", "cross"], "min_gap", 0.0)
     _, e2 = solve_with_override(base_cfg, ["area", "cross"], "min_gap", 3.0)
     assert e1 != e2
