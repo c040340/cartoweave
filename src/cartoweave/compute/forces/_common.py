@@ -105,7 +105,13 @@ def poly_as_array(poly) -> np.ndarray | None:
     """
 
     if isinstance(poly, dict):
-        poly = poly.get("poly")
+        # Accept both ``{"poly": arr}`` and ``{"xy": arr}`` styles.
+        # ``sources.areas`` uses ``{"kind": "poly", "xy": ...}`` while some
+        # older call sites may provide ``{"poly": ...}``.  Previously we only
+        # looked for the latter key which meant valid polygons coming from
+        # ``VPSources`` were ignored and probes returned all zeros.  Supporting
+        # both keys makes the helper robust to both schema flavours.
+        poly = poly.get("poly") if "poly" in poly else poly.get("xy")
     if poly is None:
         return None
     arr = np.asarray(poly, float)

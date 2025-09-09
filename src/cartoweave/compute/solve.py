@@ -118,7 +118,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
     pm.remove_pass("behavior")
 
     P_curr, labels, active = _init_state(pack)
-    scene = pack.scene0.model_dump()
+    scene = pack.scene0
     energy_fn = pm.wrap_energy(energy_and_grad_full)
     step_fn = pm.wrap_step(lambda p_old, p_new, metrics: p_new)
     run_iters = _build_run_iters(pack)
@@ -141,7 +141,8 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         for i, w in enumerate(wh_rows):
             WH[i] = (w if w is not None else (0.0, 0.0))
 
-    sources = make_sources_from_scene(scene)
+    scene_dict = scene.model_dump() if hasattr(scene, "model_dump") else scene
+    sources = make_sources_from_scene(scene_dict)
 
     defaults = {"compute": pack.cfg.get("compute", {})}
     aux: Dict[str, Any] = {"uid": pack.uid, "rng_seed": pack.rng_seed}

@@ -13,7 +13,7 @@ For each enabled term a force field ``F_i`` is produced. We ensure shapes are
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -22,10 +22,12 @@ from .forces import enabled_terms as _cmp_enabled, term_params_map
 from .geom_anchor_resolver import anchor_position
 
 Array2 = np.ndarray
+
+
 def energy_and_grad_full(
     P: Array2,  # noqa: N803
     labels: Any,
-    scene: dict[str, Any],
+    scene: Any,
     active_mask: np.ndarray,
     cfg: dict,
 ) -> tuple[float, Array2, dict[str, Array2]]:
@@ -33,14 +35,20 @@ def energy_and_grad_full(
     P = np.asarray(P, float)  # noqa: N806
     active_mask = np.asarray(active_mask, bool)
 
-    sc = dict(scene or {})
+    scene_obj = scene
+    if isinstance(scene, Mapping):
+        sc = dict(scene)
+    elif hasattr(scene, "model_dump"):
+        sc = scene.model_dump()  # type: ignore[assignment]
+    else:
+        sc = {}
     if labels is not None:
         sc["labels"] = labels
     else:
         sc.setdefault("labels", [])
     labels_all = sc.get("labels", [])
     sc["anchors"] = np.asarray(
-        [anchor_position(labels_all[i], sc, P) for i in range(len(labels_all))], dtype=float
+        [anchor_position(labels_all[i], scene_obj, P) for i in range(len(labels_all))], dtype=float
     )
 
     energy_total = 0.0
