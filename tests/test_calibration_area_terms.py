@@ -22,5 +22,5 @@ def test_auto_calibrate_includes_area_terms(monkeypatch):
     calib_cfg = {"enable": True}
     ctx = {}
 
-    scales = calibration.auto_calibrate_k({}, P0, cfg, calib_cfg, ctx)
+    scales, _ = calibration.auto_calibrate_k({}, P0, cfg, calib_cfg, ctx)
     assert "area.embed" in scales and scales["area.embed"] > 1.0

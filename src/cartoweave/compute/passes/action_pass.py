@@ -28,6 +28,12 @@ class ActionPass(ComputePass):
         labels = ctx.get("labels")
         active = ctx.get("active_ids")
         lbl = labels[act.id]
+        w_curr = getattr(lbl, "WH", None)
+        WH_from = tuple(w_curr) if w_curr is not None else None
+        kind_from = None
+        meta_lbl = getattr(lbl, "meta", None)
+        if isinstance(meta_lbl, dict):
+            kind_from = meta_lbl.get("mode")
         if act.type == "appear":
             active[act.id] = True
             if act.WH_to is not None:
@@ -52,11 +58,13 @@ class ActionPass(ComputePass):
                     "pass": "action",
                     "info": act.type,
                     "label_id": int(getattr(act, "id", -1)),
+                    "WH_from": WH_from,
                     "WH_to": (
                         act.WH_to.tolist()
                         if hasattr(act, "WH_to") and hasattr(act.WH_to, "tolist")
                         else getattr(act, "WH_to", None)
                     ),
+                    "kind_from": kind_from,
                     "kind_to": getattr(act, "kind_to", None),
                     "global_iter": getattr(pm, "eval_index", 0),
                 }

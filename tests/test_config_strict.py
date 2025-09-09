@@ -6,7 +6,7 @@ from cartoweave.config.loader import load_compute_config
 def test_merge_files():
     cfg = load_compute_config()
     comp = cfg["compute"]
-    assert comp["solver"]["public"]["mode"] == "hybrid"
+    assert comp["solver"]["public"]["mode"] == "lbfgsb"
     assert comp["passes"]["capture"]["every"] == 1
     assert comp["solver"]["tuning"]["lbfgsb"]["lbfgs_maxiter"] == 400
 

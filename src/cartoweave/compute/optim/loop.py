@@ -80,22 +80,29 @@ def run_iters(
         reps: List[StepReport] = []
         k = 0
 
-        def _cb(info: Dict[str, Any]):
-            nonlocal k
-            g = np.asarray(info.get("G"), float)
-            P_iter = np.asarray(info.get("P"), float)
-            E_iter = float(info.get("E", 0.0))
-            g_inf = float(np.max(np.abs(g))) if g.size else 0.0
-            x_inf = float(np.max(np.abs(P_iter))) if P_iter.size else 0.0
-            if report:
-                reps.append(StepReport(k=-1, it=k, E=E_iter, g_inf=g_inf, x_inf=x_inf))
-            if on_iter is not None:
-                comps_iter = last.get("comps", {})
-                try:
-                    on_iter(k, P_iter, {"E": E_iter, "G": g, "comps": comps_iter})
-                except Exception:
-                    pass
-            k += 1
+        def _cb_builder(mode: str):
+            def _cb(info: Dict[str, Any]):
+                nonlocal k
+                g = np.asarray(info.get("G"), float)
+                P_iter = np.asarray(info.get("P"), float)
+                E_iter = float(info.get("E", 0.0))
+                g_inf = float(np.max(np.abs(g))) if g.size else 0.0
+                x_inf = float(np.max(np.abs(P_iter))) if P_iter.size else 0.0
+                if report:
+                    reps.append(StepReport(k=-1, it=k, E=E_iter, g_inf=g_inf, x_inf=x_inf))
+                if on_iter is not None:
+                    comps_iter = last.get("comps", {})
+                    try:
+                        on_iter(
+                            k,
+                            P_iter,
+                            {"E": E_iter, "G": g, "comps": comps_iter, "mode": mode},
+                        )
+                    except Exception:
+                        pass
+                k += 1
+
+            return _cb
 
         sn_outer = int(ctx.params.get("sn_max_outer", 0))
         lbfgs_outer = int(ctx.params.get("lbfgs_maxiter", 0))
@@ -113,7 +120,14 @@ def run_iters(
             params_sn = dict(ctx.params)
             params_sn["sn_max_outer"] = sn_outer
             logger.info("Hybrid warmup Semi-Newton iters=%d", sn_outer)
-            res_sn = run_solver("semi_newton", P_curr, _energy, _grad, params_sn, callback=_cb)
+            res_sn = run_solver(
+                "semi_newton",
+                P_curr,
+                _energy,
+                _grad,
+                params_sn,
+                callback=_cb_builder("semi_newton"),
+            )
             logger.info(
                 "Hybrid warmup result nit=%s reason=%s",
                 res_sn.get("iters"),
@@ -124,7 +138,14 @@ def run_iters(
         params_lb = dict(ctx.params)
         params_lb["lbfgs_maxiter"] = lbfgs_outer
         logger.info("Hybrid L-BFGS iters=%d", lbfgs_outer)
-        res_lb = run_solver("lbfgs", P_curr, _energy, _grad, params_lb, callback=_cb)
+        res_lb = run_solver(
+            "lbfgs",
+            P_curr,
+            _energy,
+            _grad,
+            params_lb,
+            callback=_cb_builder("lbfgs"),
+        )
         logger.info(
             "Hybrid L-BFGS result nit=%s reason=%s",
             res_lb.get("iters"),
@@ -138,7 +159,14 @@ def run_iters(
             logger.info(
                 "Hybrid fallback Semi-Newton iters=%d", sn_post
             )
-            res_sn2 = run_solver("semi_newton", P_curr, _energy, _grad, params_sn2, callback=_cb)
+            res_sn2 = run_solver(
+                "semi_newton",
+                P_curr,
+                _energy,
+                _grad,
+                params_sn2,
+                callback=_cb_builder("semi_newton"),
+            )
             logger.info(
                 "Hybrid fallback result nit=%s reason=%s",
                 res_sn2.get("iters"),

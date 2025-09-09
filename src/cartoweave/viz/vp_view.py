@@ -37,6 +37,71 @@ def _merge_viz_cfg(user_cfg: dict | None) -> dict:
             cfg["panels"] = m'''
     return cfg
 
+
+def format_meta(meta: dict[str, Any] | None, view_pack) -> str:
+    """Format frame metadata for the bottom-right annotation."""
+
+    if meta is None:
+        return ""
+
+    labels = getattr(view_pack, "labels", []) or []
+    events = meta.get("events") or []
+    ev_action = None
+    ev_opt = None
+    if isinstance(events, list):
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            if ev.get("pass") == "action" and ev_action is None:
+                ev_action = ev
+            if ev.get("kind") == "optimizer_step" and ev_opt is None:
+                ev_opt = ev
+
+    algo = meta.get("pass_name", "")
+    it = meta.get("frame_in_pass", "")
+    if ev_opt is not None:
+        algo = ev_opt.get("algo", algo)
+        it = ev_opt.get("iter_in_algo", it)
+    line1 = f"{algo}:{it}"
+
+    line2 = ""
+    if ev_action is not None:
+        typ = ev_action.get("info", "")
+        lid = ev_action.get("label_id")
+        if isinstance(lid, int) and 0 <= lid < len(labels):
+            name = panels._label_text(labels[lid], lid)
+        else:
+            name = str(lid)
+        if typ == "appear":
+            line2 = f"appear {name}"
+        elif typ == "disappear":
+            line2 = f"disappear {name}"
+        elif typ == "mutate":
+            parts = [f"mutate {name}"]
+            kf, kt = ev_action.get("kind_from"), ev_action.get("kind_to")
+            if kf is not None or kt is not None:
+                parts.append(f"kind {kf}->{kt}")
+            wf, wt = ev_action.get("WH_from"), ev_action.get("WH_to")
+            if wf is not None or wt is not None:
+                parts.append(f"WH {wf}->{wt}")
+            line2 = " ".join(parts)
+        else:
+            p = ev_action.get("pass") or ev_action.get("kind") or ""
+            info = ev_action.get("info") or ""
+            line2 = f"{p} {info}".strip()
+    elif ev_opt is not None:
+        algo2 = ev_opt.get("algo", "")
+        it2 = ev_opt.get("iter_in_algo", "")
+        line2 = f"{algo2} iter {it2}"
+    elif isinstance(events, list) and events:
+        ev = events[-1]
+        if isinstance(ev, dict):
+            p = ev.get("pass") or ev.get("kind") or ""
+            info = ev.get("info") or ""
+            line2 = f"{p} {info}".strip()
+
+    return f"{line1}\n{line2}".rstrip()
+
 @dataclass
 class ViewAxes:
     fig: plt.Figure
@@ -153,30 +218,6 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         state["field_terms"] = terms_list
         state["field_idx"] = 0
 
-    def _format_meta(meta: dict[str, Any] | None) -> str:
-        if meta is None:
-            return ""
-        line1 = f"{meta.get('pass_name', '')}:{meta.get('frame_in_pass', '')}"
-        events = meta.get("events") or []
-        line2 = ""
-        if isinstance(events, list) and events:
-            # Prefer displaying the optimizer_step event if present; fall back to the last one.
-            ev_opt = None
-            for ev in reversed(events):
-                if isinstance(ev, dict) and ev.get("kind") == "optimizer_step":
-                    ev_opt = ev
-                    break
-            ev = ev_opt if ev_opt is not None else events[-1]
-            if isinstance(ev, dict):
-                if ev.get("kind") == "optimizer_step":
-                    algo = ev.get("algo", "")
-                    it = ev.get("iter_in_algo", "")
-                    line2 = f"{algo} iter {it}"
-                else:
-                    p = ev.get("pass") or ev.get("kind") or ""
-                    info = ev.get("info") or ""
-                    line2 = f"{p} {info}".strip()
-        return f"{line1}\n{line2}".rstrip()
 
     def redraw_layout(t: int):
         if not ax_layout.get_visible():
@@ -311,7 +352,7 @@ def show_vp(view_pack, viz_cfg: dict | None = None):
         redraw_info(t_new)
         redraw_field(t_new)
         fr = frames[t_new]
-        meta_text.set_text(_format_meta(getattr(fr, "meta", None)))
+        meta_text.set_text(format_meta(getattr(fr, "meta", None), view_pack))
         if sync_slider:
             try:
                 slider_action.set_val(p_idx)

@@ -7,7 +7,7 @@
 compute:
   solver:
     public:
-      mode: lbfgsb            # 求解器选择：lbfgsb | semi_newton | hybrid
+      mode: hybrid            # 求解器选择：lbfgsb | semi_newton | hybrid
       use_warmup: true        # 是否在正式求解前做预热（warm-up）
       # 全局日志等级：none | info | debug
       log_level: debug
