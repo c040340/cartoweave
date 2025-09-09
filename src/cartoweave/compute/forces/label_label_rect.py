@@ -31,10 +31,20 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     labels = read_labels_aligned(scene, P)
     modes = [get_mode(l) for l in labels]
-    llk = [get_ll_kernel(l) for l in labels]
+
+    # When the disk kernel is disabled we want all labels to participate in the
+    # rectangle force irrespective of their declared ``ll_kernel``.  If both
+    # kernels are enabled, respect the per‑label selection so that the two
+    # implementations can coexist.
+    disk_cfg = term_cfg(cfg, "ll", "disk")
+    disk_enabled = bool(disk_cfg.get("enable", False))
+    if disk_enabled:
+        llk = [get_ll_kernel(l) for l in labels]
+        rect_mask = np.array([(k or "") == "rect" for k in llk], dtype=bool)
+    else:
+        rect_mask = np.ones(N, dtype=bool)
 
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
-    rect_mask = np.array([(k or "") == "rect" for k in llk], dtype=bool)
     mask = base_mask & rect_mask
     idxs = np.nonzero(mask)[0]
 

@@ -43,10 +43,20 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     labels = read_labels_aligned(scene, P)
     modes = [get_mode(l) for l in labels]
-    llk = [get_ll_kernel(l) for l in labels]
+
+    # If the rectangle kernel is disabled, treat all non-circle labels as disks
+    # regardless of their ``ll_kernel`` attribute.  This mirrors the behaviour
+    # where a single implementation is selected globally via YAML and avoids
+    # missing forces when labels default to ``ll_kernel='rect'``.
+    rect_cfg = term_cfg(cfg, "ll", "rect")
+    rect_enabled = bool(rect_cfg.get("enable", False))
+    if rect_enabled:
+        llk = [get_ll_kernel(l) for l in labels]
+        disk_mask = np.array([(k or "") == "disk" for k in llk], dtype=bool)
+    else:
+        disk_mask = np.ones(N, dtype=bool)
 
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
-    disk_mask = np.array([(k or "") == "disk" for k in llk], dtype=bool)
     mask = base_mask & disk_mask
     idxs = np.nonzero(mask)[0]
 
