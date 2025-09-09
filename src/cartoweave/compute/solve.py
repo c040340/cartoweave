@@ -225,12 +225,13 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             g_vec = meta.get("G")
             gnorm_val = float(np.linalg.norm(g_vec)) if g_vec is not None and g_vec.size else 0.0
             ginf_val = float(np.max(np.abs(g_vec))) if g_vec is not None and g_vec.size else 0.0
+            algo_name = meta.get("mode") or pass_name
             meta_i: Dict[str, Any] = {
                 "schema_version": "compute-v2",
                 "status": "ok",
                 "events": pm.pop_events(),
                 "optimizer_step": {
-                    "algo": pass_name,
+                    "algo": algo_name,
                     "iter_in_algo": it,
                     "step_size": meta.get("step_size"),
                     "ls_evals": meta.get("ls_evals"),
@@ -242,7 +243,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             }
             # ensure viz contract: pass_id, pass_name, frame_in_pass
             meta_i.setdefault("pass_id", pass_id)  # viz contract
-            meta_i.setdefault("pass_name", pass_name)  # viz contract
+            meta_i.setdefault("pass_name", algo_name)  # viz contract
             meta_i.setdefault("frame_in_pass", it)  # iteration index for viz
             metrics_i = {"E": float(meta.get("E", 0.0)), "gnorm": gnorm_val, "g_inf": ginf_val}
             recorder.record_frame(
@@ -307,8 +308,9 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             "events": pm.pop_events(),
         }
         # ensure viz contract: pass_id, pass_name, frame_in_pass
+        algo_name = metrics.get("mode", pass_name)
         meta_base.setdefault("pass_id", pass_id)  # viz contract
-        meta_base.setdefault("pass_name", pass_name)  # viz contract
+        meta_base.setdefault("pass_name", algo_name)  # viz contract
         meta_base.setdefault("frame_in_pass", "final")  # final marker by default for viz
         if event is not None:
             meta_base["optimizer_step"] = event

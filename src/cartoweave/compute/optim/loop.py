@@ -92,7 +92,11 @@ def run_iters(
             if on_iter is not None:
                 comps_iter = last.get("comps", {})
                 try:
-                    on_iter(k, P_iter, {"E": E_iter, "G": g, "comps": comps_iter})
+                    on_iter(
+                        k,
+                        P_iter,
+                        {"E": E_iter, "G": g, "comps": comps_iter, "mode": ctx.mode},
+                    )
                 except Exception:
                     pass
             k += 1
@@ -150,7 +154,7 @@ def run_iters(
 
         if on_iter is not None:
             try:
-                on_iter(it, P, {"E": E, "G": g, "comps": comps})
+                on_iter(it, P, {"E": E, "G": g, "comps": comps, "mode": ctx.mode})
             except Exception:
                 pass
 
