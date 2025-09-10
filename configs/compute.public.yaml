@@ -20,10 +20,10 @@ compute:
       enable: false           # 你可按需改 true
     action:
       enable: true            # 是否执行场景 action
-    label_relax:
-      enable: true
-      step_size: 2.0         # 每步放松步长
-      step_count: 5          # 放松步数
+    # label_warmup:
+      # enable: true
+      # step_size: 2.0         # 每步放松步长
+      # step_count: 5          # 放松步数
     geom_preproc:
       enable: true
       tiny_eps: 1.0e-9
