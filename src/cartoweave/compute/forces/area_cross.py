@@ -75,7 +75,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     cap_scale = float(1.0 if tc.get("tan_cap_scale") is None else tc.get("tan_cap_scale"))
     use_lc = bool(tc.get("use_logcosh") if tc.get("use_logcosh") is not None else True)
     p0_lc = float(2.0 if tc.get("sat_p0") is None else tc.get("sat_p0"))
-    g_min_int = float(0.6 if tc.get("gate_min_interior") is None else tc.get("gate_min_interior"))
+    g_min_int = float(0.0 if tc.get("gate_min_interior") is None else tc.get("gate_min_interior"))
     eps_abs = epss["eps_abs"]
     kappa = float(8.0 if tc.get("kappa") is None else tc.get("kappa"))
     beta_smax = float(8.0 if tc.get("beta_smax") is None else tc.get("beta_smax"))

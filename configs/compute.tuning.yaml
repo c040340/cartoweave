@@ -41,7 +41,7 @@ compute:
         sn_post_max_outer: 10    # L-BFGS 异常终止后的回退步数
 
       semi_newton:
-        sn_max_outer: 30
+        sn_max_outer: 10
         sn_dt: 1.0
         sn_hvp_eps: 1.0e-3
         sn_cg_maxiter: 200

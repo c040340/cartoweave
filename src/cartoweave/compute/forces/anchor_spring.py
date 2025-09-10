@@ -16,13 +16,13 @@ import numpy as np
 
 from cartoweave.utils.kernels import softabs
 
-from . import register, register_probe, term_cfg, eps_params
+from . import eps_params, register, register_probe, term_cfg
 from ._common import (
-    read_labels_aligned,
-    normalize_WH_from_labels,
-    ensure_vec2,
     anchor_info,
+    ensure_vec2,
     float_param,
+    normalize_WH_from_labels,
+    read_labels_aligned,
 )
 
 
@@ -49,9 +49,36 @@ def _anchor_xy(lab, points, lines, areas) -> Tuple[str, int, float | None, float
     if kind == "line":
         if 0 <= idx < len(lines):
             coords = np.asarray(lines[idx], float)
-            if coords.size >= 2:
-                ax = float(0.5 * (coords[0, 0] + coords[-1, 0]))
-                ay = float(0.5 * (coords[0, 1] + coords[-1, 1]))
+            if coords.shape[0] >= 2:
+                t = info.get("t")
+                if t is None:
+                    ax = float(0.5 * (coords[0, 0] + coords[-1, 0]))
+                    ay = float(0.5 * (coords[0, 1] + coords[-1, 1]))
+                else:
+                    try:
+                        t = float(t)
+                    except (TypeError, ValueError):
+                        t = 0.0
+                    t = max(0.0, min(1.0, t))
+                    seg_vec = coords[1:] - coords[:-1]
+                    seg_len = np.hypot(seg_vec[:, 0], seg_vec[:, 1])
+                    total = float(seg_len.sum())
+                    if total <= 1e-12:
+                        ax = float(coords[0, 0])
+                        ay = float(coords[0, 1])
+                    else:
+                        d = t * total
+                        cum = np.concatenate(([0.0], np.cumsum(seg_len)))
+                        j = int(np.searchsorted(cum, d, side="right") - 1)
+                        j = max(0, min(j, len(seg_vec) - 1))
+                        L = float(seg_len[j])
+                        if L <= 1e-12:
+                            ax = float(coords[j, 0])
+                            ay = float(coords[j, 1])
+                        else:
+                            local_t = (d - cum[j]) / L
+                            ax = float(coords[j, 0] + local_t * seg_vec[j, 0])
+                            ay = float(coords[j, 1] + local_t * seg_vec[j, 1])
                 return kind, idx, ax, ay
         return kind, idx, None, None
 
@@ -174,6 +201,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             else:
                 uxh = uyh = 0.70710678
             rho = hx * softabs(uxh, eps_abs) + hy * softabs(uyh, eps_abs)
+            uxh, uyh = (ux / max(r, 1e-12), uy / max(r, 1e-12))
             ds_du = (uxh, uyh)
         else:
             uxh, uyh = ux / r, uy / r
