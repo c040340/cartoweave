@@ -1,23 +1,23 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
+
+import math
+
 import numpy as np
-from . import register, register_probe, term_cfg, kernel_params, eps_params
+
 from cartoweave.utils.kernels import (
-    softplus,
-    sigmoid,
-    softabs,
     invdist_energy,
     invdist_force_mag,
+    sigmoid,
+    softplus,
 )
-from cartoweave.utils.shape import as_nx2
+
+from . import kernel_params, register, register_probe, term_cfg
 from ._common import (
-    read_labels_aligned,
-    get_mode,
-    get_ll_kernel,
-    normalize_WH_from_labels,
+    active_element_indices,
     ensure_vec2,
     float_param,
-    active_element_indices,
+    get_mode,
+    read_labels_aligned,
 )
 
 
@@ -43,93 +43,75 @@ def _anchor(lab):
 
 
 @register("pl.rect")
-def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
+def evaluate(scene: dict, p: np.ndarray, params: dict, cfg: dict):
     tc = term_cfg(cfg, "pl", "rect")
-    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
-    eps = epss["eps_numeric"]
-    if P is None or P.size == 0:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
+    if p is None or p.size == 0:
+        return 0.0, np.zeros_like(p), {"disabled": True, "term": "pl.rect"}
     pts_all = scene.get("points") or []
     if len(pts_all) == 0:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
+        return 0.0, np.zeros_like(p), {"disabled": True, "term": "pl.rect"}
 
-    labels = read_labels_aligned(scene, P)
-    N = int(P.shape[0])
-    modes = [get_mode(l) for l in labels]
+    labels = read_labels_aligned(scene, p)
+    n = int(p.shape[0])
+    modes = [get_mode(lb) for lb in labels]
     base_mask = np.array([(m or "").lower() != "circle" for m in modes], dtype=bool)
     mask = base_mask
 
     active_ids = scene.get("_active_ids_solver")
     if active_ids is not None:
-        active_mask = np.zeros(N, dtype=bool)
+        active_mask = np.zeros(n, dtype=bool)
         active_mask[np.asarray(active_ids, dtype=int)] = True
         mask &= active_mask
 
     idxs = np.nonzero(mask)[0]
     if idxs.size == 0:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
+        return 0.0, np.zeros_like(p), {"disabled": True, "term": "pl.rect"}
 
     active_pts = active_element_indices([labels[i] for i in idxs], "point")
-    pts = [pts_all[i] for i in sorted(active_pts) if 0 <= i < len(pts_all)]
+    pt_idxs = sorted(active_pts)
+    pts = [pts_all[i] for i in pt_idxs if 0 <= i < len(pts_all)]
     if not pts:
-        return 0.0, np.zeros_like(P), {"disabled": True, "term": "pl.rect"}
+        return 0.0, np.zeros_like(p), {"disabled": True, "term": "pl.rect"}
     pts = np.asarray(pts, float).reshape(-1, 2)
-    M = pts.shape[0]
-    WH = normalize_WH_from_labels(labels, N, "pl.rect")
+    m = pts.shape[0]
 
-    F = np.zeros_like(P)
-    E = 0.0
+    force = np.zeros_like(p)
+    energy = 0.0
 
     k_out = float(0.8 if tc.get("k_out") is None else tc.get("k_out"))
-    k_in = float(0.8 if tc.get("k_in") is None else tc.get("k_in"))
     ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 1e-6})
     pwr = ker["kernel_exponent"]
     eps_d = ker["kernel_soft_eps"]
-    eps_a = epss["eps_abs"]
-
-    beta = tc.get("beta") or {}
-    beta_sep = float(6.0 if beta.get("sep") is None else beta.get("sep"))
-    beta_in = float(6.0 if beta.get("in") is None else beta.get("in"))
-    g_eps = float(1e-6 if tc.get("g_eps") is None else tc.get("g_eps"))
+    beta_cfg = tc.get("beta") or {}
+    beta_d = beta_cfg.get("dist")
+    if beta_d is None:
+        beta_d = beta_cfg.get("sep")
+    beta_d = float(6.0 if beta_d is None else beta_d)
+    eps_norm = float(1e-9 if (tc.get("eps", {}).get("norm") is None) else tc.get("eps", {}).get("norm"))
 
     for i in idxs:
         lab = labels[i]
-        w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
-        cx, cy = float(P[i, 0]), float(P[i, 1])
-        for j in range(M):
-            x, y = float(pts[j, 0]), float(pts[j, 1])
-            dx, dy = cx - x, cy - y
-            adx, ady = softabs(dx, eps_a), softabs(dy, eps_a)
-            sx = adx - 0.5 * w_i
-            sy = ady - 0.5 * h_i
+        anch = _anchor(lab)
+        cx, cy = float(p[i, 0]), float(p[i, 1])
+        for pj, pt_idx in enumerate(pt_idxs):
+            if anch and anch.get("kind") == "point" and int(anch.get("index", -1)) == int(pt_idx):
+                continue
+            px, py = float(pts[pj, 0]), float(pts[pj, 1])
+            dx, dy = cx - px, cy - py
+            r_raw = math.hypot(dx, dy)
+            if r_raw > eps_norm:
+                ux, uy = dx / r_raw, dy / r_raw
+            else:
+                ux = uy = 0.0
+            d_eff = softplus(r_raw, beta_d) + eps_d
+            sdr = sigmoid(beta_d * r_raw)
+            fmag = invdist_force_mag(d_eff, k_out, pwr) * sdr
+            force[i, 0] += fmag * ux
+            force[i, 1] += fmag * uy
+            energy += invdist_energy(d_eff, k_out, pwr)
 
-            spx = softplus(sx, beta_sep)
-            spy = softplus(sy, beta_sep)
-            g = (spx * spx + spy * spy + g_eps * g_eps) ** 0.5
-
-            if k_out > 0.0:
-                E += invdist_energy(g + eps_d, k_out, pwr)
-                dEdg = -invdist_force_mag(g + eps_d, k_out, pwr)
-                if g > 0.0:
-                    d_g_ddx = (spx / g) * sigmoid(beta_sep * sx) * (dx / (adx + eps))
-                    d_g_ddy = (spy / g) * sigmoid(beta_sep * sy) * (dy / (ady + eps))
-                    fx = -dEdg * d_g_ddx
-                    fy = -dEdg * d_g_ddy
-                else:
-                    fx = fy = 0.0
-                F[i, 0] += fx
-                F[i, 1] += fy
-
-            if k_in > 0.0:
-                vin = softplus(-sx, beta_in) + softplus(-sy, beta_in)
-                E += 0.5 * k_in * (vin * vin)
-                fx_in = -k_in * vin * (-sigmoid(-beta_in * sx)) * (dx / (adx + eps))
-                fy_in = -k_in * vin * (-sigmoid(-beta_in * sy)) * (dy / (ady + eps))
-                F[i, 0] += fx_in
-                F[i, 1] += fy_in
-
-    F = ensure_vec2(F, N)
-    return float(E), F, {"term": "pl.rect", "pl": int(N * M)}
+    force = ensure_vec2(force, n)
+    return float(energy), force, {"term": "pl.rect", "pl": int(n * m)}
 
 
 def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
@@ -144,19 +126,23 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
         return np.zeros_like(xy, float)
 
     k_out = float_param(params, "k_out", 0.8)
+    beta_d = float_param(params, "beta", 6.0)
+    eps_d = float_param(params, "eps_d", 1e-6)
     pts = np.asarray(pts, float).reshape(-1, 2)
 
     dx = xy[:, None, 0] - pts[None, :, 0]
     dy = xy[:, None, 1] - pts[None, :, 1]
-    dist_sq = dx * dx + dy * dy + 1e-9
-    dist = np.sqrt(dist_sq)
-    mag = k_out / dist_sq
-    fx = (mag * dx / dist).sum(axis=1)
-    fy = (mag * dy / dist).sum(axis=1)
-    F = np.stack([fx, fy], axis=1)
+    dist = np.sqrt(dx * dx + dy * dy)
+    d_eff = softplus(dist, beta_d) + eps_d
+    sdr = sigmoid(beta_d * dist)
+    invr = np.divide(1.0, dist, out=np.zeros_like(dist), where=dist > 0.0)
+    mag = k_out / (d_eff ** 2) * sdr
+    fx = (mag * dx * invr).sum(axis=1)
+    fy = (mag * dy * invr).sum(axis=1)
+    force = np.stack([fx, fy], axis=1)
 
-    F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
-    return F
+    force = np.nan_to_num(force, nan=0.0, posinf=0.0, neginf=0.0)
+    return force
 
 
 register_probe("pl.rect")(probe)

@@ -56,7 +56,7 @@ compute:
             eps: { abs: 0.001 }
         ll:
           rect:
-            enable: false
+            enable: true
             k_ll_repulse: 300.0
             k_ll_inside: 800.4
             ll_edge_power: 2.0
@@ -65,7 +65,7 @@ compute:
             beta_softplus_sep: 6.0
             eps: { abs: 0.001 }
           disk:
-            enable: true
+            enable: false
             k_ll_repulse: 300.0
             ll_edge_power: 2.0
             ll_edge_eps: 0.5
