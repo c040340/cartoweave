@@ -1,7 +1,8 @@
-"""
-cartoweave 顶层 API
-允许外部直接 from cartoweave import solve
-"""
-from .api import solve
+"""CartoWeave top-level API.
 
-__all__ = ["solve"]
+External users can simply ``from cartoweave import solve_layout``.
+"""
+
+from .api import solve_layout
+
+__all__ = ["solve_layout"]

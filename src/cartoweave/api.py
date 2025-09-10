@@ -10,6 +10,7 @@ import numpy as np
 
 # === 根据工程真实路径修正导入 ===
 from cartoweave.compute.solve import solve as _run_solver
+from cartoweave.labels import anchor_xy as _anchor_xy
 
 Number = Union[int, float]
 
@@ -66,7 +67,7 @@ class _Pack:
 # -----------------------------------------------------------------------------
 
 
-def solve(
+def solve_layout(
     labels: Sequence[Mapping[str, Any]],
     elements: Mapping[str, Any],
     actions: Sequence[Mapping[str, Any]],
@@ -76,12 +77,15 @@ def solve(
     return_viewpack: bool = False,
     deterministic_seed: Optional[int] = 42,
 ) -> SolveResult:
+    """High level entry: ``from cartoweave import solve_layout``.
+
+    This wrapper normalises raw inputs, merges configuration profiles and
+    delegates the heavy lifting to the underlying solver.  It returns the
+    label coordinates at the **end of each action** instead of every
+    optimisation iteration.
     """
-    对外推荐入口：from cartoweave import solve
-    - 归一化输入 → 合并 YAML → 构造 SolvePack → 调用 solver → 抽取坐标轨迹
-    """
-    labels_n = _normalize_labels(labels)
-    elems_n = _normalize_elements(elements)
+    elems_n, elem_maps = _normalize_elements(elements)
+    labels_n = _normalize_labels(labels, elem_maps)
     acts_n = _normalize_actions(actions)
     _sanity_check_labels(labels_n)
 
@@ -106,14 +110,22 @@ def solve(
 
     N = len(labels_n)
     coords = _extract_coords_from_viewpack(vp, N)
-    return SolveResult(coords=coords, viewpack=(vp if return_viewpack else None),
-                       meta={"N": N, "T": int(coords.shape[0])})
+    return SolveResult(
+        coords=coords,
+        viewpack=(vp if return_viewpack else None),
+        meta={"N": N, "T": int(coords.shape[0])},
+    )
 
 
 # ---------- 归一化 / 校验 ----------
 
 
-def _normalize_labels(labels: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+def _normalize_labels(
+    labels: Sequence[Mapping[str, Any]],
+    elem_maps: Optional[Dict[str, Dict[Any, int]]] = None,
+) -> List[Dict[str, Any]]:
+    """Normalise label dictionaries and resolve element references."""
+    elem_maps = elem_maps or {}
     out: List[Dict[str, Any]] = []
     for i, lab in enumerate(labels):
         d = dict(lab)
@@ -127,18 +139,72 @@ def _normalize_labels(labels: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any
         if d["mode"] == "circle" and isinstance(d["WH"], (list, tuple)) and len(d["WH"]) == 1:
             r = float(d["WH"][0])
             d["WH"] = [r, r]
+
+        anch = d.get("anchor")
+        if isinstance(anch, Mapping):
+            k = anch.get("kind") or anch.get("target")
+            idx = anch.get("index")
+            if idx is None:
+                elem_id = anch.get("id")
+                idx = elem_maps.get(str(k), {}).get(elem_id)
+                if idx is None:
+                    raise ValueError(
+                        f"Label {d['id']} references unknown {k} id {elem_id}"
+                    )
+            d["anchor"] = {"kind": k, "index": idx}
+
+        d.setdefault("xy0", [0.0, 0.0])
+
         out.append(d)
     return out
 
 
-def _normalize_elements(elements: Mapping[str, Any]) -> Dict[str, Any]:
+def _normalize_elements(
+    elements: Mapping[str, Any]
+) -> tuple[Dict[str, Any], Dict[str, Dict[Any, int]]]:
+    """Normalise scene elements and build id→index maps."""
     e = {"points": [], "polylines": [], "polygons": []}
+    maps: Dict[str, Dict[Any, int]] = {"point": {}, "line": {}, "area": {}}
     if not elements:
-        return e
-    for k in e.keys():
-        if k in elements and elements[k]:
-            e[k] = copy.deepcopy(elements[k])
-    return e
+        return e, maps
+
+    # Points -----------------------------------------------------------------
+    pts = elements.get("points", []) or []
+    for i, item in enumerate(pts):
+        if isinstance(item, Mapping):
+            xy = item.get("xy") or item.get("xy0") or [0.0, 0.0]
+            pid = item.get("id", i)
+        else:
+            xy = item
+            pid = i
+        e["points"].append(copy.deepcopy(xy))
+        maps["point"][pid] = len(e["points"]) - 1
+
+    # Polylines ---------------------------------------------------------------
+    lines = elements.get("polylines", []) or []
+    for i, item in enumerate(lines):
+        if isinstance(item, Mapping):
+            poly = item.get("polyline") or item.get("xy") or []
+            lid = item.get("id", i)
+        else:
+            poly = item
+            lid = i
+        e["polylines"].append(copy.deepcopy(poly))
+        maps["line"][lid] = len(e["polylines"]) - 1
+
+    # Polygons ----------------------------------------------------------------
+    polys = elements.get("polygons", []) or []
+    for i, item in enumerate(polys):
+        if isinstance(item, Mapping):
+            poly = item.get("polygon") or item.get("xy") or []
+            aid = item.get("id", i)
+        else:
+            poly = item
+            aid = i
+        e["polygons"].append(copy.deepcopy(poly))
+        maps["area"][aid] = len(e["polygons"]) - 1
+
+    return e, maps
 
 
 def _normalize_actions(actions: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
@@ -222,6 +288,7 @@ def _deep_merge_dicts(a: Mapping[str, Any], b: Mapping[str, Any]) -> Dict[str, A
 
 
 def _extract_coords_from_viewpack(viewpack: Any, N: int) -> np.ndarray:
+    """Return coordinates only at the end of each action."""
     frames = getattr(viewpack, "frames", None)
     if not frames:
         coords = getattr(viewpack, "coords", None) or getattr(viewpack, "positions", None)
@@ -229,8 +296,9 @@ def _extract_coords_from_viewpack(viewpack: Any, N: int) -> np.ndarray:
             raise ValueError("ViewPack missing frames/coords")
         arr = np.asarray(coords, float)
         assert arr.ndim == 3 and arr.shape[1:] == (N, 2), f"coords shape bad: {arr.shape}"
-    series: List[np.ndarray] = []
-    for fr in frames:
+        return arr
+
+    def _frame_xy(fr):
         P = getattr(fr, "P", None)
         if P is None:
             P = getattr(fr, "labels_xy", None)
@@ -246,8 +314,20 @@ def _extract_coords_from_viewpack(viewpack: Any, N: int) -> np.ndarray:
                 Q[:m, :] = P[:m, :]
                 P = Q
             else:
-                raise AssertionError(f"Frame P shape mismatch: got {P.shape}, expect {(N,2)}")
-        series.append(P)
+                raise AssertionError(
+                    f"Frame P shape mismatch: got {P.shape}, expect {(N,2)}"
+                )
+        return P
+
+    series: List[np.ndarray] = []
+    passes = getattr(viewpack, "passes", None)
+    if passes:
+        for p in passes:
+            fr = frames[p.t_end - 1]
+            series.append(_frame_xy(fr))
+    else:
+        for fr in frames:
+            series.append(_frame_xy(fr))
     return np.stack(series, axis=0)
 
 
@@ -275,14 +355,26 @@ def _build_pack_from_data(scene: Dict[str, Any], plan: Dict[str, Any], cfg: Dict
     labels: List[_Label] = []
     P0: List[Sequence[Number]] = []
     for i, d in enumerate(labels_raw):
+        anch = d.get("anchor") or {}
+        if "kind" in anch and "index" in anch:
+            k = anch.get("kind")
+            idx = int(anch.get("index"))
+            ax, ay, _meta = _anchor_xy(
+                k, idx, scene, scene.get("frame_size", (0.0, 0.0)), with_meta=True
+            )
+            xy0 = tuple(map(float, d.get("xy0", (ax, ay))))
+            anchor_info = {"kind": k, "index": idx, "xy": (ax, ay)}
+        else:
+            xy0 = tuple(map(float, d.get("xy0", (0.0, 0.0))))
+            anchor_info = {"xy": xy0}
         lbl = _Label(
             id=int(d.get("id", i)),
             WH=tuple(map(float, d["WH"])),
-            anchor={"xy": tuple(map(float, d.get("xy0", (0.0, 0.0))))},
+            anchor=anchor_info,
             meta={"mode": d.get("mode", "rect")},
         )
         labels.append(lbl)
-        P0.append(tuple(map(float, d.get("xy0", (0.0, 0.0)))))
+        P0.append(xy0)
 
     acts_in = plan.get("actions", []) or []
     actions: List[_Action] = []
@@ -341,3 +433,6 @@ def _derive_active0_from_actions(L, actions, t0=0.0, eps=1e-9):
             else:
                 active0[i] = True
     return active0
+
+
+__all__ = ["solve_layout", "SolveResult"]

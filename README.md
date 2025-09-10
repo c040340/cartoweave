@@ -26,20 +26,28 @@ pip install -e .
 
 ## Quick start
 
+The result contains coordinates for the last frame of each action only.
+
 ```python
-from cartoweave.data.api import build_solvepack_from_config
-from cartoweave.compute.solve import solve
+from cartoweave import solve_layout
+
+labels = [
+    {"id": 0, "WH": [80, 24], "anchor": {"kind": "point", "id": 0}},
+]
+elements = {"points": [{"id": 0, "xy": [100.0, 200.0]}]}
+actions = [{"t": 0, "op": "activate", "target": "label", "ids": "all"}]
 
 cfg = {
-    "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},
     "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}}},
 }
-sp = build_solvepack_from_config(cfg, seed=0)
-view = solve(sp)
-print(view.last.P)
+res = solve_layout(labels, elements, actions, config_profile=cfg)
+print(res.coords[-1])  # final coordinates after the action
 ```
 
 Run `python examples/minimal_solve.py` for a small working demo.
+
+Each element (point, polyline or polygon) should provide an ``id`` so that
+labels can reference it via their ``anchor`` field.
 
 ## Data API
 
@@ -158,21 +166,28 @@ pip install -e .
 
 ## 快速上手
 
+返回结果仅包含每个动作最终一步的坐标。
+
 ```python
-from cartoweave.data.api import build_solvepack_from_config
-from cartoweave.compute.solve import solve
+from cartoweave import solve_layout
+
+labels = [
+    {"id": 0, "WH": [80, 24], "anchor": {"kind": "point", "id": 0}},
+]
+elements = {"points": [{"id": 0, "xy": [100.0, 200.0]}]}
+actions = [{"t": 0, "op": "activate", "target": "label", "ids": "all"}]
 
 cfg = {
-    "data": {"generate": {"frame_size": (1920, 1080), "num_labels": 1}},
     "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}}},
 }
-sp = build_solvepack_from_config(cfg, seed=0)
-view = solve(sp)
-print(view.last.P)
+res = solve_layout(labels, elements, actions, config_profile=cfg)
+print(res.coords[-1])
 ```
 
 运行 `python examples/minimal_solve.py` 可以看到一个最小示例；如果将
 ``viz.show`` 设为 ``True``，还能体验交互式查看器。
+
+每个场景元素（点、线、面）需提供 ``id``，并由标注通过 ``anchor`` 字段关联。
 
 ## 示例
 

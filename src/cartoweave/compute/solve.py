@@ -224,7 +224,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             (pack.cfg.get("compute", {}).get("capture", {}) if hasattr(pack, "cfg") else {})
             or {}
         )
-        pre_capture_enabled = bool(cap_cfg2.get("pre_solver_capture", True))
+        pre_capture_enabled = bool(cap_cfg2.get("pre_solver_capture", False))
         if pre_capture_enabled:
             if cap_limit is None or len(recorder.frames) < cap_limit:
                 P_full_pre = expand_subset(P_prev_full, active_idx, P_curr[active_idx])

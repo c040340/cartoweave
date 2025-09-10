@@ -1,15 +1,20 @@
 import numpy as np
-from cartoweave import solve
+from cartoweave import solve_layout
 
 def test_solve_returns_coords_shape():
     labels = [
-        {"id": 0, "xy0": [100.0, 200.0], "WH": [80.0, 24.0], "mode": "rect"},
+        {
+            "id": 0,
+            "WH": [80.0, 24.0],
+            "mode": "rect",
+            "anchor": {"kind": "point", "id": 0},
+        },
         {"id": 1, "xy0": [220.0, 210.0], "WH": [60.0, 20.0], "mode": "rect"},
     ]
-    elements = {"points": [], "polylines": [], "polygons": []}
+    elements = {"points": [{"id": 0, "xy": [100.0, 200.0]}], "polylines": [], "polygons": []}
     actions = [{"t": 0, "op": "activate", "target": "label", "ids": "all"}]
 
-    res = solve(
+    res = solve_layout(
         labels=labels,
         elements=elements,
         actions=actions,

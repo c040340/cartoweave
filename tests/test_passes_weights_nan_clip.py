@@ -12,6 +12,7 @@ def test_pass_stats():
             "capture": {"every": 1},
         }
     }
+    compute_cfg["capture"] = {"pre_solver_capture": True}
     sp = make_solvepack_from_data_defaults(compute_cfg=compute_cfg)
     vp = solve(sp)
     events = [
