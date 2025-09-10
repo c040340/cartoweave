@@ -96,7 +96,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     for i in idxs:
         w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
-        if w_i <= 0.0 and h_i <= 0.0:
+        if w_i <= 0.0 or h_i <= 0.0:
             continue
         cx, cy = float(P[i, 0]), float(P[i, 1])
         hx, hy = 0.5 * w_i, 0.5 * h_i

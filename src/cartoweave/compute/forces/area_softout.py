@@ -80,7 +80,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
         a = anchor_info(lab)
         own_idx = int(a["index"]) if a and a["kind"] == "area" and a["index"] is not None else -1
-        if w_i <= 0.0 and h_i <= 0.0:
+        if w_i <= 0.0 or h_i <= 0.0:
             continue
         hx, hy = 0.5 * w_i, 0.5 * h_i
         cx, cy = float(P[i, 0]), float(P[i, 1])

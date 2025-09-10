@@ -88,6 +88,10 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             hx = 0.5 * (wa + wb)
             hy = 0.5 * (ha + hb)
 
+            rc = math.sqrt(dx * dx + dy * dy + inv_beta_dir * inv_beta_dir)
+            ux = dx / rc
+            uy = dy / rc
+
             ax = softabs(dx, inv_beta_dir) - hx
             ay = softabs(dy, inv_beta_dir) - hy
 
@@ -118,9 +122,10 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
             dd_ddx = dd_dpx * dpx_dax * dabsx
             dd_ddy = dd_dpy * dpy_day * dabsy
-
-            fx_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddx
-            fy_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddy
+            dd_drc = dd_ddx * ux + dd_ddy * uy
+            f_out_mag = invdist_force_mag(d_eff, k_out, pwr) * dd_drc
+            fx_out = f_out_mag * ux
+            fy_out = f_out_mag * uy
 
             if m_in > 0.0:
                 dm_dmx = mx / m_in
@@ -138,8 +143,12 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             dmy_day = dny_day * gy + ny * dgy_day
             day_ddy = dabsy
 
-            fx_in = -k_in * m_in * dm_dmx * dmx_dax * dax_ddx
-            fy_in = -k_in * m_in * dm_dmy * dmy_day * day_ddy
+            dm_ddx = dm_dmx * dmx_dax * dax_ddx
+            dm_ddy = dm_dmy * dmy_day * day_ddy
+            dm_drc = dm_ddx * ux + dm_ddy * uy
+            f_in_mag = -k_in * m_in * dm_drc
+            fx_in = f_in_mag * ux
+            fy_in = f_in_mag * uy
 
             fx = fx_out + fx_in
             fy = fy_out + fy_in
@@ -177,6 +186,10 @@ def _pairwise_force_rect(src_xy: np.ndarray, src_wh: np.ndarray, xy: np.ndarray,
     hx = 0.5 * src_wh[0]
     hy = 0.5 * src_wh[1]
 
+    rc = np.sqrt(dx * dx + dy * dy + inv_beta_dir * inv_beta_dir)
+    ux = dx / rc
+    uy = dy / rc
+
     ax = np.sqrt(dx * dx + inv_beta_dir * inv_beta_dir) - hx
     ay = np.sqrt(dy * dy + inv_beta_dir * inv_beta_dir) - hy
 
@@ -205,9 +218,10 @@ def _pairwise_force_rect(src_xy: np.ndarray, src_wh: np.ndarray, xy: np.ndarray,
 
     dd_ddx = dd_dpx * dpx_dax * dabsx
     dd_ddy = dd_dpy * dpy_day * dabsy
-
-    fx_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddx
-    fy_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddy
+    dd_drc = dd_ddx * ux + dd_ddy * uy
+    f_out_mag = invdist_force_mag(d_eff, k_out, pwr) * dd_drc
+    fx_out = f_out_mag * ux
+    fy_out = f_out_mag * uy
 
     dm_dmx = np.zeros_like(mx)
     dm_dmy = np.zeros_like(my)
@@ -225,8 +239,12 @@ def _pairwise_force_rect(src_xy: np.ndarray, src_wh: np.ndarray, xy: np.ndarray,
     dmy_day = dny_day * gy + ny * dgy_day
     day_ddy = dabsy
 
-    fx_in = -k_in * m_in * dm_dmx * dmx_dax * dax_ddx
-    fy_in = -k_in * m_in * dm_dmy * dmy_day * day_ddy
+    dm_ddx = dm_dmx * dmx_dax * dax_ddx
+    dm_ddy = dm_dmy * dmy_day * day_ddy
+    dm_drc = dm_ddx * ux + dm_ddy * uy
+    f_in_mag = -k_in * m_in * dm_drc
+    fx_in = f_in_mag * ux
+    fy_in = f_in_mag * uy
 
     fx = fx_out + fx_in
     fy = fy_out + fy_in

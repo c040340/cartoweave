@@ -78,7 +78,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         if arr is None:
             continue
         nE = arr.shape[0]
-        if w_i <= 0.0 and h_i <= 0.0:
+        if w_i <= 0.0 or h_i <= 0.0:
             continue
         hx, hy = 0.5 * w_i, 0.5 * h_i
         cx, cy = float(P[i, 0]), float(P[i, 1])
