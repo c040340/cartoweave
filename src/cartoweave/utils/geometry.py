@@ -85,6 +85,8 @@ def segment_rect_gate(
     g_min_int=0.1,   # floor when projection falls within segment
     kappa=8.0,       # how strongly 'inside-segment' lifts the floor
     beta=8.0,        # smoothmax sharpness
+    *,
+    params: dict | None = None,
 ):
     """
     Continuous gate g∈(0,1] approximating the old boolean:
@@ -99,9 +101,30 @@ def segment_rect_gate(
     w, h = float(wh[0]), float(wh[1])
 
     dx, dy = (Bx - Ax), (By - Ay)
-    L2 = dx*dx + dy*dy
-    L = math.sqrt(max(L2, 1e-12))
-    ux, uy = (dx / L, dy / L)
+    L2 = dx * dx + dy * dy
+    L = math.sqrt(L2)
+
+    params = params or {}
+    L_floor = float(params.get("L_floor", 1e-3))
+    if L < L_floor:
+        extras = dict(
+            L=L,
+            s=0.0,
+            u=0.0,
+            r_n=0.0,
+            u_cap=0.0,
+            g_tan=0.0,
+            pi_in=0.0,
+            t=0.0,
+            ux=0.0,
+            uy=0.0,
+            nx=0.0,
+            ny=0.0,
+        )
+        return 0.0, 0.0, extras
+
+    invL = 1.0 / max(L, L_floor)
+    ux, uy = (dx * invL, dy * invL)
     nx, ny = (-uy, ux)
 
     qx, qy = (Cx - Ax), (Cy - Ay)
@@ -114,20 +137,39 @@ def segment_rect_gate(
     r_n = rect_half_extent_along_dir(w, h, nx, ny)
     p_n = softplus((r_n + min_gap) - abs_s, alpha)
 
-    u_cap = cap_scale * max(w*0.5, h*0.5)
+    u_cap = cap_scale * max(w * 0.5, h * 0.5)
     g_tan = sigmoid(-(abs_u - u_cap) / max(eta, 1e-9))
 
-    t = (u / max(L, 1e-12) + 0.5)
-    abs_2t1 = softabs(2.0*t - 1.0, EPS_ABS)
+    t = (u * invL + 0.5)
+    abs_2t1 = softabs(2.0 * t - 1.0, EPS_ABS)
     bell = 1.0 - abs_2t1
     pi_in = sigmoid(kappa * bell)
 
     g_floor = g_min_int * pi_in
     g = smoothmax(g_tan, g_floor, beta=beta)
 
+    dpi_dt = pi_in * (1.0 - pi_in) * kappa * (-2.0 * (2.0 * t - 1.0) / max(abs_2t1, EPS_ABS))
+    dpi_du = dpi_dt * invL
+    deriv_clip = float(params.get("deriv_clip", 1.0e3))
+    if dpi_du > deriv_clip:
+        dpi_du = deriv_clip
+    elif dpi_du < -deriv_clip:
+        dpi_du = -deriv_clip
+
     extras = dict(
-        L=L, s=s, u=u, r_n=r_n, u_cap=u_cap, g_tan=g_tan,
-        pi_in=pi_in, t=t, ux=ux, uy=uy, nx=nx, ny=ny,
+        L=L,
+        s=s,
+        u=u,
+        r_n=r_n,
+        u_cap=u_cap,
+        g_tan=g_tan,
+        pi_in=pi_in,
+        t=t,
+        ux=ux,
+        uy=uy,
+        nx=nx,
+        ny=ny,
+        dpi_du=dpi_du,
     )
     return p_n, g, extras
 

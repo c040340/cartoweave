@@ -76,12 +76,15 @@ compute:
             enable: true                # 启用区域交叉力项
             k_cross: 400.0              # 力项权重，数值越大越不允许交叉
             min_gap: 0.5                # 区域间的最小间隔（像素）
-            eta: 2.0                    # 切向门函数平滑系数
-            alpha: 0.35                 # 法向穿透惩罚的锐度
+            eta: 4.0                    # 切向门函数平滑系数
+            alpha: 0.7                  # 法向穿透惩罚的锐度
             tan_cap_scale: 1.0          # 切向门函数强度上限缩放
-            gate_min_interior: 0.01     # 区域内部门函数的下限，避免零梯度
+            gate_min_interior: 0.0      # 区域内部门函数的下限，避免零梯度
             kappa: 8.0                  # 内部指示函数的斜率
-            beta_smax: 8.0              # 切向与内部门函数的平滑最大参数
+            beta_smax: 4.0              # 切向与内部门函数的平滑最大参数
+            L_floor: 1.0e-3             # 边长工程下限（坐标单位）
+            deriv_clip: 1.0e3           # 导数夹取阈值
+            use_legacy_gate: false      # 兼容字段，不再启用 legacy 实现
             use_logcosh: true           # 是否使用 logcosh 能量模型（否则为二次型）
             sat_p0: 2.0                 # logcosh 饱和阈值
             kernel:                     # 门函数核参数
@@ -106,11 +109,11 @@ compute:
           wall:
             enable: true
             k_wall: 300.0
-            alpha: 1.0
+            alpha: 3.0
         focus:
           attract:
             enable: true
-            k_attract: 5.0
+            k_attract: 50.0
             intro_times: 3
             center: [0.44, 0.39]
             wh: [0.2, 0.1]
@@ -120,7 +123,7 @@ compute:
             enable: true
             k_anchor_spring: 200.0
             k_anchor_occlusion: 300.0
-            anchor_spring_kind: "linear"  # logcosh | linear
+            anchor_spring_kind: "logcosh"  # logcosh | linear
             anchor_spring_alpha: 3.0
             anchor_r0_points: 60.0
             anchor_r0_lines: 60.0

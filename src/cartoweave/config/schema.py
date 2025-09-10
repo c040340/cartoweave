@@ -147,6 +147,9 @@ class TermParams(BaseModel):
     beta_smax: float | None = None
     use_logcosh: bool | None = None
     sat_p0: float | None = None
+    L_floor: float | None = None
+    deriv_clip: float | None = None
+    use_legacy_gate: bool | None = None
     outside_weight: float | None = None
     in_decay: float | None = None
     zero_dist: float | None = None
