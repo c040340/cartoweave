@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cartowave"
+name = "cartoweave"
 version = "0.1.0"
 description = "Cartographic label layout solver with YAML-configurable forces"
 readme = "README.md"
@@ -11,27 +11,5 @@ authors = [{ name = "Yuanzheng" }]
 license = { text = "MIT" }
 dependencies = ["numpy", "pyyaml"]
 
-[project.scripts]
-cartoweave = "cartoweave.cli:main"
-[project.optional-dependencies]
-test = ["pytest"]
-
-
-[tool.ruff]
-line-length = 100
-target-version = "py39"
-select = ["E","F","I","B","UP","N","S","C4"]
-ignore = ["E501"]
-
-[tool.mypy]
-python_version = "3.9"
-ignore_missing_imports = true
-strict_optional = false
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unreachable = true
-
 [tool.setuptools.packages.find]
-where = ["src"]
-include = ["cartoweave*"]
-exclude = ["archive*"]
+where = ["."]

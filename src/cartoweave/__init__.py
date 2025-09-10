@@ -1,11 +1,7 @@
-"""CartoWeave public API.
-
-The top level package only re-exports version and the SolvePack contract. The
-compute pipeline is intentionally not imported to keep module side effects
-minimal for schema tests.
 """
+cartoweave 顶层 API
+允许外部直接 from cartoweave import solve
+"""
+from .api import solve
 
-from .contracts.solvepack import SolvePack  # noqa: F401
-from .version import __version__  # noqa: F401
-
-__all__ = ["SolvePack", "__version__"]
+__all__ = ["solve"]

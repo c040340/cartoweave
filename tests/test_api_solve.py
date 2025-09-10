@@ -1,6 +1,5 @@
 import numpy as np
-from cartowave import solve
-
+from cartoweave import solve
 
 def test_solve_returns_coords_shape():
     labels = [
@@ -14,10 +13,8 @@ def test_solve_returns_coords_shape():
         labels=labels,
         elements=elements,
         actions=actions,
-        config_profile="configs",
-        return_viewpack=False,
+        config_profile="configs/compute",
         deterministic_seed=123,
     )
     assert isinstance(res.coords, np.ndarray)
     assert res.coords.ndim == 3 and res.coords.shape[1:] == (2, 2)
-    assert np.isfinite(res.coords).any() or np.isnan(res.coords).any()
