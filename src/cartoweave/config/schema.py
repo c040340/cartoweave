@@ -174,6 +174,15 @@ class TermParams(BaseModel):
     anchor_r0_points: float | None = None
     anchor_r0_lines: float | None = None
     eps_norm: float | None = None
+    k_ll_repulse: float | None = None
+    k_ll_inside: float | None = None
+    ll_edge_power: float | None = None
+    ll_edge_eps: float | None = None
+    beta_softabs_dir: float | None = Field(default=None, gt=0)
+    beta_softplus_sep: float | None = Field(default=None, gt=0)
+    ll_center_eps: float | None = Field(default=None, gt=0)
+    ll_disk_mode: str | None = None
+    source_top_k: int | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(extra="forbid")
 

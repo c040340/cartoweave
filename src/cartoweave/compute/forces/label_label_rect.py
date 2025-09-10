@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
+import math
 import numpy as np
-from . import register, register_probe, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
@@ -9,7 +10,7 @@ from cartoweave.utils.kernels import (
     invdist_energy,
     invdist_force_mag,
 )
-from cartoweave.utils.shape import as_nx2
+from cartoweave.utils.shape import as_nx2  # noqa: F401
 from ._common import (
     read_labels_aligned,
     get_mode,
@@ -24,8 +25,6 @@ from ._common import (
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     N = int(P.shape[0])
     tc = term_cfg(cfg, "ll", "rect")
-    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
-    eps = epss["eps_numeric"]
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.rect"}
 
@@ -57,82 +56,181 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     WH = normalize_WH_from_labels(labels, N, "ll.rect")
 
-    # ===== 你的原始主循环逻辑从这里继续（不变） =====
     F = np.zeros_like(P)
     E = 0.0
 
-    k_out = float(0.3 if tc.get("k_out") is None else tc.get("k_out"))
-    k_in = float(0.3 if tc.get("k_in") is None else tc.get("k_in"))
-    ker = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 1e-6})
-    pwr = ker["kernel_exponent"]
-    eps_d = ker["kernel_soft_eps"]
-    eps_n = float(1e-9 if (tc.get("eps", {}).get("norm") is None) else tc.get("eps", {}).get("norm"))
-    eps_a = epss["eps_abs"]
+    k_out = float(tc.get("k_ll_repulse", 900.0))
+    pwr = float(tc.get("ll_edge_power", 2.0))
+    eps_edge = float(tc.get("ll_edge_eps", 0.5))
+    beta_dir = float(tc.get("beta_softabs_dir", 6.0))
+    beta_sep = float(tc.get("beta_softplus_sep", 6.0))
+    v0 = math.log(2.0) / max(beta_sep, 1e-8)
+    e0 = v0 + eps_edge
+    k_in_auto = k_out / ((e0 ** pwr) * max(v0, 1e-8))
+    k_in_val = tc.get("k_ll_inside")
+    if k_in_val is None:
+        k_in_val = k_in_auto
+    k_in = float(k_in_val)
+    inv_beta_dir = 1.0 / max(beta_dir, 1e-8)
 
-    beta = tc.get("beta") or {}
-    beta_sep = float(6.0 if beta.get("sep") is None else beta.get("sep"))
-    beta_in = float(6.0 if beta.get("in") is None else beta.get("in"))
-    g_eps = float(1e-6 if tc.get("g_eps") is None else tc.get("g_eps"))
+    src = [[] for _ in range(N)]
 
     for ai in range(len(idxs)):
         a = idxs[ai]
         xa, ya = float(P[a, 0]), float(P[a, 1])
         wa, ha = float(WH[a, 0]), float(WH[a, 1])
         for bi in range(ai + 1, len(idxs)):
-            b  = idxs[bi]
+            b = idxs[bi]
             xb, yb = float(P[b, 0]), float(P[b, 1])
             wb, hb = float(WH[b, 0]), float(WH[b, 1])
 
             dx, dy = xa - xb, ya - yb
-            adx, ady = softabs(dx, eps_a), softabs(dy, eps_a)
-            sx = adx - 0.5 * (wa + wb)
-            sy = ady - 0.5 * (ha + hb)
+            hx = 0.5 * (wa + wb)
+            hy = 0.5 * (ha + hb)
 
-            spx = softplus(sx, beta_sep)
-            spy = softplus(sy, beta_sep)
-            g   = (spx * spx + spy * spy + g_eps * g_eps) ** 0.5
+            ax = softabs(dx, inv_beta_dir) - hx
+            ay = softabs(dy, inv_beta_dir) - hy
 
-            if k_out > 0.0:
-                E += invdist_energy(g + eps_d, k_out, pwr)
-                dEdg = -invdist_force_mag(g + eps_d, k_out, pwr)
-                if g > 0.0:
-                    dspx_dsx = sigmoid(beta_sep * sx)
-                    d_adx_ddx = dx / (adx + eps)
-                    d_ady_ddy = dy / (ady + eps)
-                    d_g_ddx = (spx / g) * dspx_dsx * d_adx_ddx
-                    d_g_ddy = (spy / g) * sigmoid(beta_sep * sy) * d_ady_ddy
-                    fx = -dEdg * d_g_ddx
-                    fy = -dEdg * d_g_ddy
-                else:
-                    fx = fy = 0.0
-                F[a, 0] += fx; F[a, 1] += fy
-                F[b, 0] -= fx; F[b, 1] -= fy
+            px = softplus(ax, beta_sep)
+            py = softplus(ay, beta_sep)
+            d_out = math.hypot(px, py)
+            d_eff = d_out + eps_edge
 
-            if k_in > 0.0:
-                vin = softplus(-sx, beta_in) + softplus(-sy, beta_in)
-                E += 0.5 * k_in * (vin * vin)
-                c1 = k_in * vin * (-sigmoid(-beta_in * sx)) * (dx / (adx + eps))
-                c2 = k_in * vin * (-sigmoid(-beta_in * sy)) * (dy / (ady + eps))
-                fx_in = -c1; fy_in = -c2
-                F[a, 0] += fx_in; F[a, 1] += fy_in
-                F[b, 0] -= fx_in; F[b, 1] -= fy_in
+            nx = softplus(-ax, beta_sep)
+            gx = sigmoid(-beta_sep * ax)
+            ny = softplus(-ay, beta_sep)
+            gy = sigmoid(-beta_sep * ay)
+            mx = nx * gx
+            my = ny * gy
+            m_in = math.hypot(mx, my)
 
-    M = len(idxs)
+            E += invdist_energy(d_eff, k_out, pwr) + 0.5 * k_in * (m_in * m_in)
+
+            dabsx = dx / max(math.sqrt(dx * dx + inv_beta_dir * inv_beta_dir), 1e-12)
+            dabsy = dy / max(math.sqrt(dy * dy + inv_beta_dir * inv_beta_dir), 1e-12)
+            if d_out > 0.0:
+                dd_dpx = px / d_out
+                dd_dpy = py / d_out
+            else:
+                dd_dpx = dd_dpy = 0.0
+            dpx_dax = sigmoid(beta_sep * ax)
+            dpy_day = sigmoid(beta_sep * ay)
+
+            dd_ddx = dd_dpx * dpx_dax * dabsx
+            dd_ddy = dd_dpy * dpy_day * dabsy
+
+            fx_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddx
+            fy_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddy
+
+            if m_in > 0.0:
+                dm_dmx = mx / m_in
+                dm_dmy = my / m_in
+            else:
+                dm_dmx = dm_dmy = 0.0
+
+            dnx_dax = -gx
+            dgx_dax = gx * (1.0 - gx) * (-beta_sep)
+            dmx_dax = dnx_dax * gx + nx * dgx_dax
+            dax_ddx = dabsx
+
+            dny_day = -gy
+            dgy_day = gy * (1.0 - gy) * (-beta_sep)
+            dmy_day = dny_day * gy + ny * dgy_day
+            day_ddy = dabsy
+
+            fx_in = -k_in * m_in * dm_dmx * dmx_dax * dax_ddx
+            fy_in = -k_in * m_in * dm_dmy * dmy_day * day_ddy
+
+            fx = fx_out + fx_in
+            fy = fy_out + fy_in
+
+            F[a, 0] += fx
+            F[a, 1] += fy
+            F[b, 0] -= fx
+            F[b, 1] -= fy
+
+            fmag = math.hypot(fx, fy)
+            src[a].append((int(b), float(fx), float(fy), float(fmag), float(min(d_eff, m_in + eps_edge))))
+            src[b].append((int(a), float(-fx), float(-fy), float(fmag), float(min(d_eff, m_in + eps_edge))))
+
     F = ensure_vec2(F, N)
-    return float(E), F, {"term": "ll.rect", "pairs": int(M * (M - 1) // 2)}
+    return float(E), F, {"term": "ll.rect", "ll.rect": src}
 
 
 def _pairwise_force_rect(src_xy: np.ndarray, src_wh: np.ndarray, xy: np.ndarray, params: dict) -> np.ndarray:
     """Force from a rectangular source at ``src_xy`` acting on probe points ``xy``."""
 
-    k_out = float_param(params, "k_out", 0.3)
+    k_out = float_param(params, "k_ll_repulse", 900.0)
+    pwr = float_param(params, "ll_edge_power", 2.0)
+    eps_edge = float_param(params, "ll_edge_eps", 0.5)
+    beta_dir = float_param(params, "beta_softabs_dir", 6.0)
+    beta_sep = float_param(params, "beta_softplus_sep", 6.0)
+    k_in = float_param(params, "k_ll_inside", float("nan"))
+    v0 = math.log(2.0) / max(beta_sep, 1e-8)
+    e0 = v0 + eps_edge
+    if not np.isfinite(k_in) or k_in <= 0.0:
+        k_in = k_out / ((e0 ** pwr) * max(v0, 1e-8))
+    inv_beta_dir = 1.0 / max(beta_dir, 1e-8)
+
     dx = xy[:, 0] - src_xy[0]
     dy = xy[:, 1] - src_xy[1]
-    dist_sq = dx * dx + dy * dy + 1e-6
-    dist = np.sqrt(dist_sq)
-    mag = k_out / dist_sq
-    fx = -mag * dx / dist
-    fy = -mag * dy / dist
+    hx = 0.5 * src_wh[0]
+    hy = 0.5 * src_wh[1]
+
+    ax = np.sqrt(dx * dx + inv_beta_dir * inv_beta_dir) - hx
+    ay = np.sqrt(dy * dy + inv_beta_dir * inv_beta_dir) - hy
+
+    px = softplus(ax, beta_sep)
+    py = softplus(ay, beta_sep)
+    d_out = np.hypot(px, py)
+    d_eff = d_out + eps_edge
+
+    nx = softplus(-ax, beta_sep)
+    gx = sigmoid(-beta_sep * ax)
+    ny = softplus(-ay, beta_sep)
+    gy = sigmoid(-beta_sep * ay)
+    mx = nx * gx
+    my = ny * gy
+    m_in = np.hypot(mx, my)
+
+    dabsx = dx / np.sqrt(dx * dx + inv_beta_dir * inv_beta_dir)
+    dabsy = dy / np.sqrt(dy * dy + inv_beta_dir * inv_beta_dir)
+    dd_dpx = np.zeros_like(px)
+    dd_dpy = np.zeros_like(py)
+    mask = d_out > 0.0
+    dd_dpx[mask] = px[mask] / d_out[mask]
+    dd_dpy[mask] = py[mask] / d_out[mask]
+    dpx_dax = sigmoid(beta_sep * ax)
+    dpy_day = sigmoid(beta_sep * ay)
+
+    dd_ddx = dd_dpx * dpx_dax * dabsx
+    dd_ddy = dd_dpy * dpy_day * dabsy
+
+    fx_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddx
+    fy_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddy
+
+    dm_dmx = np.zeros_like(mx)
+    dm_dmy = np.zeros_like(my)
+    mask_in = m_in > 0.0
+    dm_dmx[mask_in] = mx[mask_in] / m_in[mask_in]
+    dm_dmy[mask_in] = my[mask_in] / m_in[mask_in]
+
+    dnx_dax = -gx
+    dgx_dax = gx * (1.0 - gx) * (-beta_sep)
+    dmx_dax = dnx_dax * gx + nx * dgx_dax
+    dax_ddx = dabsx
+
+    dny_day = -gy
+    dgy_day = gy * (1.0 - gy) * (-beta_sep)
+    dmy_day = dny_day * gy + ny * dgy_day
+    day_ddy = dabsy
+
+    fx_in = -k_in * m_in * dm_dmx * dmx_dax * dax_ddx
+    fy_in = -k_in * m_in * dm_dmy * dmy_day * day_ddy
+
+    fx = fx_out + fx_in
+    fy = fy_out + fy_in
+
     return np.stack([fx, fy], axis=1)
 
 

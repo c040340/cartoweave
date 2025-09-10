@@ -2,15 +2,14 @@
 from __future__ import annotations
 import math
 import numpy as np
-from . import register, register_probe, term_cfg, kernel_params, eps_params
+from . import register, register_probe, term_cfg
 from cartoweave.utils.kernels import (
     softplus,
     sigmoid,
     invdist_energy,
     invdist_force_mag,
 )
-from cartoweave.utils.shape import as_nx2
-from cartoweave.utils.geometry import project_point_to_segment, poly_signed_area, rect_half_extent_along_dir
+from cartoweave.utils.shape import as_nx2  # noqa: F401
 from ._common import (
     read_labels_aligned,
     get_mode,
@@ -36,8 +35,6 @@ def radius_from_wh(w: float, h: float, mode: str = "max") -> float:
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     N = int(P.shape[0])
     tc = term_cfg(cfg, "ll", "disk")
-    epss = eps_params(cfg, tc, defaults={"abs": 1e-3})
-    eps = epss["eps_numeric"]
     if P is None or P.size == 0:
         return 0.0, np.zeros_like(P), {"disabled": True, "term": "ll.disk"}
 
@@ -69,19 +66,19 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
     WH = normalize_WH_from_labels(labels, N, "ll.disk")
 
-    k_out = float(0.3 if tc.get("k_out") is None else tc.get("k_out"))
-    p = kernel_params(tc, defaults={"model": "inv_pow", "exponent": 2.0, "soft_eps": 0.5})
-    pwr = p["kernel_exponent"]
-    eps_sep = p["kernel_soft_eps"]
-    beta_dict = tc.get("beta") or {}
-    beta = float(6.0 if beta_dict.get("sep") is None else beta_dict.get("sep"))
-    k_in = float(0.0 if tc.get("k_in") is None else tc.get("k_in"))
-    radius_mode = str((tc.get("mode") or "max")).lower()
-
+    k_out = float(tc.get("k_ll_repulse", 900.0))
+    pwr = float(tc.get("ll_edge_power", 2.0))
+    eps_sep = float(tc.get("ll_edge_eps", 0.5))
+    beta = float(tc.get("beta_softplus_sep", 6.0))
+    radius_mode = str((tc.get("ll_disk_mode", "max")).lower())
     v0 = math.log(2.0) / max(beta, 1e-8)
     e0 = v0 + eps_sep
-    if k_in <= 0.0:
-        k_in = k_out / ((e0 ** pwr) * max(v0, 1e-8))
+    k_in_auto = k_out / ((e0 ** pwr) * max(v0, 1e-8))
+    k_in_val = tc.get("k_ll_inside")
+    if k_in_val is None:
+        k_in_val = k_in_auto
+    k_in = float(k_in_val)
+    eps_r = float(tc.get("ll_center_eps", 1e-3))
 
     F = np.zeros_like(P)
     E = 0.0
@@ -100,7 +97,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             xj, yj = float(P[j, 0]), float(P[j, 1])
             rj = radius_from_wh(wj, hj, radius_mode)
             dx, dy = xi - xj, yi - yj
-            rc = math.hypot(dx, dy) + eps
+            rc = math.sqrt(dx * dx + dy * dy + eps_r * eps_r)
             s = rc - (ri + rj)
             c = softplus(s, beta) + eps_sep
             v = softplus(-s, beta)
@@ -114,8 +111,9 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             F[i, 1] += fy
             F[j, 0] -= fx
             F[j, 1] -= fy
-            src[i].append((int(j), float(fx), float(fy), float(abs(fmag))))
-            src[j].append((int(i), float(-fx), float(-fy), float(abs(fmag))))
+            ftot = math.hypot(fx, fy)
+            src[i].append((int(j), float(fx), float(fy), float(ftot), float(c)))
+            src[j].append((int(i), float(-fx), float(-fy), float(ftot), float(c)))
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "ll.disk", "ll.disk": src}
@@ -127,14 +125,13 @@ def _pairwise_force_disk(src_xy: np.ndarray, src_r: float, xy: np.ndarray, param
     xy = np.asarray(xy, float)
     dx = xy[:, 0] - src_xy[0]
     dy = xy[:, 1] - src_xy[1]
-    rc = np.hypot(dx, dy) + 1e-9
+    rc = np.sqrt(dx * dx + dy * dy + float_param(params, "ll_center_eps", 1e-3) ** 2)
     s = rc - src_r
-    beta = float_param(params, "beta", 12.0)
-    ker = params.get("kernel") or {}
-    pwr = float_param(ker, "exponent", 2.0)
-    eps_sep = float_param(ker, "soft_eps", 1e-6)
-    k_out = float_param(params, "k_out", 0.3)
-    k_in = float_param(params, "k_in", float("nan"))
+    beta = float_param(params, "beta_softplus_sep", 6.0)
+    pwr = float_param(params, "ll_edge_power", 2.0)
+    eps_sep = float_param(params, "ll_edge_eps", 0.5)
+    k_out = float_param(params, "k_ll_repulse", 900.0)
+    k_in = float_param(params, "k_ll_inside", float("nan"))
     if not np.isfinite(k_in) or k_in <= 0.0:
         v0 = math.log(2.0) / max(beta, 1e-8)
         e0 = v0 + eps_sep

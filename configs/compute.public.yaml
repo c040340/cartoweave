@@ -57,18 +57,21 @@ compute:
         ll:
           rect:
             enable: false
-            k_out: 300.0
-            k_in: 800.4
-            kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-            beta: { sep: 6.0, in: 6.0 }
-            g_eps: 1.0e-6
+            k_ll_repulse: 300.0
+            k_ll_inside: 800.4
+            ll_edge_power: 2.0
+            ll_edge_eps: 0.5
+            beta_softabs_dir: 6.0
+            beta_softplus_sep: 6.0
             eps: { abs: 0.001 }
           disk:
             enable: true
-            k_out: 300.0
-            kernel: { model: inv_pow, exponent: 2.0, soft_eps: 1.0e-6 }
-            beta: { sep: 6.0, in: 6.0 }
-            g_eps: 1.0e-6
+            k_ll_repulse: 300.0
+            ll_edge_power: 2.0
+            ll_edge_eps: 0.5
+            beta_softplus_sep: 6.0
+            ll_center_eps: 0.001
+            ll_disk_mode: max
             eps: { abs: 0.001 }
         area:
           cross:
