@@ -1,8 +1,6 @@
 # compute.public.yaml (CLEANED)
 # 公开参数：创作者/高级用户常改。已移除未被实现消费的键：
 # - compute.solver.public.log_level
-# 已添加：
-# - compute.public.forces.area.cross.use_legacy_gate: false  # 为旧 gate 兼容开关；默认关闭
 
 compute:
   solver:
@@ -75,14 +73,24 @@ compute:
             eps: { abs: 0.001 }
         area:
           cross:
-            enable: true
-            k_cross: 400.0
-            use_legacy_gate: false     # 旧 gate 兼容开关（默认关闭）
-            min_gap: 0.5
-            tan_gate: { eta: 2.0, slack: 0.0 }
-            gate_min_interior: 0.0
-            tan_cap_scale: 1.0
-            outside_weight: 0.1
+            enable: true                # 启用区域交叉力项
+            k_cross: 400.0              # 力项权重，数值越大越不允许交叉
+            min_gap: 0.5                # 区域间的最小间隔（像素）
+            eta: 2.0                    # 切向门函数平滑系数
+            alpha: 0.35                 # 法向穿透惩罚的锐度
+            tan_cap_scale: 1.0          # 切向门函数强度上限缩放
+            gate_min_interior: 0.01     # 区域内部门函数的下限，避免零梯度
+            kappa: 8.0                  # 内部指示函数的斜率
+            beta_smax: 8.0              # 切向与内部门函数的平滑最大参数
+            use_logcosh: true           # 是否使用 logcosh 能量模型（否则为二次型）
+            sat_p0: 2.0                 # logcosh 饱和阈值
+            kernel:                     # 门函数核参数
+              model: logcosh           # 核模型
+              gate_gamma: 8.0          # 门函数斜率
+              exponent: 1.0            # 模型指数
+              soft_eps: 1.0e-6         # 平滑 epsilon
+            eps:                        # 数值 epsilon 设置
+              abs: 0.001               # 软绝对值 eps
           embed:
             enable: true
             k_embed: 120.0

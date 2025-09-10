@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import os
 import math
 import numpy as np
 from . import register, register_probe, term_cfg, kernel_params, eps_params
@@ -10,7 +9,6 @@ from cartoweave.utils.shape import as_nx2
 from ._common import (
     read_labels_aligned,
     get_mode,
-    get_ll_kernel,
     normalize_WH_from_labels,
     ensure_vec2,
     float_param,
@@ -19,17 +17,7 @@ from ._common import (
     active_element_indices,
 )
 
-"""Boolean AABB pre-gate replaced by continuous gate built from normal soft
-penetration and tangent sigmoid with smooth floor; parameters (min_gap, alpha,
-eta, cap_scale, g_min_int) unchanged."""
-
-
-def _legacy_aabb_gate(ax, ay, bx, by, cx, cy, w, h, pad=0.0):
-    x1, x2 = (ax, bx) if ax <= bx else (bx, ax)
-    y1, y2 = (ay, by) if ay <= by else (by, ay)
-    rx1, rx2 = cx - w * 0.5 - pad, cx + w * 0.5 + pad
-    ry1, ry2 = cy - h * 0.5 - pad, cy + h * 0.5 + pad
-    return not (x2 < rx1 or x1 > rx2 or y2 < ry1 or y1 > ry2)
+"""Rect–polygon crossing penalty with a continuous gate."""
 
 
 @register("area.cross")
@@ -84,8 +72,6 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     E = 0.0
     S = [[] for _ in range(P.shape[0])]
 
-    use_legacy_gate = bool(tc.get("use_legacy_gate", False) or os.getenv("AREA_CROSS_USE_LEGACY_GATE"))
-
     for i in idxs:
         lab = labels[i]
         w_i, h_i = float(WH[i, 0]), float(WH[i, 1])
@@ -133,13 +119,7 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                 pi_in = ex["pi_in"]
                 t = ex["t"]
                 g_floor = g_min_int * pi_in
-
-                if use_legacy_gate:
-                    hit = _legacy_aabb_gate(ax, ay, bx, by, cx, cy, w_i, h_i, pad=min_gap)
-                    g = 1.0 if hit else g_soft
-                else:
-                    hit = False
-                    g = g_soft
+                g = g_soft
 
                 abs_u = softabs(u, eps_abs)
                 abs_s = softabs(s, eps_abs)
@@ -156,19 +136,16 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                     E_k = 0.5 * k_cross * (x_gp * x_gp)
                     dEdx = k_cross * x_gp
 
-                if use_legacy_gate and hit:
-                    dgx = dgy = 0.0
-                else:
-                    coeff_u = u / max(abs_u, eps)
-                    g_tan_prime = g_tan * (1.0 - g_tan) * (-1.0 / max(eta_tan, eps)) * coeff_u
-                    abs_2t1 = softabs(2.0 * t - 1.0, eps_abs)
-                    coeff_2t1 = (2.0 * t - 1.0) / max(abs_2t1, eps)
-                    dpi_dt = pi_in * (1.0 - pi_in) * kappa * (-2.0 * coeff_2t1)
-                    dpi_du = dpi_dt * (1.0 / max(L, eps))
-                    g_floor_prime = g_min_int * dpi_du
-                    sigma = sigmoid(beta_smax * (g_tan - g_floor))
-                    dg_du = sigma * g_tan_prime + (1.0 - sigma) * g_floor_prime
-                    dgx, dgy = dg_du * tx, dg_du * ty
+                coeff_u = u / max(abs_u, eps)
+                g_tan_prime = g_tan * (1.0 - g_tan) * (-1.0 / max(eta_tan, eps)) * coeff_u
+                abs_2t1 = softabs(2.0 * t - 1.0, eps_abs)
+                coeff_2t1 = (2.0 * t - 1.0) / max(abs_2t1, eps)
+                dpi_dt = pi_in * (1.0 - pi_in) * kappa * (-2.0 * coeff_2t1)
+                dpi_du = dpi_dt * (1.0 / max(L, eps))
+                g_floor_prime = g_min_int * dpi_du
+                sigma = sigmoid(beta_smax * (g_tan - g_floor))
+                dg_du = sigma * g_tan_prime + (1.0 - sigma) * g_floor_prime
+                dgx, dgy = dg_du * tx, dg_du * ty
 
                 coeff_s = s / max(abs_s, eps)
                 sig_az = sigmoid(alpha_sp * ((ex["r_n"] + min_gap) - abs_s))

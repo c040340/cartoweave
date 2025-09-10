@@ -109,10 +109,7 @@ python -m cartoweave solve --config examples/configs/compute_min.json --scene ex
 - We keep L-BFGS strictly smooth by default:
   - `step_limit` **enabled** (default `max_step_norm: 1.5`)
   - `grad_clip` **disabled** (turn on only for debugging/stability)
-- `area.cross` now uses a **continuous gate**; to A/B with the legacy hard AABB:
-  ```yaml
-  area.cross.use_legacy_gate: false  # set true only for legacy parity runs
-  ```
+- `area.cross` now uses a **continuous gate** for smoother collision handling.
 
 ## Project layout
 
@@ -185,10 +182,7 @@ print(view.last.P)
 - 默认情况下保持 L-BFGS 完全平滑：
   - `step_limit` **启用**（默认 `max_step_norm: 1.5`）
   - `grad_clip` **禁用**（仅在调试/稳定性需要时开启）
-- `area.cross` 现在使用 **连续门函数**；如需与旧版硬 AABB 对比：
-  ```yaml
-  area.cross.use_legacy_gate: false  # 仅在旧版对比时设为 true
-  ```
+- `area.cross` 现在使用 **连续门函数**，提供更平滑的相交惩罚。
 
 ## 项目结构
 

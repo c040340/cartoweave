@@ -160,7 +160,6 @@ class TermParams(BaseModel):
     wh: List[float] | None = None
     delta: float | None = None
     only_free: bool | None = None
-    use_legacy_gate: bool | None = None
     mode: str | None = None
     r0: float | None = None
     huber_delta: float | None = None
