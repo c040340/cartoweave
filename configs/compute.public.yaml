@@ -47,7 +47,7 @@ compute:
             eps: { abs: 0.001 }
         ln:
           rect:
-            enable: true
+            enable: false
             k_out: 200.0
             k_in: 300.0
             kernel: { model: inv_pow, exponent: 2.5, soft_eps: 1.0e-6 }
@@ -56,7 +56,7 @@ compute:
             eps: { abs: 0.001 }
         ll:
           rect:
-            enable: true
+            enable: false
             k_ll_repulse: 120.0
             k_ll_inside: 400.0
             ll_edge_power: 2.0
@@ -65,7 +65,7 @@ compute:
             beta_softplus_sep: 6.0
             eps: { abs: 0.001 }
           disk:
-            enable: false
+            enable: true
             k_ll_repulse: 120.0
             ll_edge_power: 2.0
             ll_edge_eps: 0.5
@@ -90,7 +90,7 @@ compute:
             in_decay: 0.2
             out_decay: 0.1
           softout:
-            enable: true
+            enable: false
             k_push: 20.0
             pad: 0.1
             y_down: 0.0

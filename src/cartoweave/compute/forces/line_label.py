@@ -145,8 +145,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                 fmag = w_scale * invdist_force_mag(d_eff, k_line, p_exp) * sdr
                 ds_dcx = n[0] * (dqx_dcx - 1.0) + n[1] * dqy_dcx
                 ds_dcy = n[0] * dqx_dcy + n[1] * (dqy_dcy - 1.0)
-                F[i, 0] += -fmag * ds_dcx
-                F[i, 1] += -fmag * ds_dcy
+                F[i, 0] += fmag * ds_dcx
+                F[i, 1] += fmag * ds_dcy
 
     F = ensure_vec2(F, N)
     seg_count = sum(

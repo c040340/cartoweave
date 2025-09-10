@@ -122,10 +122,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
             dd_ddx = dd_dpx * dpx_dax * dabsx
             dd_ddy = dd_dpy * dpy_day * dabsy
-            dd_drc = dd_ddx * ux + dd_ddy * uy
-            f_out_mag = invdist_force_mag(d_eff, k_out, pwr) * dd_drc
-            fx_out = f_out_mag * ux
-            fy_out = f_out_mag * uy
+            fx_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddx
+            fy_out = invdist_force_mag(d_eff, k_out, pwr) * dd_ddy
 
             if m_in > 0.0:
                 dm_dmx = mx / m_in
@@ -145,10 +143,8 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
 
             dm_ddx = dm_dmx * dmx_dax * dax_ddx
             dm_ddy = dm_dmy * dmy_day * day_ddy
-            dm_drc = dm_ddx * ux + dm_ddy * uy
-            f_in_mag = -k_in * m_in * dm_drc
-            fx_in = f_in_mag * ux
-            fy_in = f_in_mag * uy
+            fx_in = -k_in * m_in * dm_ddx
+            fy_in = -k_in * m_in * dm_ddy
 
             fx = fx_out + fx_in
             fy = fy_out + fy_in
