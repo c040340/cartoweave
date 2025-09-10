@@ -1,27 +1,15 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cartoweave"
+name = "cartowave"
 version = "0.1.0"
-description = "Map label layout engine (points/lines/areas) with pluggable forces and solvers."
-authors = [{name="Ally Rover Lab"}]
-requires-python = ">=3.10"
-dependencies = [
-    "numpy>=1.24",
-    "scipy>=1.10",
-    "matplotlib>=3.7",
-    "pytest>=8.4.1",
-    "pyyaml>=6.0",
-    "pillow>=11.3.0",
-    "pluggy>=1.6.0",
-    "pydantic>=2.11.7",
-    "pytest>=8.4.2",
-
-]
+description = "Cartographic label layout solver with YAML-configurable forces"
 readme = "README.md"
-license = {text = "MIT"}
+authors = [{ name = "Yuanzheng" }]
+license = { text = "MIT" }
+dependencies = ["numpy", "pyyaml"]
 
 [project.scripts]
 cartoweave = "cartoweave.cli:main"
@@ -45,5 +33,5 @@ warn_unreachable = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["cartoweave*"]
+include = ["cartoweave*", "cartowave*"]
 exclude = ["archive*"]
