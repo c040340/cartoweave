@@ -333,7 +333,11 @@ def generate_scene(gen_cfg: DataGenerate, rng: np.random.Generator):
                 kind=label_kind,
                 anchor=anchor,
                 WH=(float(W), float(H)),
-                meta={"mode": "rectangular", "text_lines": lines},
+                meta={
+                    "mode": "rectangular",
+                    "text_lines": lines,
+                    "anchor_xy": (float(xy[0]), float(xy[1])),
+                },
             )
         )
 

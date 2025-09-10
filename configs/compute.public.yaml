@@ -66,8 +66,8 @@ compute:
             eps: { abs: 0.001 }
           disk:
             enable: true
-            k_ll_repulse: 120.0
-            ll_edge_power: 2.0
+            k_ll_repulse: 240.0
+            ll_edge_power: 1.3
             ll_edge_eps: 0.5
             beta_softplus_sep: 6.0
             ll_center_eps: 0.001
@@ -80,9 +80,9 @@ compute:
             use_legacy_gate: false     # 旧 gate 兼容开关（默认关闭）
             min_gap: 0.5
             tan_gate: { eta: 2.0, slack: 0.0 }
-            gate_min_interior: 0.01
+            gate_min_interior: 0.0
             tan_cap_scale: 1.0
-            outside_weight: 1.0
+            outside_weight: 0.1
           embed:
             enable: true
             k_embed: 120.0
@@ -102,17 +102,17 @@ compute:
         focus:
           attract:
             enable: true
-            k_attract: 20.0
+            k_attract: 5.0
             intro_times: 3
             center: [0.44, 0.39]
             wh: [0.2, 0.1]
-            sigma: 1.0
+            sigma: 0.2
         anchor:
           spring:
             enable: true
             k_anchor_spring: 200.0
             k_anchor_occlusion: 300.0
-            anchor_spring_kind: "logcosh"
+            anchor_spring_kind: "linear"  # logcosh | linear
             anchor_spring_alpha: 3.0
             anchor_r0_points: 60.0
             anchor_r0_lines: 60.0

@@ -2,7 +2,7 @@
 # Provides parameters for generating random scenes and labels.
 
 data:
-  action_num: 6        # total number of atomic actions to generate
+  action_num: 12        # total number of atomic actions to generate
   # ---- 数据来源 ----
   # 控制 SolvePack 的生成方式：
   #  - generate : 随机生成场景、标签和初始状态（受下方 generate 配置控制）

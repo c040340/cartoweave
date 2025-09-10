@@ -12,9 +12,24 @@ def test_pipeline_smoke():
         areas=[[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]],
     )
     labels = [
-        Label(id=0, kind="point", anchor=Anchor(target="point", index=0, mode="exact")),
-        Label(id=1, kind="line", anchor=Anchor(target="line", index=0, mode="midpoint")),
-        Label(id=2, kind="area", anchor=Anchor(target="area", index=0, mode="centroid")),
+        Label(
+            id=0,
+            kind="point",
+            anchor=Anchor(target="point", index=0, mode="exact"),
+            meta={"anchor_xy": (0.0, 0.0)},
+        ),
+        Label(
+            id=1,
+            kind="line",
+            anchor=Anchor(target="line", index=0, mode="midpoint"),
+            meta={"anchor_xy": (0.5, 0.0)},
+        ),
+        Label(
+            id=2,
+            kind="area",
+            anchor=Anchor(target="area", index=0, mode="centroid"),
+            meta={"anchor_xy": (1.0 / 3.0, 1.0 / 3.0)},
+        ),
     ]
     pack = SolvePack(
         L=3,

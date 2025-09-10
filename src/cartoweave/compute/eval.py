@@ -19,7 +19,7 @@ import numpy as np
 
 from .forces import REGISTRY as _CMP_REG
 from .forces import enabled_terms as _cmp_enabled, term_params_map
-from .geom_anchor_resolver import anchor_position
+from .anchor_utils import label_anchor_xy
 
 Array2 = np.ndarray
 
@@ -48,7 +48,7 @@ def energy_and_grad_full(
         sc.setdefault("labels", [])
     labels_all = sc.get("labels", [])
     sc["anchors"] = np.asarray(
-        [anchor_position(labels_all[i], scene_obj, P) for i in range(len(labels_all))], dtype=float
+        [label_anchor_xy(labels_all[i]) for i in range(len(labels_all))], dtype=float
     )
     sc["_active_ids_solver"] = np.flatnonzero(active_mask).tolist()
 

@@ -13,7 +13,7 @@ from cartoweave.contracts.solvepack import SolvePack
 from .array_utils import expand_comps_subset, expand_subset
 from .eval import energy_and_grad_full
 from .events import report_to_event
-from .geom_anchor_resolver import anchor_position
+from .anchor_utils import label_anchor_xy
 from .optim.loop import LoopContext as _EngineCtx
 from .optim.loop import run_iters as _run_iters
 from .passes import PassManager, get_pass_cfg
@@ -247,7 +247,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
                 comps_prev_full = {k: np.zeros((N, 2), float) for k in sub_comps.keys()}
             comps_full_i = expand_comps_subset(comps_prev_full, active_idx, sub_comps)
             anchors_full_i = np.asarray(
-                [anchor_position(labels[j], scene, P_full_i) for j in range(N)],
+                [label_anchor_xy(labels[j]) for j in range(N)],
                 float,
             )
             g_vec = meta.get("G")
@@ -349,7 +349,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
             comps_prev_full = {k: np.zeros((N, 2), float) for k in sub_comps_final.keys()}
         comps_full = expand_comps_subset(comps_prev_full, active_idx, sub_comps_final)
         anchors_full = np.asarray(
-            [anchor_position(labels[j], scene, P_full) for j in range(N)],
+            [label_anchor_xy(labels[j]) for j in range(N)],
             float,
         )
 

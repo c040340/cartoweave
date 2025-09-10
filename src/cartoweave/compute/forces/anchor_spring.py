@@ -10,7 +10,7 @@ penetrated the label rectangle (``s_hit < 0``).
 from __future__ import annotations
 
 import math
-from typing import Tuple
+
 
 import numpy as np
 
@@ -24,76 +24,6 @@ from ._common import (
     normalize_WH_from_labels,
     read_labels_aligned,
 )
-
-
-def _anchor_xy(lab, points, lines, areas) -> Tuple[str, int, float | None, float | None]:
-    """Resolve anchor kind/index and coordinates for ``lab``."""
-
-    info = anchor_info(lab)
-    if not info:
-        return "none", -1, None, None
-
-    kind = info.get("kind")
-    try:
-        idx = int(info.get("index"))
-    except (TypeError, ValueError):
-        idx = -1
-
-    if kind == "point":
-        pts = np.asarray(points, float)
-        if 0 <= idx < len(pts):
-            ax, ay = float(pts[idx, 0]), float(pts[idx, 1])
-            return kind, idx, ax, ay
-        return kind, idx, None, None
-
-    if kind == "line":
-        if 0 <= idx < len(lines):
-            coords = np.asarray(lines[idx], float)
-            if coords.shape[0] >= 2:
-                t = info.get("t")
-                if t is None:
-                    ax = float(0.5 * (coords[0, 0] + coords[-1, 0]))
-                    ay = float(0.5 * (coords[0, 1] + coords[-1, 1]))
-                else:
-                    try:
-                        t = float(t)
-                    except (TypeError, ValueError):
-                        t = 0.0
-                    t = max(0.0, min(1.0, t))
-                    seg_vec = coords[1:] - coords[:-1]
-                    seg_len = np.hypot(seg_vec[:, 0], seg_vec[:, 1])
-                    total = float(seg_len.sum())
-                    if total <= 1e-12:
-                        ax = float(coords[0, 0])
-                        ay = float(coords[0, 1])
-                    else:
-                        d = t * total
-                        cum = np.concatenate(([0.0], np.cumsum(seg_len)))
-                        j = int(np.searchsorted(cum, d, side="right") - 1)
-                        j = max(0, min(j, len(seg_vec) - 1))
-                        L = float(seg_len[j])
-                        if L <= 1e-12:
-                            ax = float(coords[j, 0])
-                            ay = float(coords[j, 1])
-                        else:
-                            local_t = (d - cum[j]) / L
-                            ax = float(coords[j, 0] + local_t * seg_vec[j, 0])
-                            ay = float(coords[j, 1] + local_t * seg_vec[j, 1])
-                return kind, idx, ax, ay
-        return kind, idx, None, None
-
-    if kind == "area":
-        if 0 <= idx < len(areas):
-            poly = np.asarray(areas[idx], float)
-            mins = poly.min(axis=0)
-            maxs = poly.max(axis=0)
-            ax = float(0.5 * (mins[0] + maxs[0]))
-            ay = float(0.5 * (mins[1] + maxs[1]))
-            return kind, idx, ax, ay
-        return kind, idx, None, None
-
-    return "none", -1, None, None
-
 
 def anchor_spring_eval(sd, r0, k, *, kind="linear", alpha=3.0):
     """Evaluate spring energy and derivative w.r.t ``sd``.
@@ -155,17 +85,23 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     N = int(P.shape[0])
     WH = normalize_WH_from_labels(labels, N, "anchor.spring")
 
-    points = scene.get("points", []) or []
-    lines = scene.get("lines", []) or []
-    areas = scene.get("areas", []) or []
+    anchors = np.asarray(scene.get("anchors"), float)
+    if anchors.shape != (N, 2):
+        raise ValueError("[anchor.spring] anchors array missing or of wrong shape")
 
     F = np.zeros_like(P, float)
     E = 0.0
 
     for i, lab in enumerate(labels):
-        ak, aidx, ax, ay = _anchor_xy(lab, points, lines, areas)
-
-        if ak == "area" or ax is None:
+        info = anchor_info(lab)
+        if not info:
+            continue
+        ak = info.get("kind")
+        if ak == "area":
+            continue
+        ax = float(anchors[i, 0])
+        ay = float(anchors[i, 1])
+        if not np.isfinite(ax) or not np.isfinite(ay):
             continue
 
         r0 = r0_line if ak == "line" else r0_point

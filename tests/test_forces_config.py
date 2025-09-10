@@ -29,7 +29,11 @@ def test_scaling_by_k():
         "frame_size": (10.0, 10.0),
         "points": [(0.0, 0.0)],
         "labels": [
-            {"WH": (1.0, 1.0), "anchor": {"kind": "point", "index": 0}}
+            {
+                "WH": (1.0, 1.0),
+                "anchor": {"kind": "point", "index": 0},
+                "meta": {"anchor_xy": (0.0, 0.0)},
+            }
         ],
     }
     labels = scene["labels"]
@@ -56,7 +60,11 @@ def test_zero_force_distance():
         "frame_size": (10.0, 10.0),
         "points": [(0.0, 0.0)],
         "labels": [
-            {"WH": (1.0, 1.0), "anchor": {"kind": "point", "index": 0}}
+            {
+                "WH": (1.0, 1.0),
+                "anchor": {"kind": "point", "index": 0},
+                "meta": {"anchor_xy": (0.0, 0.0)},
+            }
         ],
     }
     labels = scene["labels"]
