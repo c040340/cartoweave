@@ -151,7 +151,11 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         ux = cx - ax
         uy = cy - ay
         r = math.hypot(ux, uy)
+
+        hx, hy = 0.5 * w, 0.5 * h
+
         if r <= eps_nrm:
+            # near‑zero radius: fall back to external direction if available
             ext = scene.get("_ext_dir", None)
             if ext is not None:
                 ex, ey = float(ext[i, 0]), float(ext[i, 1])
@@ -162,25 +166,30 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                     uxh = uyh = 0.70710678
             else:
                 uxh = uyh = 0.70710678
+            rho = hx * softabs(uxh, eps_abs) + hy * softabs(uyh, eps_abs)
+            ds_du = (uxh, uyh)
         else:
             uxh, uyh = ux / r, uy / r
+            eps2 = eps_abs * eps_abs
+            A = math.sqrt(ux * ux + eps2 * r * r)
+            B = math.sqrt(uy * uy + eps2 * r * r)
+            C = hx * A + hy * B
+            rho = C / r
+            dC_dux = hx * ((1.0 + eps2) * ux / A) + hy * (eps2 * ux / B)
+            dC_duy = hx * (eps2 * uy / A) + hy * ((1.0 + eps2) * uy / B)
+            ds_dux = ux / r - dC_dux / r + C * ux / (r * r * r)
+            ds_duy = uy / r - dC_duy / r + C * uy / (r * r * r)
+            ds_du = (ds_dux, ds_duy)
 
-        hx, hy = 0.5 * w, 0.5 * h
-        rho = hx * softabs(uxh, eps_abs) + hy * softabs(uyh, eps_abs)
         s_hit = r - rho
-
         E_spr, dE_dsd = anchor_spring_eval(s_hit, r0, k_spr, kind=kind, alpha=alpha)
-        fx = -(dE_dsd) * uxh
-        fy = -(dE_dsd) * uyh
-        F[i, 0] += fx
-        F[i, 1] += fy
-        E += E_spr
-
+        dE_dsd_tot = dE_dsd
         if s_hit < 0.0 and k_occl > 0.0:
             E += 0.5 * k_occl * (s_hit * s_hit)
-            f_occ = k_occl * (-s_hit)
-            F[i, 0] += f_occ * uxh
-            F[i, 1] += f_occ * uyh
+            dE_dsd_tot += k_occl * s_hit
+        F[i, 0] += -(dE_dsd_tot) * ds_du[0]
+        F[i, 1] += -(dE_dsd_tot) * ds_du[1]
+        E += E_spr
 
     return float(E), ensure_vec2(F, N), {"term": "anchor.spring"}
 
