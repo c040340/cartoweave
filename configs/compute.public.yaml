@@ -17,9 +17,13 @@ compute:
       final_always: true      # 无论如何总是记录最终一帧
       limit: null             # 最多记录帧数；null 表示不限制
     calibration:
-      enable: true           # 你可按需改 true
+      enable: false           # 你可按需改 true
     action:
       enable: true            # 是否执行场景 action
+    label_relax:
+      enable: true
+      step_size: 2.0         # 每步放松步长
+      step_count: 5          # 放松步数
     geom_preproc:
       enable: true
       tiny_eps: 1.0e-9

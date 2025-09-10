@@ -33,5 +33,5 @@ warn_unreachable = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["cartoweave*", "cartowave*"]
+include = ["cartoweave*"]
 exclude = ["archive*"]

@@ -270,6 +270,8 @@ class PassManager:
 from .action_pass import ActionPass as _  # noqa: F401
 # ensure calibration pass registers itself
 from .calibration import CalibrationPass as _  # noqa: F401
+# ensure label relax pass registers itself
+from .label_relax_pass import LabelRelaxPass as _  # noqa: F401
 
 
 __all__ = [

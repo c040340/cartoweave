@@ -129,6 +129,7 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         pm = PassManager(pack.cfg.get("compute", {}), getattr(pack, "passes", None))
 
     pm.ensure_pass("action", position=0)
+    pm.ensure_pass("label_relax", position=1)
     pm.remove_pass("behavior")
 
     P_curr, labels, active = _init_state(pack)
@@ -209,9 +210,10 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         }
         pm.run_step(ctx)
 
-        # update possibly mutated labels/active mask
+        # update possibly mutated labels/active mask/position
         labels = ctx.get("labels", labels)
         active = np.asarray(ctx.get("active_ids", active), bool)
+        P_curr = np.asarray(ctx.get("P", P_curr), float)
         if P_prev_full.ndim == 2:
             P_prev_full[~active] = np.nan
         active_idx = np.flatnonzero(active)

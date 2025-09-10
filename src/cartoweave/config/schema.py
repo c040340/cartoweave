@@ -45,6 +45,14 @@ class ActionPass(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class LabelRelaxPass(BaseModel):
+    enable: bool = True
+    step_size: float = Field(default=0.1, ge=0)
+    step_count: int = Field(default=5, ge=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class GeomPreprocPass(BaseModel):
     enable: bool = True
     tiny_eps: float = Field(default=1e-9, gt=0)
@@ -83,6 +91,7 @@ class Passes(BaseModel):
     nan_guard: NanGuardPass
     calibration: CalibrationPass
     action: ActionPass = ActionPass()
+    label_relax: LabelRelaxPass = LabelRelaxPass()
     geom_preproc: GeomPreprocPass = GeomPreprocPass()
 
     model_config = ConfigDict(extra="forbid")
