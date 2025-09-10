@@ -20,6 +20,10 @@ from cartoweave.data.textblock import (
     measure_text_block,
     random_text_lines,
 )
+from cartoweave.compute.geometry import (
+    polyline_uniform_arc_centroid,
+    project_point_to_polyline,
+)
 
 __all__ = ["generate_scene"]
 
@@ -83,7 +87,9 @@ def _line_anchor_xy(poly: np.ndarray, mode: str, rng: np.random.Generator) -> np
     if mode == "midpoint":
         return _polyline_midpoint(poly)
     if mode == "centroid":
-        return np.mean(poly, axis=0)
+        c = polyline_uniform_arc_centroid(poly, step_len=4.0)
+        q, _, _ = project_point_to_polyline(c, poly)
+        return q
     if mode == "projected":
         # random point along polyline
         d = np.linalg.norm(np.diff(poly, axis=0), axis=1)

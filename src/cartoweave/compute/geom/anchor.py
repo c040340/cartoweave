@@ -14,14 +14,13 @@ def line_midpoint_xy(coords: np.ndarray) -> np.ndarray:
     pts = np.asarray(coords, float)
     if pts.shape[0] == 0:
         return np.zeros(2, float)
-    return 0.5 * (pts[0] + pts[-1])
-
-
-def line_endpoints_mid_xy(coords: np.ndarray) -> np.ndarray:
-    pts = np.asarray(coords, float)
     c = polyline_uniform_arc_centroid(pts, step_len=4.0)
     q, _, _ = project_point_to_polyline(c, pts)
     return q
+
+
+def line_endpoints_mid_xy(coords: np.ndarray) -> np.ndarray:
+    return line_midpoint_xy(coords)
 
 
 def polygon_centroid_xy(poly: np.ndarray) -> np.ndarray:

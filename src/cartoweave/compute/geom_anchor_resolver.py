@@ -7,6 +7,7 @@ import numpy as np
 
 from cartoweave.compute.geometry import (
     poly_centroid,
+    polyline_uniform_arc_centroid,
     project_point_to_polyline,
     project_point_to_segment,
 )
@@ -60,6 +61,8 @@ def anchor_position(
 
     if t == "line" and idx is not None and 0 <= idx < len(lines):
         poly = np.asarray(lines[idx], float)
+        if poly.size == 0:
+            return np.zeros(2, float)
         if mode == "centroid":
             return poly.mean(axis=0)
         if mode == "projected":
@@ -76,8 +79,10 @@ def anchor_position(
                 ref = poly.mean(axis=0)
             q, _, _ = project_point_to_polyline(ref, poly)
             return np.asarray(q, float)
-        # default midpoint
-        return 0.5 * (poly[0] + poly[-1])
+        # default: arc centroid projected onto polyline
+        c = polyline_uniform_arc_centroid(poly, step_len=4.0)
+        q, _, _ = project_point_to_polyline(c, poly)
+        return np.asarray(q, float)
 
     if t == "area" and idx is not None and 0 <= idx < len(areas):
         poly = np.asarray(areas[idx], float)
