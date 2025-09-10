@@ -26,7 +26,7 @@ compute:
       enable: true
       tiny_eps: 1.0e-9
     grad_clip:
-      enable: true           # 是否启用梯度裁剪
+      enable: false           # 是否启用梯度裁剪
       max_norm: 1000.0        # L2 范数上限
       max_abs: null           # 每分量绝对值上限（可选）
     nan_guard:
@@ -48,17 +48,17 @@ compute:
         ln:
           rect:
             enable: true
-            k_out: 80.0
+            k_out: 200.0
             k_in: 300.0
-            kernel: { model: inv_pow, exponent: 1.5, soft_eps: 1.0e-6 }
+            kernel: { model: inv_pow, exponent: 2.5, soft_eps: 1.0e-6 }
             beta: { sep: 6.0, in: 6.0 }
             g_eps: 1.0e-6
             eps: { abs: 0.001 }
         ll:
           rect:
             enable: true
-            k_ll_repulse: 300.0
-            k_ll_inside: 800.4
+            k_ll_repulse: 120.0
+            k_ll_inside: 400.0
             ll_edge_power: 2.0
             ll_edge_eps: 0.5
             beta_softabs_dir: 6.0
@@ -66,7 +66,7 @@ compute:
             eps: { abs: 0.001 }
           disk:
             enable: false
-            k_ll_repulse: 300.0
+            k_ll_repulse: 120.0
             ll_edge_power: 2.0
             ll_edge_eps: 0.5
             beta_softplus_sep: 6.0
@@ -112,7 +112,7 @@ compute:
             enable: true
             k_anchor_spring: 200.0
             k_anchor_occlusion: 300.0
-            anchor_spring_kind: "linear"
+            anchor_spring_kind: "logcosh"
             anchor_spring_alpha: 3.0
             anchor_r0_points: 60.0
             anchor_r0_lines: 60.0

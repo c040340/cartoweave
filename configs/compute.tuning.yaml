@@ -32,27 +32,27 @@ compute:
   solver:
     tuning:
       lbfgsb:
-        lbfgs_pgtol: 1.0e-9     # 投影梯度阈值（若后续统一到 SciPy 语义，可在装配处映射到 gtol）
+        lbfgs_pgtol: 1.0e-2     # 投影梯度阈值（若后续统一到 SciPy 语义，可在装配处映射到 gtol）
         lbfgs_maxiter: 400      # 最大迭代步数（可映射到 maxiter）
 
       hybrid:
         sn_max_outer: 5         # 半隐式牛顿热启动步数
         lbfgs_maxiter: 400      # 主阶段 L-BFGS 迭代数
-        sn_post_max_outer: 5    # L-BFGS 异常终止后的回退步数
+        sn_post_max_outer: 10    # L-BFGS 异常终止后的回退步数
 
       semi_newton:
         sn_max_outer: 30
         sn_dt: 1.0
-        sn_hvp_eps: 1.0e-4
+        sn_hvp_eps: 1.0e-3
         sn_cg_maxiter: 200
-        sn_cg_rtol: 1.0e-5
+        sn_cg_rtol: 1.0e-3
         sn_cg_atol: 0.0
         sn_lm0: 1.0e-3
         sn_gtol: 1.0e-5
 
       stop:
-        ftol: 1.0e-9
-        xtol: 1.0e-9
+        ftol: 1.0e-3
+        xtol: 1.0e-3
         max_stall_iters: null
 
       warmup:
