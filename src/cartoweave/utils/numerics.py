@@ -49,6 +49,35 @@ def softmin_weights_np(vals: np.ndarray, beta: float, use_abs: bool = False) -> 
     return w / (w.sum() + 1e-12)
 
 
+def softmin_weights_with_grad(vals: np.ndarray, beta: float) -> tuple[np.ndarray, np.ndarray]:
+    """Softmin weights and their contribution to the weighted sum gradient.
+
+    Parameters
+    ----------
+    vals:
+        ``(n,)`` array of values ``m_j``.
+    beta:
+        Softmin sharpness ``β``.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        ``(w, g)`` where ``w`` are the softmin weights and ``g_j`` are the
+        coefficients ``w_j * [1 - β (m_j - m_eff)]`` used when differentiating
+        the weighted sum ``m_eff = Σ w_j m_j``.
+    """
+
+    v = np.asarray(vals, float)
+    b = max(beta, 1e-9)
+    z = -b * (v - v.min())
+    z = z - z.max()
+    w = np.exp(z)
+    w = w / (w.sum() + 1e-12)
+    m_eff = float((w * v).sum())
+    g = w * (1.0 - b * (v - m_eff))
+    return w, g
+
+
 def is_finite_array(x: np.ndarray) -> bool:
     """Return True if *x* contains only finite values."""
     return np.isfinite(np.asarray(x, dtype=float)).all()

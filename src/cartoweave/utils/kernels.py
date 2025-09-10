@@ -100,6 +100,25 @@ def softclip(x, lo, hi, beta=8.0):
     return lo + softplus(x_hi - lo, beta) / beta
 
 
+def d_softclip(x, lo, hi, beta=8.0):
+    """Derivative of :func:`softclip` with respect to ``x``.
+
+    This mirrors the analytic form of ``softclip`` which composes two
+    softplus walls.  The derivative is smooth and reduces to the gate of a
+    hard clip when ``beta`` grows large.  Supports scalar or array inputs and
+    returns the gradient ``d softclip(x) / d x``.
+    """
+
+    x = np.asarray(x, float)
+    x_hi = hi - softplus(hi - x, beta) / beta
+    s_lo = sigmoid(beta * (x_hi - lo))
+    s_hi = sigmoid(beta * (hi - x))
+    out = np.asarray((s_lo * s_hi) / (beta * beta), float)
+    if out.shape == ():
+        return float(out)
+    return out
+
+
 def safe_div(num, den, eps=1e-12):
     """
     Safe division with soft lower bound on denominator using softplus.

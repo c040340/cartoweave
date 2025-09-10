@@ -12,10 +12,12 @@ exceeds ``1e-6`` are reported as ``BAD``.
 
 import os
 import sys
+from pathlib import Path
 import numpy as np
 
 # Make project modules importable when running as a script
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT / "src"))
 
 from cartoweave.config.loader import load_compute_config
 from cartoweave.compute.eval import energy_and_grad_full
@@ -67,9 +69,9 @@ def build_scene():
 def max_grad_error(term: str, scene, labels, P, active, h: float = 1e-4) -> float:
     """Return maximum relative error between analytic and numeric gradients."""
     cfg = load_compute_config(
-        internals_path = "../configs/compute.internals.yaml",
-        tuning_path = "../configs/compute.tuning.yaml",
-        public_path = "../configs/compute.public.yaml"
+        internals_path=str(ROOT / "configs/compute.internals.yaml"),
+        tuning_path=str(ROOT / "configs/compute.tuning.yaml"),
+        public_path=str(ROOT / "configs/compute.public.yaml"),
     )
     forces = cfg["compute"]["public"]["forces"]
     for group in forces.values():

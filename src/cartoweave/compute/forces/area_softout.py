@@ -8,13 +8,14 @@ from cartoweave.utils.kernels import (
     sigmoid,
     softabs,
     softclip,
+    d_softclip,
 )
 from cartoweave.utils.geometry import (
-    project_point_to_segment,
+    project_point_to_segment_diff,
     poly_signed_area,
     rect_half_extent_along_dir,
 )
-from cartoweave.utils.numerics import softmin_weights_np
+from cartoweave.utils.numerics import softmin_weights_with_grad
 from cartoweave.utils.shape import as_nx2
 from ._common import (
     read_labels_aligned,
@@ -90,53 +91,54 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
             arr = poly_as_array(poly)
             if arr is None:
                 continue
-            m_list = []
-            n_list = []
-            n = arr.shape[0]
-            for k in range(n):
+            m_list: list[float] = []
+            dm_list: list[np.ndarray] = []
+            ccw = (poly_signed_area(arr) > 0.0)
+            nE = arr.shape[0]
+            for k in range(nE):
                 ax, ay = float(arr[k, 0]), float(arr[k, 1])
-                bx, by = float(arr[(k + 1) % n, 0]), float(arr[(k + 1) % n, 1])
-                qx, qy, _, tx, ty = project_point_to_segment(cx, cy, ax, ay, bx, by)
-                ccw = (poly_signed_area(arr) > 0.0)
+                bx, by = float(arr[(k + 1) % nE, 0]), float(arr[(k + 1) % nE, 1])
+                qx, qy, _, tx, ty, J = project_point_to_segment_diff(cx, cy, ax, ay, bx, by)
                 nx_in, ny_in = (-ty, tx) if ccw else (ty, -tx)
                 dx, dy = (cx - qx), (cy - qy)
                 s_k = nx_in * dx + ny_in * dy
                 r_n = hx * softabs(nx_in, eps_abs) + hy * softabs(ny_in, eps_abs)
                 m_k = s_k - r_n - min_gap
                 m_list.append(m_k)
-                n_list.append((nx_in, ny_in))
+                n_vec = np.array([nx_in, ny_in], float)
+                dm_k = n_vec - J.T @ n_vec
+                dm_list.append(dm_k)
             if not m_list:
                 continue
             v = np.asarray(m_list, float)
-            wts = softmin_weights_np(v, beta)
+            wts, g = softmin_weights_with_grad(v, beta)
             m_eff = float((wts * v).sum())
-            nx_eff = float((wts * np.asarray([n[0] for n in n_list])).sum())
-            ny_eff = float((wts * np.asarray([n[1] for n in n_list])).sum())
-            nrm = math.hypot(nx_eff, ny_eff)
-            if nrm <= eps:
+            dm_eff = np.zeros(2, float)
+            for gk, gradk in zip(g, dm_list):
+                dm_eff += gk * gradk
+            if np.linalg.norm(dm_eff) <= eps:
                 continue
-            nx_eff /= nrm
-            ny_eff /= nrm
             if m_eff >= 0.0:
                 r_in = softplus(m_eff, alpha_sp)
                 s_in = sigmoid(alpha_sp * m_eff)
                 # Hard clip replaced with softclip (C¹), keeps legacy rails (~[-80,80])
                 t_in = softclip(lambda_in * m_eff, -80.0, 80.0, beta=8.0)
                 decay_in = math.exp(-t_in)
-                fmag = k_push * r_in * s_in * (decay_in ** 2)
+                dt_dm = d_softclip(lambda_in * m_eff, -80.0, 80.0, beta=8.0) * lambda_in
+                fmag = k_push * (r_in * s_in - (r_in * r_in) * dt_dm) * (decay_in ** 2)
                 E += 0.5 * k_push * (r_in * decay_in) * (r_in * decay_in)
                 mag = r_in * decay_in
             else:
                 t_out = softclip(lambda_out * m_eff, -80.0, 80.0, beta=8.0)
                 decay_out = math.exp(t_out)
-                fmag = k_push * (gamma_out ** 2) * lambda_out * (decay_out ** 2)
+                dt_dm = d_softclip(lambda_out * m_eff, -80.0, 80.0, beta=8.0) * lambda_out
+                fmag = k_push * (gamma_out ** 2) * dt_dm * (decay_out ** 2)
                 E += 0.5 * k_push * (gamma_out * decay_out) * (gamma_out * decay_out)
                 mag = gamma_out * decay_out
-            fx = fmag * (-nx_eff)
-            fy = fmag * (-ny_eff)
-            F[i, 0] += fx
-            F[i, 1] += fy
-            S[i].append((int(orig_ai), float(fx), float(fy), float(mag)))
+            force = -fmag * dm_eff
+            F[i, 0] += force[0]
+            F[i, 1] += force[1]
+            S[i].append((int(orig_ai), float(force[0]), float(force[1]), float(mag)))
 
     F = ensure_vec2(F, N)
     return float(E), F, {"term": "area.softout", "area_softout": S}
@@ -179,40 +181,40 @@ def probe(scene: dict, params: dict, xy: np.ndarray) -> np.ndarray:
         for i in range(M):
             px, py = float(xy[i, 0]), float(xy[i, 1])
             m_list: list[float] = []
-            n_list: list[tuple[float, float]] = []
+            dm_list: list[np.ndarray] = []
             for k in range(nE):
                 ax, ay = float(arr[k, 0]), float(arr[k, 1])
                 bx, by = float(arr[(k + 1) % nE, 0]), float(arr[(k + 1) % nE, 1])
-                qx, qy, _, tx, ty = project_point_to_segment(px, py, ax, ay, bx, by)
+                qx, qy, _, tx, ty, J = project_point_to_segment_diff(px, py, ax, ay, bx, by)
                 nx_in, ny_in = (-ty, tx) if ccw else (ty, -tx)
                 dx, dy = px - qx, py - qy
                 s_k = nx_in * dx + ny_in * dy - min_gap
                 m_list.append(s_k)
-                n_list.append((nx_in, ny_in))
+                n_vec = np.array([nx_in, ny_in], float)
+                dm_list.append(n_vec - J.T @ n_vec)
             if not m_list:
                 continue
             v = np.asarray(m_list, float)
-            wts = softmin_weights_np(v, beta)
+            wts, g = softmin_weights_with_grad(v, beta)
             m_eff = float((wts * v).sum())
-            nx_eff = float((wts * np.asarray([n[0] for n in n_list])).sum())
-            ny_eff = float((wts * np.asarray([n[1] for n in n_list])).sum())
-            nrm = math.hypot(nx_eff, ny_eff)
-            if nrm <= 1e-9:
+            dm_eff = np.zeros(2, float)
+            for gk, gradk in zip(g, dm_list):
+                dm_eff += gk * gradk
+            if np.linalg.norm(dm_eff) <= 1e-9:
                 continue
-            nx_eff /= nrm
-            ny_eff /= nrm
             if m_eff >= 0.0:
                 r_in = softplus(m_eff, alpha_sp)
                 s_in = sigmoid(alpha_sp * m_eff)
                 t_in = softclip(lambda_in * m_eff, -80.0, 80.0, beta=8.0)
                 decay_in = math.exp(-t_in)
-                fmag = k_push * r_in * s_in * (decay_in ** 2)
+                dt_dm = d_softclip(lambda_in * m_eff, -80.0, 80.0, beta=8.0) * lambda_in
+                fmag = k_push * (r_in * s_in - (r_in * r_in) * dt_dm) * (decay_in ** 2)
             else:
                 t_out = softclip(lambda_out * m_eff, -80.0, 80.0, beta=8.0)
                 decay_out = math.exp(t_out)
-                fmag = k_push * (gamma_out ** 2) * lambda_out * (decay_out ** 2)
-            F[i, 0] += -fmag * nx_eff
-            F[i, 1] += -fmag * ny_eff
+                dt_dm = d_softclip(lambda_out * m_eff, -80.0, 80.0, beta=8.0) * lambda_out
+                fmag = k_push * (gamma_out ** 2) * dt_dm * (decay_out ** 2)
+            F[i] += -fmag * dm_eff
 
     F = np.nan_to_num(F, nan=0.0, posinf=0.0, neginf=0.0)
     return F

@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import math
+
 import numpy as np
 
-from . import register, register_probe, term_cfg
 from cartoweave.utils.geometry import polylines_to_segments
 from cartoweave.utils.kernels import (
     invdist_energy,
@@ -12,6 +11,8 @@ from cartoweave.utils.kernels import (
     sigmoid,
     softplus,
 )
+
+from . import register, register_probe, term_cfg
 from ._common import (
     active_element_indices,
     ensure_vec2,
@@ -51,7 +52,18 @@ def point_rect_sdf_and_normal(px, py, cx, cy, w, h):
         nx /= nlen
         ny /= nlen
     else:
-        nx, ny = 1.0, 0.0
+        # When the point coincides with the rectangle center, ``n`` becomes
+        # undefined. Use the direction toward the nearest rectangle edge so
+        # that the returned normal remains consistent with the true gradient
+        # of the signed distance field.
+        dist_x = 0.5 * w - abs(px - cx)
+        dist_y = 0.5 * h - abs(py - cy)
+        if dist_x <= dist_y:
+            nx = 1.0 if px >= cx else -1.0
+            ny = 0.0
+        else:
+            nx = 0.0
+            ny = 1.0 if py >= cy else -1.0
     return float(sdf), np.array([nx, ny], float)
 
 

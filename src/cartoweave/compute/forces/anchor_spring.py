@@ -144,6 +144,13 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         r0 = r0_line if ak == "line" else r0_point
 
         w, h = float(WH[i, 0]), float(WH[i, 1])
+        # ``WH`` may occasionally carry negative dimensions when coming from
+        # legacy or pre-processed scenes.  A negative width would mirror the
+        # force horizontally because ``hx`` below enters the derivative
+        # expressions linearly.  Mirror flips manifested as the reported
+        # 60°→120° angle swap.  Force terms should be invariant to the sign of
+        # the size, so take absolute values before further calculations.
+        w, h = abs(w), abs(h)
         if w <= 0.0 and h <= 0.0:
             continue
 

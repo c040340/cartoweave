@@ -2,7 +2,16 @@ from __future__ import annotations
 import math
 import numpy as np
 from typing import Sequence, Union
-from .kernels import softabs, softplus, sigmoid, smoothmax, EPS_ABS, EPS_NORM
+from .kernels import (
+    softabs,
+    softplus,
+    sigmoid,
+    smoothmax,
+    softclip,
+    d_softclip,
+    EPS_ABS,
+    EPS_NORM,
+)
 
 Array = np.ndarray
 
@@ -16,6 +25,43 @@ def project_point_to_segment(cx, cy, ax, ay, bx, by):
     qx = ax + t*vx; qy = ay + t*vy
     L  = math.sqrt(L2) + EPS_NORM
     return qx, qy, t, vx/L, vy/L
+
+
+def project_point_to_segment_diff(cx, cy, ax, ay, bx, by, beta: float = 8.0):
+    """Differentiable point-to-segment projection returning Jacobian.
+
+    The segment ``A(ax,ay)`` to ``B(bx,by)`` is parameterised by ``t`` in
+    ``[0,1]`` using a soft clip so both the projected point and its derivative
+    with respect to ``C(cx,cy)`` remain smooth near the end caps.
+
+    Returns
+    -------
+    tuple
+        ``(qx, qy, t, tx, ty, J)`` where ``(qx,qy)`` is the projection,
+        ``t`` is the clipped parameter, ``(tx,ty)`` the unit tangent and
+        ``J`` the ``2×2`` Jacobian ``∂q/∂C``.
+    """
+
+    vx, vy = (bx - ax), (by - ay)
+    L2 = vx * vx + vy * vy
+    if L2 <= 1e-18:
+        return ax, ay, 0.0, 1.0, 0.0, np.zeros((2, 2), float)
+
+    w_cx = cx - ax
+    w_cy = cy - ay
+    t_un = (w_cx * vx + w_cy * vy) / L2
+    dt_un = np.array([vx / L2, vy / L2], float)
+    t = softclip(t_un, 0.0, 1.0, beta=beta)
+    dsoft = d_softclip(t_un, 0.0, 1.0, beta=beta)
+    dt = dsoft * dt_un
+
+    qx = ax + t * vx
+    qy = ay + t * vy
+    dq_dc = np.array([[vx * dt[0], vx * dt[1]], [vy * dt[0], vy * dt[1]]], float)
+
+    L = math.sqrt(L2) + EPS_NORM
+    tx, ty = vx / L, vy / L
+    return qx, qy, t, tx, ty, dq_dc
 
 def poly_signed_area(poly_xy: np.ndarray) -> float:
     a = 0.0
