@@ -26,7 +26,7 @@ compute:
       enable: true
       tiny_eps: 1.0e-9
     grad_clip:
-      enable: false           # 是否启用梯度裁剪
+      enable: true           # 是否启用梯度裁剪
       max_norm: 1000.0        # L2 范数上限
       max_abs: null           # 每分量绝对值上限（可选）
     nan_guard:
