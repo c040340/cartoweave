@@ -124,12 +124,13 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         raise ValueError("No actions provided in SolvePack; nothing to solve.")
     logger.debug("begin solve with %d actions", len(actions))
 
+    compute_cfg = pack.cfg.get("compute", {}) if isinstance(pack.cfg, dict) else {}
+    pipeline_cfg = (compute_cfg.get("passes") or {}).get("pipeline")
     pm = kwargs.get("pass_manager") or kwargs.get("pm")
     if pm is None:
-        pm = PassManager(pack.cfg.get("compute", {}), getattr(pack, "passes", None))
+        pm = PassManager(compute_cfg, getattr(pack, "passes", None), pipeline=pipeline_cfg)
 
     pm.ensure_pass("action", position=0)
-    pm.ensure_pass("label_relax", position=1)
     pm.remove_pass("behavior")
 
     P_curr, labels, active = _init_state(pack)
@@ -169,7 +170,6 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         .get("tuning", {})
         or {}
     )
-    compute_cfg = (pack.cfg.get("compute", {}) if isinstance(pack.cfg, dict) else {}) or {}
     solver_pub = ((compute_cfg.get("solver", {}) or {}).get("public", {}) or {})
     use_warmup = bool(solver_pub.get("use_warmup", True))
 
@@ -217,6 +217,52 @@ def solve(pack: SolvePack, *args, **kwargs):  # noqa: ARG001
         if P_prev_full.ndim == 2:
             P_prev_full[~active] = np.nan
         active_idx = np.flatnonzero(active)
+
+        E_pre, G_pre, comps_pre = energy_fn(P_curr, labels, scene, active, compute_cfg)
+        events_pre = pm.pop_events()
+        cap_cfg2 = (
+            (pack.cfg.get("compute", {}).get("capture", {}) if hasattr(pack, "cfg") else {})
+            or {}
+        )
+        pre_capture_enabled = bool(cap_cfg2.get("pre_solver_capture", True))
+        if pre_capture_enabled:
+            if cap_limit is None or len(recorder.frames) < cap_limit:
+                P_full_pre = expand_subset(P_prev_full, active_idx, P_curr[active_idx])
+                anchors_full_pre = np.asarray(
+                    [label_anchor_xy(labels[j]) for j in range(N)],
+                    float,
+                )
+                gnorm_pre = float(np.linalg.norm(G_pre)) if G_pre.size else 0.0
+                ginf_pre = float(np.max(np.abs(G_pre))) if G_pre.size else 0.0
+                meta_pre: Dict[str, Any] = {
+                    "schema_version": "compute-v2",
+                    "status": "ok",
+                    "pass_name": "pre",
+                    "frame_in_pass": "pre",
+                    "pass_id": pass_id,
+                    "events": events_pre,
+                }
+                metrics_pre = {
+                    "E": float(E_pre),
+                    "gnorm": gnorm_pre,
+                    "g_inf": ginf_pre,
+                }
+                recorder.record_frame(
+                    t=t_global,
+                    P_full=P_full_pre,
+                    comps_full=comps_pre,
+                    E=float(E_pre),
+                    active_mask=active.copy(),
+                    anchors=anchors_full_pre,
+                    meta_base=meta_pre,
+                    metrics=metrics_pre,
+                    field=None,
+                    G_snapshot=G_pre,
+                )
+                t_global += 1
+                P_prev_full = P_full_pre
+                comps_prev_full = comps_pre
+                logger.debug("record pre-solver frame pass_id=%d", pass_id)
 
         # sync recorder with possibly mutated labels
         labels_meta = [

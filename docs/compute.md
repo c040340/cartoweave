@@ -3,7 +3,7 @@
 - **Solve**: `ViewPack = solve(SolvePack)`
 - **Aggregator**: `compute.eval.energy_and_grad_full` (compute-only)
 - **Add force term**: create `compute/forces/<name>.py` and `@register("<key>")`
-- **Passes**: `schedule`, `action`, `label_relax` (`step_size`, `step_count`), `capture`, `nan_guard`, `grad_clip`, `step_limit`
+- **Passes**: `schedule`, `action`, `appear_nudge`, `capture`, `nan_guard`, `grad_clip`, `step_limit`
 - **Schedule example**:
   ```python
   sp.cfg.setdefault("compute", {}).setdefault("public", {}).setdefault("forces", {})[

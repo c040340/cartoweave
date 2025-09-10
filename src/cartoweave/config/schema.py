@@ -45,10 +45,11 @@ class ActionPass(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class LabelRelaxPass(BaseModel):
-    enable: bool = True
-    step_size: float = Field(default=0.1, ge=0)
-    step_count: int = Field(default=5, ge=1)
+class AppearNudgePass(BaseModel):
+    enable: bool = False
+    step_px: float = Field(default=1.0, gt=0)
+    max_px: float | None = Field(default=3.0, gt=0)
+    seed_offset: int = 0
 
     model_config = ConfigDict(extra="forbid")
 
@@ -85,13 +86,14 @@ class CalibrationPass(BaseModel):
 
 
 class Passes(BaseModel):
+    pipeline: List[str] = Field(default_factory=list)
     capture: CapturePass
     grad_clip: GradClipPass
     step_limit: StepLimitPass
     nan_guard: NanGuardPass
     calibration: CalibrationPass
     action: ActionPass = ActionPass()
-    label_relax: LabelRelaxPass = LabelRelaxPass()
+    appear_nudge: AppearNudgePass = AppearNudgePass()
     geom_preproc: GeomPreprocPass = GeomPreprocPass()
 
     model_config = ConfigDict(extra="forbid")
@@ -202,6 +204,12 @@ class ForcesPublic(RootModel[Dict[str, Dict[str, TermParams]]]):
     root: Dict[str, Dict[str, TermParams]] = Field(default_factory=dict)
 
 
+class ComputeCapture(BaseModel):
+    pre_solver_capture: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ComputePublic(BaseModel):
     forces: ForcesPublic = Field(default_factory=ForcesPublic)
 
@@ -291,6 +299,7 @@ class Solver(BaseModel):
 class Compute(BaseModel):
     eps: Eps
     passes: Passes
+    capture: ComputeCapture = ComputeCapture()
     solver: Solver
     public: ComputePublic = Field(default_factory=ComputePublic)
 

@@ -11,6 +11,7 @@ compute:
       log_level: info
 
   passes:
+    pipeline: [calibration, action, appear_nudge, forces, solver, capture]
     capture:
       every: 1                # 录帧频率；1 表示每步都录
       mode: both              # both|energy_only|state_only（若实现仅支持 both，可后续收紧）
@@ -20,10 +21,11 @@ compute:
       enable: false           # 你可按需改 true
     action:
       enable: true            # 是否执行场景 action
-    # label_warmup:
-      # enable: true
-      # step_size: 2.0         # 每步放松步长
-      # step_count: 5          # 放松步数
+    appear_nudge:
+      enable: true        # 仅对新激活 label 轻推一小步
+      step_px: 2.0         # 位移步长（像素级）
+      max_px: 8.0          # 最大位移限制；null 表示不限制
+      seed_offset: 0       # 零力微扰的种子偏移
     geom_preproc:
       enable: true
       tiny_eps: 1.0e-9
@@ -35,6 +37,9 @@ compute:
       enable: true            # 数值保护开关
     step_limit:
       max_step_norm: null     # 单步位移上限（像素或坐标单位）
+
+  capture:
+    pre_solver_capture: true  # 是否记录 solver 前的预帧
 
   public:
     forces:

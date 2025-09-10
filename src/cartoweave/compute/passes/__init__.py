@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Pass registry, pass builder and step-wise ``PassManager``."""
 
+# ruff: noqa: E402
 from __future__ import annotations
 from typing import Any, Dict, List, Union
 from .base import Context, ComputePass
@@ -84,7 +85,14 @@ def build_passes(cfg: Dict, cfg_list: List[Union[str, Dict]] | None) -> List[Com
     return passes
 
 
-DEFAULT_PIPELINE = ["calibration", "action", "forces", "solver", "capture"]
+DEFAULT_PIPELINE = [
+    "calibration",
+    "action",
+    "appear_nudge",
+    "forces",
+    "solver",
+    "capture",
+]
 
 
 class PassManager:
@@ -267,11 +275,11 @@ class PassManager:
 
 
 # ensure action pass registers itself
-from .action_pass import ActionPass as _  # noqa: F401
+from .action_pass import ActionPass as _action_pass  # noqa: F401
 # ensure calibration pass registers itself
-from .calibration import CalibrationPass as _  # noqa: F401
-# ensure label relax pass registers itself
-from .label_relax_pass import LabelRelaxPass as _  # noqa: F401
+from .calibration import CalibrationPass as _calibration_pass  # noqa: F401
+# ensure appear_nudge pass registers itself
+from .appear_nudge import AppearNudgePass as _appear_nudge_pass  # noqa: F401
 
 
 __all__ = [
