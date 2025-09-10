@@ -11,7 +11,8 @@ def test_action_sequence_strict_properties():
 
     by_label: dict[int, list] = {}
     for act in pack.actions:
-        by_label.setdefault(act.id, []).append(act)
+        lid = getattr(act, "label_id", getattr(act, "id"))
+        by_label.setdefault(lid, []).append(act)
     for seq in by_label.values():
         assert seq[0].type == "appear"
         if len(seq) > 1:
@@ -21,7 +22,8 @@ def test_action_sequence_strict_properties():
 
     for act in pack.actions:
         if act.type == "appear":
-            assert act.WH_to == pack.labels0[act.id].WH
+            lid = getattr(act, "label_id", getattr(act, "id"))
+            assert act.WH_to == pack.labels0[lid].WH
             assert act.kind_to == "rectangular"
         elif act.type == "mutate":
             assert act.WH_to is not None

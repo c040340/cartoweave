@@ -27,7 +27,8 @@ class ActionPass(ComputePass):
         act = actions[k]
         labels = ctx.get("labels")
         active = ctx.get("active_ids")
-        lbl = labels[act.id]
+        lid = getattr(act, "label_id", getattr(act, "id"))
+        lbl = labels[lid]
         w_curr = getattr(lbl, "WH", None)
         WH_from = tuple(w_curr) if w_curr is not None else None
         kind_from = None
@@ -35,7 +36,7 @@ class ActionPass(ComputePass):
         if isinstance(meta_lbl, dict):
             kind_from = meta_lbl.get("mode")
         if act.type == "appear":
-            active[act.id] = True
+            active[lid] = True
             if act.WH_to is not None:
                 lbl.WH = tuple(act.WH_to)
             if act.kind_to is not None:
@@ -50,14 +51,14 @@ class ActionPass(ComputePass):
                 meta["mode"] = act.kind_to
                 lbl.meta = meta
         elif act.type == "disappear":
-            active[act.id] = False
+            active[lid] = False
 
         if pm is not None:
             pm.emit_event(
                 {
                     "pass": "action",
                     "info": act.type,
-                    "label_id": int(getattr(act, "id", -1)),
+                    "label_id": int(lid),
                     "WH_from": WH_from,
                     "WH_to": (
                         act.WH_to.tolist()
@@ -69,7 +70,7 @@ class ActionPass(ComputePass):
                     "global_iter": getattr(pm, "eval_index", 0),
                 }
             )
-        logger.debug("[action] %s label_id=%d", act.type, int(getattr(act, "id", -1)))
+        logger.debug("[action] %s label_id=%d", act.type, int(lid))
 
 
 REGISTRY["action"] = (ActionPass, {})

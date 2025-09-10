@@ -32,10 +32,10 @@ The result contains coordinates for the last frame of each action only.
 from cartoweave import solve_layout
 
 labels = [
-    {"id": 0, "WH": [80, 24], "anchor": {"kind": "point", "id": 0}},
+    {"label_id": 0, "WH": [80, 24], "anchor": {"kind": "point", "element_id": 0}},
 ]
-elements = {"points": [{"id": 0, "xy": [100.0, 200.0]}]}
-actions = [{"t": 0, "op": "activate", "target": "label", "ids": "all"}]
+elements = {"points": [{"element_id": 0, "xy": [100.0, 200.0]}]}
+actions = [{"t": 0, "op": "activate", "label_ids": "all"}]
 
 cfg = {
     "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}}},
@@ -46,8 +46,9 @@ print(res.coords[-1])  # final coordinates after the action
 
 Run `python examples/minimal_solve.py` for a small working demo.
 
-Each element (point, polyline or polygon) should provide an ``id`` so that
-labels can reference it via their ``anchor`` field.
+Each element (point, polyline or polygon) should provide an ``element_id`` so
+that labels can reference it via their ``anchor`` field. Labels themselves use
+``label_id`` and actions reference labels via ``label_ids``.
 
 ## Data API
 
@@ -172,10 +173,10 @@ pip install -e .
 from cartoweave import solve_layout
 
 labels = [
-    {"id": 0, "WH": [80, 24], "anchor": {"kind": "point", "id": 0}},
+    {"label_id": 0, "WH": [80, 24], "anchor": {"kind": "point", "element_id": 0}},
 ]
-elements = {"points": [{"id": 0, "xy": [100.0, 200.0]}]}
-actions = [{"t": 0, "op": "activate", "target": "label", "ids": "all"}]
+elements = {"points": [{"element_id": 0, "xy": [100.0, 200.0]}]}
+actions = [{"t": 0, "op": "activate", "label_ids": "all"}]
 
 cfg = {
     "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}}},
@@ -187,11 +188,13 @@ print(res.coords[-1])
 运行 `python examples/minimal_solve.py` 可以看到一个最小示例；如果将
 ``viz.show`` 设为 ``True``，还能体验交互式查看器。
 
-每个场景元素（点、线、面）需提供 ``id``，并由标注通过 ``anchor`` 字段关联。
+每个场景元素（点、线、面）需提供 ``element_id``，标注使用 ``label_id``，
+动作通过 ``label_ids`` 指定作用的标注。
 
 ## 示例
 
 * `examples/minimal_solve.py` – 拟合单帧的最小示例
+* `examples/solve_layout_api.py` – 展示外部 `solve_layout` 接口处理点、线、面场景并包含多动作
 * `examples` – 更多展示场景和步骤配置方式的脚本
 
 ### 求解器稳定性默认值
