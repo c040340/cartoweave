@@ -26,7 +26,8 @@ pip install -e .
 
 ## Quick start
 
-The result contains coordinates for the last frame of each action only.
+The result contains coordinates for the last frame of each action only. The
+`frame_size=(W, H)` argument is required and must match your scene coordinates.
 
 ```python
 from cartoweave import solve_layout
@@ -44,7 +45,12 @@ res = solve_layout(labels, elements, actions, frame_size=(1280, 800), config_pro
 print(res.coords[-1])  # final coordinates after the action
 ```
 
-Run `python examples/minimal_solve.py` for a small working demo.
+Run `python examples/minimal_solve.py` for a small working demo. For running a
+specific call from a payload JSON and opening the interactive viz, try:
+
+```bash
+python examples/run_payload_shot_viz.py --file cartoweave_payload_latest.json --shot 2 --frame 1280 800 --viz
+```
 
 Each element (point, polyline or polygon) should provide an ``element_id`` so
 that labels can reference it via their ``anchor`` field. Labels themselves use
@@ -114,12 +120,27 @@ python -m cartoweave solve --config examples/configs/compute_min.json --scene ex
 
 * `examples/minimal_solve.py` – minimal example of solving a single frame
 
-### Solver stability defaults
-- We keep L-BFGS strictly smooth by default:
-  - `step_limit` **enabled** (default `max_step_norm: 1.5`)
-  - `grad_clip` **disabled** (turn on only for debugging/stability)
-- `area.cross` now uses a **continuous gate** with AABB pre‑clipping and
-  short‑edge skipping for robust collision handling.
+### Solver stability & tuning
+- We ship a conservative pass setup by default:
+  - `step_limit` enabled (default `max_step_norm: 60`) to cap per‑step motion.
+  - `grad_clip` enabled (default `max_norm: 1000.0`) to tame extreme gradients.
+  - You can raise `grad_clip.max_norm` or disable it if your first pass needs a
+    stronger initial push; keep `step_limit` to prevent overshoot.
+- `appear_nudge` gives newly activated labels a gentle initial displacement; you
+  can raise `step_px` (e.g. 4–8) for clearer “push‑off” in the first pass.
+- `area.cross` uses a continuous gate with AABB pre‑clipping and short‑edge
+  skipping for robust collision handling.
+
+### Label–Label kernels
+- Rectangle kernel: `ll.rect` (anisotropic, respects W×H)
+- Disk/Ellipse kernel: `ll.disk`
+  - `ll_disk_mode: max|min|avg|diag|ellipse`
+  - `ellipse` uses directional support radii of axis‑aligned ellipses for a
+    more faithful interaction with wide/flat labels.
+
+### Anchors
+- `anchor.spring` acts on point/line anchors; area‑anchored labels are
+  constrained by `area.*` terms (`area.embed`, `area.cross`, `area.softout`).
 
 ## Project layout
 
@@ -197,12 +218,23 @@ print(res.coords[-1])
 * `examples/solve_layout_api.py` – 展示外部 `solve_layout` 接口处理点、线、面场景并包含多动作
 * `examples` – 更多展示场景和步骤配置方式的脚本
 
-### 求解器稳定性默认值
-- 默认情况下保持 L-BFGS 完全平滑：
-  - `step_limit` **启用**（默认 `max_step_norm: 1.5`）
-  - `grad_clip` **禁用**（仅在调试/稳定性需要时开启）
-- `area.cross` 现在使用 **连续门函数**，并加入 AABB 预裁剪与短边跳过，
-  提供更稳健的相交惩罚。
+### 求解器稳定性与调参
+- 默认包含以下保护：
+  - `step_limit` 启用（默认 `max_step_norm: 60`）限制单步位移；
+  - `grad_clip` 启用（默认 `max_norm: 1000.0`）裁剪大梯度；
+  - 若首帧需要更强的“推开”，可调大 `grad_clip.max_norm` 或临时关闭，同时保留
+    `step_limit`；也可调大 `appear_nudge.step_px`（如 4–8）。
+- `area.cross` 使用连续门函数 + AABB 预裁剪 + 短边跳过，更稳健。
+
+### 标签-标签核
+- 矩形核：`ll.rect`（各向异性，遵循宽高）
+- 圆/椭圆核：`ll.disk`
+  - `ll_disk_mode: max|min|avg|diag|ellipse`
+  - `ellipse` 使用轴对齐椭圆在方向上的支持函数，更适合“又宽又扁”的标签。
+
+### 锚点
+- `anchor.spring` 作用于点/线锚；面锚由 `area.*`（`area.embed`、`area.cross`、
+  `area.softout`）约束。
 
 ## 项目结构
 
