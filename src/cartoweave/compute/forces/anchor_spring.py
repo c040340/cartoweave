@@ -125,7 +125,10 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         hx, hy = 0.5 * w, 0.5 * h
 
         if r <= eps_nrm:
-            # near‑zero radius: fall back to external direction if available
+            # near‑zero radius: choose a stable outward direction
+            # Use external direction from pre‑anchor forces if available; otherwise
+            # fall back to a unit diagonal. Crucially, keep this direction for the
+            # derivative ds/du so that the spring exerts a non‑zero force at r≈0.
             ext = scene.get("_ext_dir", None)
             if ext is not None:
                 ex, ey = float(ext[i, 0]), float(ext[i, 1])
@@ -133,11 +136,10 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
                 if en > 1e-12:
                     uxh, uyh = ex / en, ey / en
                 else:
-                    uxh = uyh = 0.70710678
+                    uxh, uyh = 0.70710678, 0.70710678
             else:
-                uxh = uyh = 0.70710678
+                uxh, uyh = 0.70710678, 0.70710678
             rho = hx * softabs(uxh, eps_abs) + hy * softabs(uyh, eps_abs)
-            uxh, uyh = (ux / max(r, 1e-12), uy / max(r, 1e-12))
             ds_du = (uxh, uyh)
         else:
             uxh, uyh = ux / r, uy / r
@@ -204,4 +206,3 @@ register_probe("anchor.spring")(probe)
 
 
 __all__ = ["evaluate", "probe"]
-
