@@ -63,7 +63,7 @@ compute:
             eps: { abs: 0.001 }
         ll:
           rect:
-            enable: true
+            enable: false
             k_ll_repulse: 120.0
             k_ll_inside: 600.0
             ll_edge_power: 2.0
@@ -72,13 +72,13 @@ compute:
             beta_softplus_sep: 6.0
             eps: { abs: 0.001 }
           disk:
-            enable: false
+            enable: true
             k_ll_repulse: 240.0
             ll_edge_power: 1.3
             ll_edge_eps: 0.5
             beta_softplus_sep: 6.0
             ll_center_eps: 0.001
-            ll_disk_mode: max
+            ll_disk_mode: ellipse
             eps: { abs: 0.001 }
         area:
           cross:
