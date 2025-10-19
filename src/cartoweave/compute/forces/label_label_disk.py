@@ -31,6 +31,15 @@ def radius_from_wh(w: float, h: float, mode: str = "max") -> float:
     return 0.5 * max(w, h)
 
 
+def _dir_radius(a: float, b: float, ux: float, uy: float, eps: float = 1e-12) -> float:
+    """Directional support radius of an axis-aligned ellipse.
+
+    For an ellipse aligned with axes with semi-axes ``a`` (x) and ``b`` (y), the
+    support function in direction ``u=(ux,uy)`` is ``sqrt((a*ux)^2 + (b*uy)^2)``.
+    """
+    return float(np.sqrt((a * ux) * (a * ux) + (b * uy) * (b * uy) + eps * eps))
+
+
 @register("ll.disk")
 def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
     N = int(P.shape[0])
@@ -90,23 +99,51 @@ def evaluate(scene: dict, P: np.ndarray, params: dict, cfg: dict):
         xi, yi = float(P[i, 0]), float(P[i, 1])
         if wi <= 0.0 and hi <= 0.0:
             continue
-        ri = radius_from_wh(wi, hi, radius_mode)
+        ai = 0.5 * wi
+        bi = 0.5 * hi
+        ri = radius_from_wh(wi, hi, radius_mode) if radius_mode != "ellipse" else None
         for jj in range(ii + 1, len(idxs)):
             j = idxs[jj]
             wj, hj = float(WH[j, 0]), float(WH[j, 1])
             xj, yj = float(P[j, 0]), float(P[j, 1])
-            rj = radius_from_wh(wj, hj, radius_mode)
+            aj = 0.5 * wj
+            bj = 0.5 * hj
+            rj = radius_from_wh(wj, hj, radius_mode) if radius_mode != "ellipse" else None
             dx, dy = xi - xj, yi - yj
             rc = math.sqrt(dx * dx + dy * dy + eps_r * eps_r)
-            s = rc - (ri + rj)
+            ux, uy = dx / rc, dy / rc
+            if radius_mode == "ellipse" or radius_mode == "elliptic":
+                # Directional radii along the inter-centre direction
+                hi_dir = _dir_radius(ai, bi, ux, uy, eps=eps_r)
+                hj_dir = _dir_radius(aj, bj, ux, uy, eps=eps_r)
+                s = rc - (hi_dir + hj_dir)
+            else:
+                s = rc - (ri + rj)
             c = softplus(s, beta) + eps_sep
             v = softplus(-s, beta)
             sc = sigmoid(beta * s)
             sv = sigmoid(-beta * s)
             E += invdist_energy(c, k_out, pwr) + 0.5 * k_in * (v * v)
-            fmag = invdist_force_mag(c, k_out, pwr) * sc + (k_in * v * sv)
-            ux, uy = dx / rc, dy / rc
-            fx, fy = fmag * ux, fmag * uy
+            dE_dsd = invdist_force_mag(c, k_out, pwr) * sc + (k_in * v * sv)
+            if radius_mode == "ellipse" or radius_mode == "elliptic":
+                # Chain rule: F_i = -(dE/ds) * ds/dd, with d = x_i - x_j
+                # ds/dd = u - ( (A_i u)/h_i + (A_j u)/h_j ) * (I - u u^T) / rc
+                # where A = diag(a^2, b^2), h = directional radius.
+                # Build matrices/vectors explicitly in 2D.
+                # Guard h_i/h_j against zero.
+                Aiu = np.array([ai * ai * ux, bi * bi * uy], dtype=float)
+                Aju = np.array([aj * aj * ux, bj * bj * uy], dtype=float)
+                hi_dir = max(_dir_radius(ai, bi, ux, uy, eps=eps_r), 1e-12)
+                hj_dir = max(_dir_radius(aj, bj, ux, uy, eps=eps_r), 1e-12)
+                t = (Aiu / hi_dir) + (Aju / hj_dir)
+                u_vec = np.array([ux, uy], dtype=float)
+                I = np.eye(2, dtype=float)
+                Pperp = I - np.outer(u_vec, u_vec)
+                ds_dd = u_vec - (Pperp @ t) / max(rc, 1e-12)
+                fvec = -dE_dsd * ds_dd
+                fx, fy = float(fvec[0]), float(fvec[1])
+            else:
+                fx, fy = dE_dsd * ux, dE_dsd * uy
             F[i, 0] += fx
             F[i, 1] += fy
             F[j, 0] -= fx

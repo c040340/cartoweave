@@ -525,12 +525,28 @@ def _build_pack_from_data(scene: Dict[str, Any], plan: Dict[str, Any], cfg: Dict
                 if op == "activate"
                 else "disappear" if op == "deactivate" else "mutate"
             )
+            # Normalise WH payloads: accept radius-only for circle/disk and
+            # expand to (r, r). This mirrors label normalisation so that
+            # downstream force terms always see a 2-tuple.
+            WH_to_norm = None
+            if op != "deactivate":
+                WH_pl = payload.get("WH")
+                if WH_pl is None:
+                    WH_to_norm = tuple(labels[lid]["WH"])  # fallback current
+                else:
+                    if isinstance(WH_pl, (list, tuple)) and len(WH_pl) == 1:
+                        r = float(WH_pl[0])
+                        WH_to_norm = (r, r)
+                    else:
+                        WH_to_norm = tuple(WH_pl)
+            else:
+                WH_to_norm = payload.get("WH")
             actions.append(
                 _Action(
                     label_id=int(lid),
                     t=float(t),
                     type=typ,
-                    WH_to=tuple(payload.get("WH", labels[lid]["WH"])) if op != "deactivate" else payload.get("WH"),
+                    WH_to=WH_to_norm,
                     kind_to=payload.get("mode"),
                     action_id=int(aid) if aid is not None else None,
                 )

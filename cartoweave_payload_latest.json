@@ -1,5 +1,5 @@
 {
-  "source_step2": "output/tianjin/new_run4/steps/schema-20251019_134400/step2_timeline.json",
+  "source_step2": "output/tianjin/new_run4/steps/schema-20251019_223436/step2_timeline.json",
   "calls_count": 14,
   "calls": [
     {
@@ -15,6 +15,42 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 2,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "area",
+            "element_id": 0
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 3,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "area",
+            "element_id": 1
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -103,11 +139,112 @@
             ]
           }
         ],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
           "t": 0,
+          "op": "activate",
+          "label_ids": [
+            2
+          ],
+          "payload": {
+            "WH": [
+              120.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 1,
+          "op": "deactivate",
+          "label_ids": [
+            2
+          ],
+          "payload": {}
+        },
+        {
+          "t": 2,
+          "op": "activate",
+          "label_ids": [
+            2
+          ],
+          "payload": {
+            "WH": [
+              120.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 3,
+          "op": "deactivate",
+          "label_ids": [
+            2
+          ],
+          "payload": {}
+        },
+        {
+          "t": 4,
+          "op": "activate",
+          "label_ids": [
+            2
+          ],
+          "payload": {
+            "WH": [
+              120.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 5,
+          "op": "deactivate",
+          "label_ids": [
+            2
+          ],
+          "payload": {}
+        },
+        {
+          "t": 6,
+          "op": "activate",
+          "label_ids": [
+            2
+          ],
+          "payload": {
+            "WH": [
+              120.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 7,
+          "op": "deactivate",
+          "label_ids": [
+            2
+          ],
+          "payload": {}
+        },
+        {
+          "t": 8,
+          "op": "activate",
+          "label_ids": [
+            3
+          ],
+          "payload": {
+            "WH": [
+              120.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 9,
           "op": "activate",
           "label_ids": [
             0
@@ -121,7 +258,29 @@
           }
         },
         {
-          "t": 1,
+          "t": 10,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 11,
+          "op": "deactivate",
+          "label_ids": [
+            1
+          ],
+          "payload": {}
+        },
+        {
+          "t": 12,
           "op": "mutate",
           "label_ids": [
             0
@@ -135,15 +294,31 @@
           }
         },
         {
-          "t": 2,
+          "t": 13,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 14,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1,
+            3
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -194,6 +369,66 @@
             "element_id": 3
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 4,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 5,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 1
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 6,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 2
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 7,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 3
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 8,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "area",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -282,11 +517,28 @@
             ]
           }
         ],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
           "t": 0,
+          "op": "activate",
+          "label_ids": [
+            8
+          ],
+          "payload": {
+            "WH": [
+              120.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 1,
           "op": "activate",
           "label_ids": [
             0
@@ -300,15 +552,30 @@
           }
         },
         {
-          "t": 1,
+          "t": 2,
+          "op": "activate",
+          "label_ids": [
+            4
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 3,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            4
           ],
           "payload": {}
         },
         {
-          "t": 2,
+          "t": 4,
           "op": "activate",
           "label_ids": [
             1
@@ -322,15 +589,30 @@
           }
         },
         {
-          "t": 3,
+          "t": 5,
+          "op": "activate",
+          "label_ids": [
+            5
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 6,
           "op": "deactivate",
           "label_ids": [
-            1
+            1,
+            5
           ],
           "payload": {}
         },
         {
-          "t": 4,
+          "t": 7,
           "op": "activate",
           "label_ids": [
             2
@@ -344,15 +626,30 @@
           }
         },
         {
-          "t": 5,
+          "t": 8,
+          "op": "activate",
+          "label_ids": [
+            6
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 9,
           "op": "deactivate",
           "label_ids": [
-            2
+            2,
+            6
           ],
           "payload": {}
         },
         {
-          "t": 6,
+          "t": 10,
           "op": "activate",
           "label_ids": [
             3
@@ -366,15 +663,38 @@
           }
         },
         {
-          "t": 7,
+          "t": 11,
+          "op": "activate",
+          "label_ids": [
+            7
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 12,
           "op": "deactivate",
           "label_ids": [
-            3
+            3,
+            7
+          ],
+          "payload": {}
+        },
+        {
+          "t": 13,
+          "op": "deactivate",
+          "label_ids": [
+            8
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -425,6 +745,66 @@
             "element_id": 3
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 4,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 5,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 1
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 6,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 2
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 7,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 3
+          },
+          "mode": "circle"
+        },
+        {
+          "label_id": 8,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "area",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -513,26 +893,29 @@
             ]
           }
         ],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
           "t": 0,
           "op": "activate",
           "label_ids": [
-            0
+            8
           ],
           "payload": {
             "WH": [
-              1184.96,
-              104.0
+              120.0
             ],
-            "mode": "rect"
+            "mode": "circle"
           }
         },
         {
           "t": 1,
-          "op": "mutate",
+          "op": "activate",
           "label_ids": [
             0
           ],
@@ -548,39 +931,33 @@
           "t": 2,
           "op": "activate",
           "label_ids": [
-            1
+            4
           ],
           "payload": {
             "WH": [
-              1015.04,
-              104.0
+              240.0,
+              240.0
             ],
-            "mode": "rect"
+            "mode": "circle"
           }
         },
         {
           "t": 3,
-          "op": "mutate",
+          "op": "deactivate",
           "label_ids": [
-            1
+            4
           ],
-          "payload": {
-            "WH": [
-              1015.04,
-              104.0
-            ],
-            "mode": "rect"
-          }
+          "payload": {}
         },
         {
           "t": 4,
-          "op": "activate",
+          "op": "mutate",
           "label_ids": [
-            2
+            0
           ],
           "payload": {
             "WH": [
-              845.1199999999999,
+              1184.96,
               104.0
             ],
             "mode": "rect"
@@ -588,6 +965,120 @@
         },
         {
           "t": 5,
+          "op": "activate",
+          "label_ids": [
+            4
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 6,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              1015.04,
+              104.0
+            ],
+            "mode": "rect"
+          }
+        },
+        {
+          "t": 7,
+          "op": "activate",
+          "label_ids": [
+            5
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 8,
+          "op": "deactivate",
+          "label_ids": [
+            5
+          ],
+          "payload": {}
+        },
+        {
+          "t": 9,
+          "op": "mutate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              1015.04,
+              104.0
+            ],
+            "mode": "rect"
+          }
+        },
+        {
+          "t": 10,
+          "op": "activate",
+          "label_ids": [
+            5
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 11,
+          "op": "activate",
+          "label_ids": [
+            2
+          ],
+          "payload": {
+            "WH": [
+              845.1199999999999,
+              104.0
+            ],
+            "mode": "rect"
+          }
+        },
+        {
+          "t": 12,
+          "op": "activate",
+          "label_ids": [
+            6
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 13,
+          "op": "deactivate",
+          "label_ids": [
+            6
+          ],
+          "payload": {}
+        },
+        {
+          "t": 14,
           "op": "mutate",
           "label_ids": [
             2
@@ -601,35 +1092,63 @@
           }
         },
         {
-          "t": 6,
-          "op": "mutate",
+          "t": 15,
+          "op": "activate",
           "label_ids": [
-            0
+            6
           ],
           "payload": {
             "WH": [
-              1184.96,
-              104.0
+              240.0,
+              240.0
             ],
-            "mode": "rect"
+            "mode": "circle"
           }
         },
         {
-          "t": 7,
-          "op": "mutate",
+          "t": 16,
+          "op": "deactivate",
           "label_ids": [
-            0
+            8
+          ],
+          "payload": {}
+        },
+        {
+          "t": 17,
+          "op": "activate",
+          "label_ids": [
+            8
           ],
           "payload": {
             "WH": [
-              1184.96,
-              104.0
+              120.0
             ],
-            "mode": "rect"
+            "mode": "circle"
           }
         },
         {
-          "t": 8,
+          "t": 18,
+          "op": "deactivate",
+          "label_ids": [
+            8
+          ],
+          "payload": {}
+        },
+        {
+          "t": 19,
+          "op": "activate",
+          "label_ids": [
+            8
+          ],
+          "payload": {
+            "WH": [
+              120.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 20,
           "op": "activate",
           "label_ids": [
             3
@@ -643,35 +1162,58 @@
           }
         },
         {
-          "t": 9,
-          "op": "mutate",
+          "t": 21,
+          "op": "activate",
           "label_ids": [
-            0
+            7
           ],
           "payload": {
             "WH": [
-              1184.96,
-              104.0
+              240.0,
+              240.0
             ],
-            "mode": "rect"
+            "mode": "circle"
           }
         },
         {
-          "t": 10,
-          "op": "mutate",
+          "t": 22,
+          "op": "deactivate",
           "label_ids": [
-            0
+            8
+          ],
+          "payload": {}
+        },
+        {
+          "t": 23,
+          "op": "activate",
+          "label_ids": [
+            8
           ],
           "payload": {
             "WH": [
-              1184.96,
-              104.0
+              120.0
             ],
-            "mode": "rect"
+            "mode": "circle"
           }
         },
         {
-          "t": 11,
+          "t": 24,
+          "op": "deactivate",
+          "label_ids": [
+            8
+          ],
+          "payload": {}
+        },
+        {
+          "t": 25,
+          "op": "deactivate",
+          "label_ids": [
+            7
+          ],
+          "payload": {}
+        },
+        {
+          "t": 26,
           "op": "mutate",
           "label_ids": [
             3
@@ -685,18 +1227,36 @@
           }
         },
         {
-          "t": 12,
+          "t": 27,
+          "op": "activate",
+          "label_ids": [
+            7
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 28,
           "op": "deactivate",
           "label_ids": [
             0,
             1,
             2,
-            3
+            3,
+            4,
+            5,
+            6,
+            7
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -711,6 +1271,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -724,7 +1296,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -743,14 +1319,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -765,6 +1356,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -778,7 +1381,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -797,14 +1404,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -819,6 +1441,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -832,7 +1466,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -851,6 +1489,28 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
+          "op": "deactivate",
+          "label_ids": [
+            1
+          ],
+          "payload": {}
+        },
+        {
+          "t": 3,
           "op": "mutate",
           "label_ids": [
             0
@@ -864,15 +1524,30 @@
           }
         },
         {
-          "t": 2,
+          "t": 4,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 5,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -887,6 +1562,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -900,7 +1587,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -919,14 +1610,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -941,6 +1647,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -954,7 +1672,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -973,14 +1695,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -995,6 +1732,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -1008,7 +1757,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -1027,14 +1780,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -1049,6 +1817,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -1062,7 +1842,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -1081,6 +1865,28 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
+          "op": "deactivate",
+          "label_ids": [
+            1
+          ],
+          "payload": {}
+        },
+        {
+          "t": 3,
           "op": "mutate",
           "label_ids": [
             0
@@ -1094,15 +1900,30 @@
           }
         },
         {
-          "t": 2,
+          "t": 4,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 5,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -1117,6 +1938,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -1130,7 +1963,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -1149,14 +1986,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -1171,6 +2023,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -1184,7 +2048,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -1203,14 +2071,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -1225,6 +2108,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -1238,7 +2133,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -1257,14 +2156,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     },
     {
       "labels": [
@@ -1279,6 +2193,18 @@
             "element_id": 0
           },
           "mode": "rect"
+        },
+        {
+          "label_id": 1,
+          "WH": [
+            240.0,
+            240.0
+          ],
+          "anchor": {
+            "kind": "point",
+            "element_id": 0
+          },
+          "mode": "circle"
         }
       ],
       "elements": {
@@ -1292,7 +2218,11 @@
           }
         ],
         "polygons": [],
-        "polylines": []
+        "polylines": [],
+        "canvas": {
+          "width": 1080,
+          "height": 1920
+        }
       },
       "actions": [
         {
@@ -1311,14 +2241,29 @@
         },
         {
           "t": 1,
+          "op": "activate",
+          "label_ids": [
+            1
+          ],
+          "payload": {
+            "WH": [
+              240.0,
+              240.0
+            ],
+            "mode": "circle"
+          }
+        },
+        {
+          "t": 2,
           "op": "deactivate",
           "label_ids": [
-            0
+            0,
+            1
           ],
           "payload": {}
         }
       ],
-      "config_profile": "/Users/yuanzhengxiao/PycharmProjects/cartoweave/configs"
+      "config_profile": null
     }
   ]
 }
