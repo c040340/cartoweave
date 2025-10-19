@@ -40,7 +40,7 @@ actions = [{"t": 0, "op": "activate", "label_ids": "all"}]
 cfg = {
     "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}}},
 }
-res = solve_layout(labels, elements, actions, config_profile=cfg)
+res = solve_layout(labels, elements, actions, frame_size=(1280, 800), config_profile=cfg)
 print(res.coords[-1])  # final coordinates after the action
 ```
 
@@ -181,7 +181,7 @@ actions = [{"t": 0, "op": "activate", "label_ids": "all"}]
 cfg = {
     "compute": {"public": {"forces": {"anchor.spring": {"enable": True, "k_local": 1.0}}}},
 }
-res = solve_layout(labels, elements, actions, config_profile=cfg)
+res = solve_layout(labels, elements, actions, frame_size=(1280, 800), config_profile=cfg)
 print(res.coords[-1])
 ```
 
@@ -222,4 +222,3 @@ pytest
 本项目采用 Creative Commons 署名-非商业性使用-相同方式共享 4.0 国际
 （CC BY-NC-SA 4.0）许可证。您可以在非商业目的下复制和修改代码，但必须标注
 作者并以相同的协议共享您的贡献。详见 LICENSE 文件。
-

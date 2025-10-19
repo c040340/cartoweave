@@ -10,6 +10,7 @@ import numpy as np
 
 # === 根据工程真实路径修正导入 ===
 from cartoweave.compute.solve import solve as _run_solver
+from cartoweave.config.loader import load_compute_config as _load_default_compute
 from cartoweave.labels import anchor_xy as _anchor_xy
 
 Number = Union[int, float]
@@ -79,6 +80,7 @@ def solve_layout(
     labels: Sequence[Mapping[str, Any]],
     elements: Mapping[str, Any],
     actions: Sequence[Mapping[str, Any]],
+    frame_size: Sequence[Number],
     *,
     config_profile: Union[str, Path, Mapping[str, Any]] = None,
     overrides: Optional[Mapping[str, Any]] = None,
@@ -87,10 +89,19 @@ def solve_layout(
 ) -> SolveResult:
     """High level entry: ``from cartoweave import solve_layout``.
 
-    This wrapper normalises raw inputs, merges configuration profiles and
-    delegates the heavy lifting to the underlying solver.  It returns the
-    label coordinates at the **end of each action** instead of every
-    optimisation iteration.
+    Required arguments
+    - labels: sequence of label dicts. Must include ``WH`` and optional
+      ``anchor`` references to elements.
+    - elements: scene elements (points, polylines, polygons) referenced by
+      labels via their anchors.
+    - actions: timeline of activate/mutate/deactivate steps.
+    - frame_size: canvas size as ``(W, H)`` in the same coordinate system as
+      elements. This parameter is now required for deterministic behaviour and
+      reproducible global terms.
+
+    This wrapper normalises inputs, merges configuration profiles and delegates
+    to the compute solver. It returns label coordinates at the end of each
+    action (not every optimisation iteration).
     """
     elems_n, elem_maps = _normalize_elements(elements)
     labels_n = _normalize_labels(labels, elem_maps)
@@ -104,8 +115,14 @@ def solve_layout(
     if deterministic_seed is not None:
         _seed_everything(deterministic_seed)
 
+    # Infer a sensible frame size from both labels and scene elements.
+    # Previous behaviour only considered labels which often lack xy0 in
+    # anchor-driven layouts, resulting in a tiny default (100x100) frame.
+    # That caused global terms (e.g., boundary.wall, focus.attract) to
+    # dominate and drag labels towards the top-left regardless of anchors.
+    fs = _validate_frame_size(frame_size)
     scene = {
-        "frame_size": _infer_frame_size(labels_n),
+        "frame_size": fs,
         "labels": labels_n,
         "points": elems_n.get("points", []),
         "lines": elems_n.get("polylines", []),
@@ -255,8 +272,60 @@ def _sanity_check_labels(labels: Sequence[Mapping[str, Any]]) -> None:
 
 
 def _load_and_merge_config(profile: Optional[Union[str, Path, Mapping[str, Any]]]) -> Dict[str, Any]:
+    # When no profile provided, try to load bundled defaults; if unavailable,
+    # fall back to a minimal config that enables anchor spring so the solver
+    # actually computes a layout instead of being a no-op.
     if profile is None:
-        return {}
+        # 1) Try package-local configs directory (repo layout: <root>/configs)
+        here = Path(__file__).resolve()
+        repo_configs = here.parents[2] / "configs"
+        if repo_configs.is_dir():
+            return _load_and_merge_config(repo_configs)
+
+        # 2) Try CWD 'configs' (if user runs from project root)
+        cwd_configs = Path.cwd() / "configs"
+        if cwd_configs.is_dir():
+            return _load_and_merge_config(cwd_configs)
+
+        # 3) Try loader defaults (handles schema defaults if files missing)
+        try:
+            cfg = _load_default_compute()
+            # If no forces are enabled, inject a minimal sane default so that
+            # single-point anchoring produces visible displacement.
+            forces = (((cfg or {}).get("compute") or {}).get("public") or {}).get("forces")
+            has_enabled = False
+            if isinstance(forces, dict):
+                for grp in forces.values():
+                    if isinstance(grp, dict):
+                        for term in grp.values():
+                            if isinstance(term, dict) and term.get("enable"):
+                                has_enabled = True
+                                break
+                    if has_enabled:
+                        break
+            if not has_enabled:
+                cfg = _deep_merge_dicts(
+                    cfg or {},
+                    {
+                        "compute": {
+                            "public": {
+                                "forces": {
+                                    "anchor": {"spring": {"enable": True}},
+                                }
+                            }
+                        }
+                    },
+                )
+            return cfg
+        except Exception:
+            # 4) Last resort: minimal inline defaults
+            return {
+                "compute": {
+                    "public": {
+                        "forces": {"anchor": {"spring": {"enable": True}}}
+                    }
+                }
+            }
     if isinstance(profile, Mapping):
         return copy.deepcopy(dict(profile))
 
@@ -390,6 +459,22 @@ def _infer_frame_size(
                 ys.append(float(y))
     W = (max(xs) if xs else 0.0) + 100.0
     H = (max(ys) if ys else 0.0) + 100.0
+    return (W, H)
+
+
+def _validate_frame_size(frame_size: Sequence[Number]) -> tuple[float, float]:
+    """Validate and normalize a user-provided frame size (W, H).
+
+    Raises ValueError if the shape is not 2 or values are non-finite or
+    non-positive.
+    """
+    try:
+        arr = np.asarray(frame_size, dtype=float).reshape(2)
+    except Exception as e:  # pragma: no cover - defensive
+        raise ValueError(f"frame_size must be a 2-length sequence, got {frame_size}") from e
+    W, H = float(arr[0]), float(arr[1])
+    if not np.isfinite(W) or not np.isfinite(H) or W <= 0.0 or H <= 0.0:
+        raise ValueError(f"frame_size must be positive finite numbers, got {(W, H)}")
     return (W, H)
 
 

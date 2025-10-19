@@ -21,6 +21,7 @@ def test_solve_returns_coords_shape():
         labels=labels,
         elements=elements,
         actions=actions,
+        frame_size=(400.0, 300.0),
         deterministic_seed=123,
     )
     assert isinstance(res.coords, np.ndarray)

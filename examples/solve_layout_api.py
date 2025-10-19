@@ -38,6 +38,7 @@ def main() -> None:
         labels=labels,
         elements=elements,
         actions=actions,
+        frame_size=(800.0, 600.0),
         #config_profile="../configs/compute",
     )
 
