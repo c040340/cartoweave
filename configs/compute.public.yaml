@@ -31,12 +31,12 @@ compute:
       tiny_eps: 1.0e-9
     grad_clip:
       enable: true           # 是否启用梯度裁剪
-      max_norm: 1000.0        # L2 范数上限
+      max_norm: 10000000.0        # L2 范数上限
       max_abs: null           # 每分量绝对值上限（可选）
     nan_guard:
       enable: true            # 数值保护开关
     step_limit:
-      max_step_norm: null     # 单步位移上限（像素或坐标单位）
+      max_step_norm: 60       # 单步位移上限（像素或坐标单位）；适度限制以防大幅跳步
 
   capture:
     pre_solver_capture: true  # 是否记录 solver 前的预帧
@@ -132,7 +132,7 @@ compute:
             enable: true
             k_anchor_spring: 200.0
             k_anchor_occlusion: 300.0
-            anchor_spring_kind: "linear"  # logcosh | linear
+            anchor_spring_kind: "logcosh"  # logcosh | linear
             anchor_spring_alpha: 3.0
             anchor_r0_points: 60.0
             anchor_r0_lines: 60.0
